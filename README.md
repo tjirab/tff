@@ -172,3 +172,16 @@ uv sync --extra dev
 uv run ruff check .
 uv run pytest
 ```
+
+### Releases and PR titles
+
+Releases are automated with [release-please](https://github.com/googleapis/release-please) on merges to `main`. Use [Conventional Commits](https://www.conventionalcommits.org/) in PR titles so changelog entries and semver bumps are correct.
+
+PR titles must start with a type prefix, for example:
+
+- `feat: add dependency graph fan-in check`
+- `fix: remove unused import in loader tests`
+- `docs: document fitness_functions.yaml merge order`
+- `ci: add release-please workflow`
+
+Supported types include `feat`, `fix`, `docs`, `style`, `refactor`, `perf`, `test`, `build`, `ci`, and `chore`. The PR title check in CI enforces this format.
