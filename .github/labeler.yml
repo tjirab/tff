@@ -1,0 +1,36 @@
+# High-level labels based on repo structure. Labels are created on first use (issues: write).
+
+rules:
+  - changed-files:
+      - any-glob-to-any-file: "src/sqlmesh_ff/rules/**"
+
+checks:
+  - changed-files:
+      - any-glob-to-any-file: "src/sqlmesh_ff/checks/**"
+
+core:
+  - all:
+      - changed-files:
+          - any-glob-to-any-file: "src/sqlmesh_ff/**"
+      - changed-files:
+          - all-globs-to-all-files: "!src/sqlmesh_ff/rules/**"
+      - changed-files:
+          - all-globs-to-all-files: "!src/sqlmesh_ff/checks/**"
+
+tests:
+  - changed-files:
+      - any-glob-to-any-file: "tests/**"
+
+ci:
+  - changed-files:
+      - any-glob-to-any-file: ".github/**"
+
+docs:
+  - changed-files:
+      - any-glob-to-any-file: "**/*.md"
+
+dependencies:
+  - changed-files:
+      - any-glob-to-any-file:
+          - pyproject.toml
+          - uv.lock

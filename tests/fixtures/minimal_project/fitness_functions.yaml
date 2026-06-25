@@ -1,0 +1,5 @@
+layers:
+  order: [sources, derived]
+
+checks:
+  layer_integrity: { enabled: true }

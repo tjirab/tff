@@ -5,7 +5,11 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from sqlmesh_ff.config import FitnessFunctionsConfig, resolve_project_path
+from sqlmesh_ff.config import (
+    FitnessFunctionsConfig,
+    _ensure_under_root,
+    resolve_project_path,
+)
 from sqlmesh_ff.report import LintFinding
 from sqlmesh_ff.utils.schema_contract_utils import (
     check_column_list_parity,
@@ -17,7 +21,7 @@ from sqlmesh_ff.utils.schema_contract_utils import (
 
 
 def _resolve_path(project_root: Path, models_dir: str, filename: str) -> Path:
-    return (project_root / models_dir / filename).resolve()
+    return _ensure_under_root(project_root / models_dir / filename, project_root)
 
 
 def _schema_contract_errors(project_root: Path, contract_config: dict) -> list[str]:

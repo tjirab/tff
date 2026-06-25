@@ -1,0 +1,25 @@
+#!/bin/bash
+# Pre-push hook to enforce tests and 100% diff coverage on modified code.
+
+echo "============================================="
+echo "Running pre-push tests and coverage checks..."
+echo "============================================="
+
+# 1. Run tests with coverage XML generation
+uv run pytest --cov=src --cov-report=xml
+if [ $? -ne 0 ]; then
+    echo "❌ Error: Unit tests failed. Push aborted."
+    exit 1
+fi
+
+# 2. Run diff-cover against main branch
+# (Check that 100% of newly added or modified lines are covered by tests)
+uv run diff-cover coverage.xml --compare-branch=origin/main --fail-under=100
+if [ $? -ne 0 ]; then
+    echo "❌ Error: Diff coverage is below 100%. Push aborted."
+    echo "Please add test cases covering your modified/new lines of code."
+    exit 1
+fi
+
+echo "✅ All checks passed! Proceeding with push."
+exit 0

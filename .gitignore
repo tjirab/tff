@@ -5,3 +5,6 @@ __pycache__/
 .ruff_cache/
 dist/
 build/
+.cache/
+.coverage
+coverage.xml

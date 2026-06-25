@@ -7,8 +7,10 @@ Ships SQLMesh linter rules (classification macros, SQL complexity, metadata, nam
 ## Installation
 
 ```bash
-uv add sqlmesh-ff
-# or from a local checkout:
+# Install directly from GitHub:
+uv add git+https://github.com/tjirab/sqlmesh-ff.git
+
+# Or from a local checkout:
 uv add ../sqlmesh-ff
 ```
 
@@ -169,8 +171,27 @@ column_types:
 
 ## Development
 
+Initialize your local environment and configure the Git pre-push hook:
 ```bash
-uv sync --extra dev
-uv run ruff check .
-uv run pytest
+make init
 ```
+
+Run linter, tests, or check diff coverage:
+```bash
+make lint
+make test
+make coverage
+```
+
+### Releases and PR titles
+
+Releases are automated with [release-please](https://github.com/googleapis/release-please) on merges to `main`. Use [Conventional Commits](https://www.conventionalcommits.org/) in PR titles so changelog entries and semver bumps are correct.
+
+PR titles must start with a type prefix, for example:
+
+- `feat: add dependency graph fan-in check`
+- `fix: remove unused import in loader tests`
+- `docs: document fitness_functions.yaml merge order`
+- `ci: add release-please workflow`
+
+Supported types include `feat`, `fix`, `docs`, `style`, `refactor`, `perf`, `test`, `build`, `ci`, and `chore`. The PR title check in CI enforces this format.

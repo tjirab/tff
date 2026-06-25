@@ -1,6 +1,6 @@
 [project]
 name = "sqlmesh-ff"
-version = "0.1.0"
+version = "0.1.1"
 description = "Configurable fitness functions plugin for SQLMesh projects"
 readme = "README.md"
 requires-python = ">=3.12"
@@ -36,3 +36,9 @@ ignore = ["E501"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+
+[dependency-groups]
+dev = [
+    "diff-cover>=10.3.0",
+    "pytest-cov>=7.1.0",
+]
