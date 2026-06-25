@@ -25,6 +25,8 @@ CHECK_LABELS: dict[str, str] = {
     "nomissingowner": "Missing owner",
     "nomissingdescription": "Missing description",
     "nomissingaudits": "Missing audits",
+    "nomissingnotnull": "Missing not_null audit",
+    "nomissinguniquevalues": "Missing unique_values audit",
     "noselectstar": "No SELECT *",
     "filenameequalsmodelname": "Filename equals model name",
     "columntypes": "Column types",
