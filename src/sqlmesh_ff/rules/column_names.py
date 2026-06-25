@@ -30,8 +30,8 @@ class ColumnNames(Rule):
                     violations.append(
                         f"Try changing '{column_name}' to '{suggestion}'."
                     )
-            if violations:
-                return (
-                    self.violation(violations) if not model.kind.is_symbolic else None
-                )
+        if violations:
+            return (
+                self.violation(violations) if not model.kind.is_symbolic else None
+            )
         return None

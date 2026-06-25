@@ -45,8 +45,8 @@ class ColumnTypes(Rule):
                             f"Column '{column_name}' matched rule '{entry.name}' "
                             f"but has type '{actual_type_str}' instead of '{expected_type_str}'"
                         )
-            if violations:
-                return (
-                    self.violation(violations) if not model.kind.is_symbolic else None
-                )
+        if violations:
+            return (
+                self.violation(violations) if not model.kind.is_symbolic else None
+            )
         return None
