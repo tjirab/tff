@@ -154,9 +154,21 @@ def load_fitness_config(
     return config
 
 
+def _ensure_under_root(path: Path, root: Path) -> Path:
+    resolved = path.resolve()
+    root_resolved = root.resolve()
+    try:
+        resolved.relative_to(root_resolved)
+    except ValueError:
+        raise ValueError(
+            f"Path {path} resolves outside project root {root}"
+        ) from None
+    return resolved
+
+
 def resolve_project_path(config: FitnessFunctionsConfig, relative: str) -> Path:
     root: Path = getattr(config, "_project_root", Path.cwd())
     path = Path(relative)
     if path.is_absolute():
-        return path
-    return (root / path).resolve()
+        return _ensure_under_root(path, root)
+    return _ensure_under_root(root / path, root)
