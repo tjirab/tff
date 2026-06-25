@@ -1,10 +1,9 @@
-"""Integration test for FitnessLoader rule registration."""
+"""Tests for fitness rule registration and config loading."""
 
 from pathlib import Path
 
 from sqlmesh_ff.config import load_fitness_config
 from sqlmesh_ff.context import set_ff_config
-from sqlmesh_ff.loader import FitnessLoader
 from sqlmesh_ff.rules import ALL_RULES
 
 
