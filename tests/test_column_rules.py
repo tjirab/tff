@@ -1,10 +1,11 @@
 from unittest.mock import MagicMock
-from sqlmesh.core.model import Model
-from sqlmesh_ff.config import FitnessFunctionsConfig, ColumnTypeRuleEntry
+
+from sqlglot import exp
+
+from sqlmesh_ff.config import ColumnTypeRuleEntry, FitnessFunctionsConfig
 from sqlmesh_ff.context import set_ff_config
 from sqlmesh_ff.rules.column_names import ColumnNames
 from sqlmesh_ff.rules.column_types import ColumnTypes
-from sqlglot import exp
 
 
 def test_column_names_multiple_replacements():
