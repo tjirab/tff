@@ -8,7 +8,9 @@ from sqlmesh_ff.rules.mart_naming import MartModelNamingConvention
 from sqlmesh_ff.rules.metadata import (
     NoMissingDescription,
     NoMissingGrain,
+    NoMissingNotNull,
     NoMissingOwner,
+    NoMissingUniqueValues,
 )
 from sqlmesh_ff.rules.sql_complexity import SqlComplexity
 
@@ -21,6 +23,8 @@ ALL_RULES = [
     NoMissingOwner,
     NoMissingDescription,
     NoMissingGrain,
+    NoMissingNotNull,
+    NoMissingUniqueValues,
     FilenameEqualsModelname,
 ]
 
@@ -34,5 +38,7 @@ __all__ = [
     "NoMissingOwner",
     "NoMissingDescription",
     "NoMissingGrain",
+    "NoMissingNotNull",
+    "NoMissingUniqueValues",
     "FilenameEqualsModelname",
 ]

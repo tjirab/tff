@@ -88,6 +88,8 @@ class MetadataRuleConfig(BaseModel):
     owner: bool = True
     description: bool = True
     grain: bool = True
+    not_null: bool = True
+    unique_values: bool = True
 
 
 class FilenameEqualsModelnameRuleConfig(BaseModel):

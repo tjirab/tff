@@ -45,3 +45,29 @@ class NoMissingGrain(Rule):
             if not model.grains and not model.kind.is_symbolic
             else None
         )
+
+
+class NoMissingNotNull(Rule):
+    """Model must have a not_null audit specified."""
+
+    def check_model(self, model: Model) -> t.Optional[RuleViolation]:
+        if not get_ff_config().rules.metadata.not_null:
+            return None
+        if model.kind.is_external or model.kind.is_symbolic:
+            return None
+
+        has_not_null = any(name == "not_null" for name, _ in model.audits)
+        return self.violation() if not has_not_null else None
+
+
+class NoMissingUniqueValues(Rule):
+    """Model must have a unique_values audit specified."""
+
+    def check_model(self, model: Model) -> t.Optional[RuleViolation]:
+        if not get_ff_config().rules.metadata.unique_values:
+            return None
+        if model.kind.is_external or model.kind.is_symbolic:
+            return None
+
+        has_unique_values = any(name == "unique_values" for name, _ in model.audits)
+        return self.violation() if not has_unique_values else None
