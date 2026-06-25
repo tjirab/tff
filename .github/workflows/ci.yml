@@ -10,9 +10,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: astral-sh/setup-uv@v5
         with:
           enable-cache: true
       - run: uv sync --extra dev
       - run: uv run ruff check .
-      - run: uv run pytest
+      - run: uv run pytest --cov=src --cov-report=xml
+      - run: uv run diff-cover coverage.xml --compare-branch=origin/main --fail-under=100

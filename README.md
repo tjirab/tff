@@ -169,10 +169,16 @@ column_types:
 
 ## Development
 
+Initialize your local environment and configure the Git pre-push hook:
 ```bash
-uv sync --extra dev
-uv run ruff check .
-uv run pytest
+make init
+```
+
+Run linter, tests, or check diff coverage:
+```bash
+make lint
+make test
+make coverage
 ```
 
 ### Releases and PR titles
