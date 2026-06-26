@@ -101,3 +101,8 @@ rules:
     assert rule_config.should_run("core") is True
     assert rule_config.should_run("sources") is False
     assert rule_config.should_run("derived") is False
+
+    # Test enabled = False
+    rule_config.enabled = False
+    assert rule_config.should_run("core") is False
+    assert rule_config.should_run(None) is False

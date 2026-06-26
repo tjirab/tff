@@ -51,3 +51,12 @@ def test_no_select_star_violations():
 
     violation_compliant = rule.check_model(mock_model_compliant)
     assert violation_compliant is None
+
+    # 5. Symbolic model or model without query
+    mock_model_symbolic = MagicMock()
+    mock_model_symbolic._path = "models/marts/my_model.sql"
+    mock_model_symbolic.query = None
+    mock_model_symbolic.kind.is_symbolic = True
+
+    violation_symbolic = rule.check_model(mock_model_symbolic)
+    assert violation_symbolic is None
