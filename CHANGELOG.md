@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.1.2](https://github.com/tjirab/sqlmesh-ff/compare/v0.1.1...v0.1.2) (2026-06-26)
+
+
+### Features
+
+* add configurable required audits check (not_null & unique_values) ([#19](https://github.com/tjirab/sqlmesh-ff/issues/19)) ([844b7ef](https://github.com/tjirab/sqlmesh-ff/commit/844b7efae5c7e212a187751a2859d4079e832e31))
+* add no_select_star rule and generic layer filtering ([#28](https://github.com/tjirab/sqlmesh-ff/issues/28)) ([89bebac](https://github.com/tjirab/sqlmesh-ff/commit/89bebac052e9c4399af8ec2eebc391621ab27aad))
+* Examples ([#32](https://github.com/tjirab/sqlmesh-ff/issues/32)) ([477cd00](https://github.com/tjirab/sqlmesh-ff/commit/477cd00026634b9453d0c7095d8f2db8d3392031))
+* group lint report findings by connascence type ([#31](https://github.com/tjirab/sqlmesh-ff/issues/31)) ([455abd9](https://github.com/tjirab/sqlmesh-ff/commit/455abd9e9d19436f2d8c3a95e23a4cda7497f04e))
+
+
+### Bug Fixes
+
+* Replace bare exception handling in custom exclusions ([#21](https://github.com/tjirab/sqlmesh-ff/issues/21)) ([9df346d](https://github.com/tjirab/sqlmesh-ff/commit/9df346d908a56ab923cf3e61ede39c551c6a04e1))
+
 ## [0.1.1](https://github.com/tjirab/sqlmesh-ff/compare/v0.1.0...v0.1.1) (2026-06-25)
 
 
