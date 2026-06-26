@@ -142,12 +142,13 @@ SQLMesh uses lowercase class names in `linter.rules`:
 ## CLI
 
 ```
-sqlmesh-ff lint [--project PATH] [--config PATH] [--checks CHECK,...] [--fail-level error|warning]
+sqlmesh-ff lint [--project PATH] [--config PATH] [--checks CHECK,...] [--fail-level error|warning] [--group-by connascence|model]
 ```
 
 - **Default:** all enabled checks plus SQLMesh linter rules
 - **`--checks layer_integrity,custom_exclusions`:** run subset (for pre-push hooks)
 - **`--fail-level warning`:** treat warnings as failures
+- **`--group-by connascence|model`:** change how violations are grouped in the report (default: `connascence`)
 
 ## Integration example
 

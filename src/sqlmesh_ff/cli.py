@@ -50,6 +50,12 @@ def main(argv: list[str] | None = None) -> int:
         default="error",
         help="Exit non-zero when findings at or above this severity exist",
     )
+    lint_parser.add_argument(
+        "--group-by",
+        choices=["connascence", "model"],
+        default="connascence",
+        help="How to group violations in the report (default: connascence)",
+    )
 
     args = parser.parse_args(argv)
 
@@ -73,6 +79,7 @@ def main(argv: list[str] | None = None) -> int:
             models_checked=models_checked,
             executed_checks=executed_checks,
             fail_level=args.fail_level,  # type: ignore[arg-type]
+            group_by=args.group_by,  # type: ignore[arg-type]
         )
         return 0 if passed else 1
 

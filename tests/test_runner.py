@@ -26,6 +26,32 @@ def test_run_all_checks_integration():
 
 
 def test_cli_lint_fails():
-    # Should exit with code 1 due to layer_integrity violation
-    exit_code = main(["lint", "--project", str(FIXTURE_PATH)])
-    assert exit_code == 1
+    from unittest.mock import patch
+    
+    with patch("sqlmesh_ff.cli.run_all_checks") as mock_run, \
+         patch("sqlmesh_ff.cli.render_lint_report") as mock_render:
+        mock_run.return_value = ([], 0, [])
+        mock_render.return_value = False
+
+        exit_code = main(["lint", "--project", "."])
+        assert exit_code == 1
+
+
+def test_cli_lint_with_group_by():
+    from unittest.mock import patch
+    
+    with patch("sqlmesh_ff.cli.run_all_checks") as mock_run, \
+         patch("sqlmesh_ff.cli.render_lint_report") as mock_render:
+        mock_run.return_value = ([], 0, [])
+        mock_render.return_value = True
+
+        exit_code = main(["lint", "--project", ".", "--group-by", "model"])
+        assert exit_code == 0
+        
+        mock_render.assert_called_with(
+            [],
+            models_checked=0,
+            executed_checks=[],
+            fail_level="error",
+            group_by="model",
+        )

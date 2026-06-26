@@ -140,6 +140,7 @@ def render_lint_report(
     executed_checks: list[str] | None = None,
     console: Console | None = None,
     fail_level: Severity = "error",
+    group_by: Literal["connascence", "model"] = "connascence",
 ) -> bool:
     """Render lint report. Returns True when findings are below fail_level."""
     console = console or Console()
@@ -213,54 +214,93 @@ def render_lint_report(
         console.print("\n[bold green]All checks passed.[/bold green]")
         return True
 
-    by_category: dict[str, list[LintFinding]] = defaultdict(list)
-    for finding in findings:
-        category = CONNASCENCE_CATEGORIES.get(finding.check, "Other Checks")
-        by_category[category].append(finding)
-
-    category_order = [
-        "Connascence of Name (CoN)",
-        "Connascence of Type (CoT)",
-        "Connascence of Meaning (CoM)",
-        "Dynamic Coupling & DAG Structure",
-        "Quality & Metadata (Non-Connascence)",
-        "Other Checks",
-    ]
-
-    console.print()
-
-    for category in category_order:
-        cat_findings = by_category.get(category)
-        if not cat_findings:
-            continue
-
-        console.print(Rule(Text(category, style="bold cyan"), align="left"))
-
-        sorted_findings = sorted(
-            cat_findings,
-            key=lambda f: (
-                f.model or "",
-                f.severity,
-                f.check,
-            ),
-        )
-        for finding in sorted_findings:
-            icon = "✗" if finding.severity == "error" else "⚠"
-            style = "red" if finding.severity == "error" else "yellow"
-
-            model_part = ""
+    if group_by == "model":
+        by_model: dict[str, list[LintFinding]] = defaultdict(list)
+        repo_level: list[LintFinding] = []
+        for finding in findings:
             if finding.model:
-                model_name = normalize_model_name(finding.model)
-                model_part = f"[bold]{model_name}[/bold]"
-                if finding.path:
-                    model_part += f" [dim]({finding.path})[/dim]"
+                by_model[normalize_model_name(finding.model)].append(finding)
             else:
-                model_part = "[bold]Repository-level[/bold]"
+                repo_level.append(finding)
 
-            console.print(
-                f"  [{style}]{icon}[/{style}] {model_part}: {finding.message} [dim]({finding.check})[/dim]"
-            )
         console.print()
+        console.print("[bold]Issues by model[/bold]")
+
+        for model_name in sorted(by_model):
+            model_findings = by_model[model_name]
+            path = next((f.path for f in model_findings if f.path), None)
+            header = f"[bold cyan]{model_name}[/bold cyan]"
+            if path:
+                header += f" [dim]({path})[/dim]"
+            console.print(header)
+            for finding in sorted(model_findings, key=lambda f: (f.severity, f.check)):
+                icon = "✗" if finding.severity == "error" else "⚠"
+                style = "red" if finding.severity == "error" else "yellow"
+                label = CHECK_LABELS.get(finding.check, finding.check)
+                console.print(
+                    f"  [{style}]{icon}[/{style}] [dim]{label}:[/dim] {finding.message}"
+                )
+            console.print()
+
+        if repo_level:
+            console.print("[bold]Repository-level issues[/bold]")
+            for finding in repo_level:
+                icon = "✗" if finding.severity == "error" else "⚠"
+                style = "red" if finding.severity == "error" else "yellow"
+                label = CHECK_LABELS.get(finding.check, finding.check)
+                console.print(
+                    f"  [{style}]{icon}[/{style}] [dim]{label}:[/dim] {finding.message}"
+                )
+            console.print()
+    else:
+        by_category: dict[str, list[LintFinding]] = defaultdict(list)
+        for finding in findings:
+            category = CONNASCENCE_CATEGORIES.get(finding.check, "Other Checks")
+            by_category[category].append(finding)
+
+        category_order = [
+            "Connascence of Name (CoN)",
+            "Connascence of Type (CoT)",
+            "Connascence of Meaning (CoM)",
+            "Dynamic Coupling & DAG Structure",
+            "Quality & Metadata (Non-Connascence)",
+            "Other Checks",
+        ]
+
+        console.print()
+
+        for category in category_order:
+            cat_findings = by_category.get(category)
+            if not cat_findings:
+                continue
+
+            console.print(Rule(Text(category, style="bold cyan"), align="left"))
+
+            sorted_findings = sorted(
+                cat_findings,
+                key=lambda f: (
+                    f.model or "",
+                    f.severity,
+                    f.check,
+                ),
+            )
+            for finding in sorted_findings:
+                icon = "✗" if finding.severity == "error" else "⚠"
+                style = "red" if finding.severity == "error" else "yellow"
+
+                model_part = ""
+                if finding.model:
+                    model_name = normalize_model_name(finding.model)
+                    model_part = f"[bold]{model_name}[/bold]"
+                    if finding.path:
+                        model_part += f" [dim]({finding.path})[/dim]"
+                else:
+                    model_part = "[bold]Repository-level[/bold]"
+
+                console.print(
+                    f"  [{style}]{icon}[/{style}] {model_part}: {finding.message} [dim]({finding.check})[/dim]"
+                )
+            console.print()
 
     failed = any(f.severity == fail_level for f in findings)
     if fail_level == "error" and has_errors:
