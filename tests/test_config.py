@@ -78,3 +78,26 @@ def test_resolve_project_path_allows_absolute_inside_root(tmp_path: Path) -> Non
     resolved = resolve_project_path(config, str(nested))
 
     assert resolved == nested.resolve()
+
+
+def test_layer_filter_config_parsing(tmp_path: Path) -> None:
+    yaml_path = tmp_path / "fitness_functions.yaml"
+    yaml_path.write_text(
+        """
+rules:
+  no_select_star:
+    enabled: true
+    skip_layers: [sources]
+    only_layers: [core, marts]
+""",
+        encoding="utf-8",
+    )
+    config = load_fitness_config(tmp_path)
+    rule_config = config.rules.no_select_star
+    assert rule_config.enabled is True
+    assert rule_config.skip_layers == ["sources"]
+    assert rule_config.only_layers == ["core", "marts"]
+
+    assert rule_config.should_run("core") is True
+    assert rule_config.should_run("sources") is False
+    assert rule_config.should_run("derived") is False

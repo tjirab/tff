@@ -29,6 +29,11 @@ def collect_dependency_graph_findings(
         if not model or model.kind.is_symbolic:
             continue
 
+        from sqlmesh_ff.utils.paths import get_layer_from_path
+        layer = get_layer_from_path(model._path)
+        if not graph_config.should_run(layer):
+            continue
+
         fan_in = len(model.depends_on)
         fan_out = len(reverse.get(str(model_name), set()))
 

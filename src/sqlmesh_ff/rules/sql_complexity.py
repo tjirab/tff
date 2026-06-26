@@ -125,6 +125,12 @@ class SqlComplexity(Rule):
         if model.kind.is_symbolic:
             return None
 
+        from sqlmesh_ff.utils.paths import get_layer_from_path
+
+        layer = get_layer_from_path(model._path)
+        if not rule_config.should_run(layer):
+            return None
+
         path = Path(model._path)
         if path.suffix != ".sql" or not path.exists():
             return None

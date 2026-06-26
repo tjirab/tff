@@ -64,7 +64,7 @@ class ClassificationMacros(Rule):
             return None
 
         layer = get_layer_from_path(model._path)
-        if layer is None or layer in rule_config.skip_layers:
+        if not rule_config.should_run(layer):
             return None
 
         path = Path(model._path)

@@ -12,6 +12,7 @@ from sqlmesh_ff.rules.metadata import (
     NoMissingOwner,
     NoMissingUniqueValues,
 )
+from sqlmesh_ff.rules.no_select_star import NoSelectStar
 from sqlmesh_ff.rules.sql_complexity import SqlComplexity
 
 ALL_RULES = [
@@ -26,6 +27,7 @@ ALL_RULES = [
     NoMissingNotNull,
     NoMissingUniqueValues,
     FilenameEqualsModelname,
+    NoSelectStar,
 ]
 
 __all__ = [
@@ -41,4 +43,5 @@ __all__ = [
     "NoMissingNotNull",
     "NoMissingUniqueValues",
     "FilenameEqualsModelname",
+    "NoSelectStar",
 ]

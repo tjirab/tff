@@ -9,6 +9,7 @@ from sqlmesh.core.linter.rule import Rule, RuleViolation
 from sqlmesh.core.model import Model
 
 from sqlmesh_ff.context import get_ff_config
+from sqlmesh_ff.utils.paths import get_layer_from_path
 
 
 class ColumnTypes(Rule):
@@ -17,6 +18,10 @@ class ColumnTypes(Rule):
     def check_model(self, model: Model) -> t.Optional[RuleViolation]:
         rule_config = get_ff_config().rules.column_types
         if not rule_config.enabled or not rule_config.rules:
+            return None
+
+        layer = get_layer_from_path(model._path)
+        if not rule_config.should_run(layer):
             return None
 
         if not model.columns_to_types:

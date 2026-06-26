@@ -19,7 +19,22 @@ class CheckEnabled(BaseModel):
     enabled: bool = True
 
 
-class DependencyGraphCheckConfig(CheckEnabled):
+class LayerFilterConfig(BaseModel):
+    enabled: bool = True
+    skip_layers: list[str] = Field(default_factory=list)
+    only_layers: list[str] | None = None
+
+    def should_run(self, layer: str | None) -> bool:
+        if not self.enabled:
+            return False
+        if layer is None:
+            return True
+        if self.only_layers is not None:
+            return layer in self.only_layers
+        return layer not in self.skip_layers
+
+
+class DependencyGraphCheckConfig(LayerFilterConfig):
     fan_out_warn: int = 15
     fan_out_fail: int = 25
     fan_in_warn: int = 10
@@ -34,8 +49,7 @@ class ChecksConfig(BaseModel):
     )
 
 
-class ClassificationMacrosRuleConfig(BaseModel):
-    enabled: bool = True
+class ClassificationMacrosRuleConfig(LayerFilterConfig):
     skip_layers: list[str] = Field(default_factory=lambda: ["sources"])
     columns: dict[str, str] = Field(
         default_factory=lambda: {
@@ -46,8 +60,7 @@ class ClassificationMacrosRuleConfig(BaseModel):
     )
 
 
-class SqlComplexityRuleConfig(BaseModel):
-    enabled: bool = True
+class SqlComplexityRuleConfig(LayerFilterConfig):
     warn_only: bool = True
     thresholds: dict[str, list[int]] = Field(
         default_factory=lambda: {
@@ -59,14 +72,12 @@ class SqlComplexityRuleConfig(BaseModel):
     )
 
 
-class MartNamingRuleConfig(BaseModel):
-    enabled: bool = True
+class MartNamingRuleConfig(LayerFilterConfig):
     layer_name: str = "marts"
     rule: str = "prefix_with_subdirectory"
 
 
-class ColumnNamesRuleConfig(BaseModel):
-    enabled: bool = True
+class ColumnNamesRuleConfig(LayerFilterConfig):
     replacements: dict[str, str] = Field(default_factory=dict)
 
 
@@ -76,15 +87,14 @@ class ColumnTypeRuleEntry(BaseModel):
     data_type: str
 
 
-class ColumnTypesRuleConfig(BaseModel):
-    enabled: bool = True
+class ColumnTypesRuleConfig(LayerFilterConfig):
     rules: list[ColumnTypeRuleEntry] = Field(default_factory=list)
     equivalent_types: dict[str, list[str]] = Field(
         default_factory=lambda: {"text": ["text", "varchar"]}
     )
 
 
-class MetadataRuleConfig(BaseModel):
+class MetadataRuleConfig(LayerFilterConfig):
     owner: bool = True
     description: bool = True
     grain: bool = True
@@ -92,8 +102,12 @@ class MetadataRuleConfig(BaseModel):
     unique_values: bool = True
 
 
-class FilenameEqualsModelnameRuleConfig(BaseModel):
-    enabled: bool = True
+class FilenameEqualsModelnameRuleConfig(LayerFilterConfig):
+    pass
+
+
+class NoSelectStarRuleConfig(LayerFilterConfig):
+    skip_layers: list[str] = Field(default_factory=lambda: ["sources"])
 
 
 class RulesConfig(BaseModel):
@@ -109,6 +123,9 @@ class RulesConfig(BaseModel):
     metadata: MetadataRuleConfig = Field(default_factory=MetadataRuleConfig)
     filename_equals_modelname: FilenameEqualsModelnameRuleConfig = Field(
         default_factory=FilenameEqualsModelnameRuleConfig
+    )
+    no_select_star: NoSelectStarRuleConfig = Field(
+        default_factory=NoSelectStarRuleConfig
     )
 
 
