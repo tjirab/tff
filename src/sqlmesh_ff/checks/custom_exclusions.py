@@ -8,6 +8,7 @@ import typing as t
 from pathlib import Path
 
 from sqlmesh.core.context import Context
+from sqlmesh.utils.errors import SQLMeshError
 
 from sqlmesh_ff.config import FitnessFunctionsConfig, resolve_project_path
 from sqlmesh_ff.report import LintFinding
@@ -138,7 +139,23 @@ class CustomExclusionsChecker:
                         f"{f'/{dep_domain}' if dep_domain else ''}', "
                         f"which is not allowed by custom exclusions"
                     )
-            except Exception:
+            except SQLMeshError as e:
+                logger.warning(
+                    "Could not check dependency %s for model %s due to SQLMesh error: %s",
+                    dependency_name,
+                    model.name,
+                    e,
+                    exc_info=True,
+                )
+                continue
+            except Exception as e:
+                logger.error(
+                    "Unexpected error checking dependency %s for model %s: %s",
+                    dependency_name,
+                    model.name,
+                    e,
+                    exc_info=True,
+                )
                 continue
 
         return violations
