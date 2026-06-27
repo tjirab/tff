@@ -66,11 +66,13 @@ class ClassificationMacros(Rule):
         if not rule_config.should_run(layer):
             return None
 
-        path = Path(model.path)
-        if not path.exists():
-            return None
-
-        sql = strip_model_block(path.read_text(encoding="utf-8"))
+        sql = model.query
+        if sql is None:
+            path = Path(model.path)
+            if not path.exists():
+                return None
+            sql = path.read_text(encoding="utf-8")
+        sql = strip_model_block(sql)
         violations = find_classification_violations(sql, rule_config.columns)
         if violations:
             return self.violation(violations)

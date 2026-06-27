@@ -20,6 +20,11 @@ def load_dbt_models(
     with open(manifest_path, encoding="utf-8") as f:
         manifest = json.load(f)
 
+    # Auto-infer dialect from dbt adapter type
+    adapter_type = manifest.get("metadata", {}).get("adapter_type")
+    if adapter_type:
+        dialect = adapter_type
+
     # 1. Collect tests by model unique ID
     model_tests: dict[str, list[tuple[str, dict]]] = {}
     for unique_id, node in manifest.get("nodes", {}).items():
@@ -28,6 +33,8 @@ def load_dbt_models(
             test_name = test_metadata.get("name")
             if not test_name:
                 continue
+            if test_name == "unique":
+                test_name = "unique_values"
 
             depends_on_nodes = node.get("depends_on", {}).get("nodes", [])
             for dep in depends_on_nodes:
@@ -78,6 +85,7 @@ def load_dbt_models(
         abs_path = str(project_root / rel_path)
 
         audits = model_tests.get(unique_id, [])
+        query = node.get("compiled_code") or node.get("raw_code")
 
         mapped_models[unique_id] = ModelRepresentation(
             name=name,
@@ -91,6 +99,7 @@ def load_dbt_models(
             owner=owner,
             grains=grains,
             audits=audits,
+            query=query,
         )
 
     # 3. Map sources to ModelRepresentation so graph checks resolve them

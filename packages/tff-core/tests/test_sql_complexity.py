@@ -19,3 +19,32 @@ def test_format_violations_warn_threshold() -> None:
     messages = format_violations(metrics, "schema.model", thresholds)
     assert messages
     assert "WARN" in messages[0]
+
+
+def test_sql_complexity_rule_missing_or_non_sql_file() -> None:
+    from tff.core.rules.sql_complexity import SqlComplexity
+    from tff.core.model import ModelRepresentation
+    from tff.core.config import FitnessFunctionsConfig
+    from tff.core.context import set_ff_config
+
+    config = FitnessFunctionsConfig()
+    config.rules.sql_complexity.enabled = True
+    set_ff_config(config)
+
+    rule = SqlComplexity()
+
+    # Case 1: non-existent file
+    model1 = ModelRepresentation(
+        name="core.model1",
+        path="models/core/non_existent_file.sql",
+        query=None,
+    )
+    assert rule.check_model(model1) is None
+
+    # Case 2: non-sql file extension (e.g. .txt)
+    model2 = ModelRepresentation(
+        name="core.model2",
+        path="models/core/file.txt",
+        query=None,
+    )
+    assert rule.check_model(model2) is None

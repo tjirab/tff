@@ -131,11 +131,14 @@ class SqlComplexity(Rule):
         if not rule_config.should_run(layer):
             return None
 
-        path = Path(model.path)
-        if path.suffix != ".sql" or not path.exists():
-            return None
+        sql = model.query
+        if sql is None:
+            path = Path(model.path)
+            if path.suffix != ".sql" or not path.exists():
+                return None
+            sql = path.read_text(encoding="utf-8")
 
-        metrics = analyze_sql(path.read_text(encoding="utf-8"), dialect=model.dialect)
+        metrics = analyze_sql(sql, dialect=model.dialect)
         violations = format_violations(
             metrics, str(model.name), rule_config.thresholds
         )

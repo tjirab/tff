@@ -28,12 +28,14 @@ class NoSelectStar(Rule):
         if not rule_config.should_run(layer):
             return None
 
-        path = Path(model.path)
-        if not path.exists():
-            return None
+        sql = model.query
+        if sql is None:
+            path = Path(model.path)
+            if not path.exists():
+                return None
+            sql = path.read_text(encoding="utf-8")
 
         try:
-            sql = path.read_text(encoding="utf-8")
             # Strip SQLMesh MODEL block if present
             import re
             sql = re.sub(r"^MODEL\s*\(.*?\)\s*;", "", sql, flags=re.DOTALL | re.IGNORECASE).strip()
