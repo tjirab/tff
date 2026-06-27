@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.3](https://github.com/tjirab/sqlmesh-ff/compare/v0.1.2...v0.1.3) (2026-06-27)
+
+
+### Features
+
+* configure PyPI package metadata and release-please automation ([#33](https://github.com/tjirab/sqlmesh-ff/issues/33)) ([ff9ea49](https://github.com/tjirab/sqlmesh-ff/commit/ff9ea49391264d74a25292bfa1620b04a835e3fc))
+
 ## [0.1.2](https://github.com/tjirab/sqlmesh-ff/compare/v0.1.1...v0.1.2) (2026-06-26)
 
 
