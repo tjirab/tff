@@ -1,5 +1,8 @@
 # sqlmesh-ff
 
+[![PyPI version](https://img.shields.io/pypi/v/sqlmesh-ff.svg)](https://pypi.org/project/sqlmesh-ff/)
+[![Python versions](https://img.shields.io/pypi/pyversions/sqlmesh-ff.svg)](https://pypi.org/project/sqlmesh-ff/)
+
 Configurable fitness functions plugin for [SQLMesh](https://sqlmesh.com) projects.
 
 Ships SQLMesh linter rules (classification macros, SQL complexity, metadata, naming) and architectural checks (layer integrity, custom exclusions, schema contracts, dependency graph) with a unified Rich lint report.
@@ -7,11 +10,11 @@ Ships SQLMesh linter rules (classification macros, SQL complexity, metadata, nam
 ## Installation
 
 ```bash
-# Install directly from GitHub:
-uv add git+https://github.com/tjirab/sqlmesh-ff.git
+# Install from PyPI:
+uv add sqlmesh-ff
 
-# Or from a local checkout:
-uv add ../sqlmesh-ff
+# Or using pip:
+pip install sqlmesh-ff
 ```
 
 ## Quick start
