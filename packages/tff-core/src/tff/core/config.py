@@ -106,7 +106,7 @@ class FilenameEqualsModelnameRuleConfig(LayerFilterConfig):
     pass
 
 
-class NoSelectStarRuleConfig(LayerFilterConfig):
+class BanSelectStarRuleConfig(LayerFilterConfig):
     skip_layers: list[str] = Field(default_factory=lambda: ["sources"])
 
 
@@ -128,8 +128,8 @@ class RulesConfig(BaseModel):
     filename_equals_modelname: FilenameEqualsModelnameRuleConfig = Field(
         default_factory=FilenameEqualsModelnameRuleConfig
     )
-    no_select_star: NoSelectStarRuleConfig = Field(
-        default_factory=NoSelectStarRuleConfig
+    ban_select_star: BanSelectStarRuleConfig = Field(
+        default_factory=BanSelectStarRuleConfig
     )
     no_positional_group_by_or_order_by: NoPositionalGroupByOrOrderByRuleConfig = Field(
         default_factory=NoPositionalGroupByOrOrderByRuleConfig

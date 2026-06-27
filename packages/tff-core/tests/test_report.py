@@ -46,7 +46,7 @@ def test_render_lint_report_groups_by_connascence() -> None:
     console = Console(record=True, width=120)
     findings = [
         LintFinding(
-            check="noselectstar",
+            check="banselectstar",
             severity="error",
             message="SELECT * is prohibited.",
             model="marts.users",
@@ -101,7 +101,7 @@ def test_render_lint_report_groups_by_model() -> None:
     console = Console(record=True, width=120)
     findings = [
         LintFinding(
-            check="noselectstar",
+            check="banselectstar",
             severity="error",
             message="SELECT * is prohibited.",
             model="marts.users",

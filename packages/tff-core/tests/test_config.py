@@ -85,7 +85,7 @@ def test_layer_filter_config_parsing(tmp_path: Path) -> None:
     yaml_path.write_text(
         """
 rules:
-  no_select_star:
+  ban_select_star:
     enabled: true
     skip_layers: [sources]
     only_layers: [core, marts]
@@ -93,7 +93,7 @@ rules:
         encoding="utf-8",
     )
     config = load_fitness_config(tmp_path)
-    rule_config = config.rules.no_select_star
+    rule_config = config.rules.ban_select_star
     assert rule_config.enabled is True
     assert rule_config.skip_layers == ["sources"]
     assert rule_config.only_layers == ["core", "marts"]

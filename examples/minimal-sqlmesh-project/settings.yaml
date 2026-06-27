@@ -19,4 +19,4 @@ linter:
     - sqlcomplexity
     - martmodelnamingconvention
     - filenameequalsmodelname
-    - noselectstar
+    - banselectstar

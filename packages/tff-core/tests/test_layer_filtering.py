@@ -14,7 +14,7 @@ from tff.core.rules import (
     NoMissingNotNull,
     NoMissingOwner,
     NoMissingUniqueValues,
-    NoSelectStar,
+    BanSelectStar,
     SqlComplexity,
 )
 
@@ -50,8 +50,8 @@ def test_rules_respect_layer_filtering(tmp_path: Path):
     config.rules.sql_complexity.enabled = True
     config.rules.sql_complexity.skip_layers = ["sources"]
 
-    config.rules.no_select_star.enabled = True
-    config.rules.no_select_star.skip_layers = ["sources"]
+    config.rules.ban_select_star.enabled = True
+    config.rules.ban_select_star.skip_layers = ["sources"]
 
     set_ff_config(config)
 
@@ -84,7 +84,7 @@ def test_rules_respect_layer_filtering(tmp_path: Path):
         NoMissingNotNull(),
         NoMissingUniqueValues(),
         SqlComplexity(),
-        NoSelectStar(),
+        BanSelectStar(),
     ]
 
     for rule in rules:
@@ -93,7 +93,7 @@ def test_rules_respect_layer_filtering(tmp_path: Path):
     # Test when rules are disabled
     config.rules.filename_equals_modelname.enabled = False
     config.rules.metadata.enabled = False
-    config.rules.no_select_star.enabled = False
+    config.rules.ban_select_star.enabled = False
     set_ff_config(config)
 
     # Mart model that would violate rules if enabled
@@ -110,7 +110,7 @@ def test_rules_respect_layer_filtering(tmp_path: Path):
 
     assert FilenameEqualsModelname().check_model(model_marts) is None
     assert NoMissingOwner().check_model(model_marts) is None
-    assert NoSelectStar().check_model(model_marts) is None
+    assert BanSelectStar().check_model(model_marts) is None
 
 
 def test_dependency_graph_respects_layer_filtering():

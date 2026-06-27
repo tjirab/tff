@@ -28,7 +28,7 @@ CHECK_LABELS: dict[str, str] = {
     "nomissingaudits": "Missing audits",
     "nomissingnotnull": "Missing not_null audit",
     "nomissinguniquevalues": "Missing unique_values audit",
-    "noselectstar": "No SELECT *",
+    "banselectstar": "No SELECT *",
     "filenameequalsmodelname": "Filename equals model name",
     "columntypes": "Column types",
     "columnnames": "Column names",
@@ -40,7 +40,7 @@ CHECK_LABELS: dict[str, str] = {
 
 CONNASCENCE_CATEGORIES: dict[str, str] = {
     # Connascence of Name (CoN)
-    "noselectstar": "Connascence of Name (CoN)",
+    "banselectstar": "Connascence of Name (CoN)",
     "filenameequalsmodelname": "Connascence of Name (CoN)",
     "columnnames": "Connascence of Name (CoN)",
     "martmodelnamingconvention": "Connascence of Name (CoN)",
