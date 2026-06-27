@@ -6,6 +6,7 @@
 Configurable fitness functions engine and linter for transformation projects. 
 
 TFF allows you to enforce architectural layout boundaries, layer structure policies, schema contracts, and code formatting rules across data pipelines. It ships with dedicated plugins for **SQLMesh** and **dbt** and outputs clean, color-coded lint reports to the terminal.
+<img width="1029" height="828" alt="Screenshot 2026-06-27 at 13 22 08" src="https://github.com/user-attachments/assets/77c8896f-b626-481e-90f1-b88fe8036448" />
 
 ---
 
