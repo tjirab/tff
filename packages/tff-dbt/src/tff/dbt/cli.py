@@ -58,8 +58,8 @@ def main(argv: list[str] | None = None) -> int:
     )
     lint_parser.add_argument(
         "--dialect",
-        default="bigquery",
-        help="SQL dialect of the dbt models (default: bigquery)",
+        default=None,
+        help="SQL dialect of the dbt models (default: auto-inferred from dbt manifest adapter type)",
     )
 
     args = parser.parse_args(argv)

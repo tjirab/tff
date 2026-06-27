@@ -15,6 +15,7 @@ def test_no_missing_not_null_rule():
     model = ModelRepresentation(
         name="test_model",
         path="models/marts/test_model.sql",
+        dialect="bigquery",
         audits=[],
         is_symbolic=False,
         is_external=False,
@@ -25,6 +26,7 @@ def test_no_missing_not_null_rule():
     model_with_audit = ModelRepresentation(
         name="test_model",
         path="models/marts/test_model.sql",
+        dialect="bigquery",
         audits=[("not_null", {})],
         is_symbolic=False,
         is_external=False,
@@ -48,6 +50,7 @@ def test_no_missing_unique_values_rule():
     model = ModelRepresentation(
         name="test_model",
         path="models/marts/test_model.sql",
+        dialect="bigquery",
         audits=[],
         is_symbolic=False,
         is_external=False,
@@ -58,6 +61,7 @@ def test_no_missing_unique_values_rule():
     model_with_audit = ModelRepresentation(
         name="test_model",
         path="models/marts/test_model.sql",
+        dialect="bigquery",
         audits=[("unique_values", {})],
         is_symbolic=False,
         is_external=False,
@@ -83,6 +87,7 @@ def test_rules_skip_symbolic_and_external_models():
     symbolic_model = ModelRepresentation(
         name="test_model",
         path="models/marts/test_model.sql",
+        dialect="bigquery",
         audits=[],
         is_symbolic=True,
         is_external=False,
@@ -94,6 +99,7 @@ def test_rules_skip_symbolic_and_external_models():
     external_model = ModelRepresentation(
         name="test_model",
         path="models/marts/test_model.sql",
+        dialect="bigquery",
         audits=[],
         is_symbolic=False,
         is_external=True,

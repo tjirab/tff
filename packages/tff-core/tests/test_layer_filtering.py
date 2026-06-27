@@ -64,6 +64,7 @@ def test_rules_respect_layer_filtering(tmp_path: Path):
     model = ModelRepresentation(
         name="sources.my_model",
         path=str(sql_file),
+        dialect="bigquery",
         is_symbolic=False,
         columns_to_types={"api_request": "int", "user_id": "int"},
         audits=[],
@@ -103,6 +104,7 @@ def test_rules_respect_layer_filtering(tmp_path: Path):
     model_marts = ModelRepresentation(
         name="marts.my_model_diff",
         path=str(sql_file_marts),
+        dialect="bigquery",
         is_symbolic=False,
     )
 
@@ -123,11 +125,13 @@ def test_dependency_graph_respects_layer_filtering():
     model1 = ModelRepresentation(
         name="sources.model1",
         path="models/sources/model1.sql",
+        dialect="bigquery",
         depends_on={"sources.model2"},
     )
     model2 = ModelRepresentation(
         name="sources.model2",
         path="models/sources/model2.sql",
+        dialect="bigquery",
     )
 
     models = {

@@ -16,6 +16,7 @@ def test_custom_exclusions_checker_skips_missing_models(tmp_path: Path) -> None:
     model = ModelRepresentation(
         name="derived.model_a",
         path="models/derived/model_a.sql",
+        dialect="bigquery",
         depends_on={"core.model_b"},
     )
     
@@ -36,11 +37,13 @@ def test_custom_exclusions_checker_detects_violations(tmp_path: Path) -> None:
     model_a = ModelRepresentation(
         name="derived.model_a",
         path="models/derived/model_a.sql",
+        dialect="bigquery",
         depends_on={"core.model_b"},
     )
     model_b = ModelRepresentation(
         name="core.model_b",
         path="models/core/model_b.sql",
+        dialect="bigquery",
     )
 
     models = {

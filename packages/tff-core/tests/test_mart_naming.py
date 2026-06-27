@@ -17,6 +17,7 @@ def test_mart_model_naming_convention():
     model_violation = ModelRepresentation(
         name="marts.marketing.all_users",
         path="models/marts/marketing/all_users.sql",
+        dialect="bigquery",
         is_symbolic=False,
     )
     violation = rule.check_model(model_violation)
@@ -27,6 +28,7 @@ def test_mart_model_naming_convention():
     model_ok = ModelRepresentation(
         name="marts.marketing.marketing_all_users",
         path="models/marts/marketing/marketing_all_users.sql",
+        dialect="bigquery",
         is_symbolic=False,
     )
     assert rule.check_model(model_ok) is None
@@ -35,6 +37,7 @@ def test_mart_model_naming_convention():
     model_stg = ModelRepresentation(
         name="staging.stg_users",
         path="models/staging/stg_users.sql",
+        dialect="bigquery",
         is_symbolic=False,
     )
     assert rule.check_model(model_stg) is None

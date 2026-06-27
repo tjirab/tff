@@ -43,6 +43,26 @@ def test_map_sqlmesh_model_with_audits() -> None:
     assert model_rep.audits == [("not_null", {"column": "id"})]
 
 
+def test_map_sqlmesh_model_missing_dialect() -> None:
+    import pytest
+    mock_model = MagicMock(spec=SqlMeshModel)
+    mock_model.name = "my_model"
+    mock_model._path = Path("models/my_model.sql")
+    mock_model.dialect = ""
+    mock_model.kind = MagicMock()
+    mock_model.kind.is_symbolic = False
+    mock_model.kind.name = "FULL"
+    mock_model.columns_to_types = {}
+    mock_model.depends_on = set()
+    mock_model.description = None
+    mock_model.owner = None
+    mock_model.grains = []
+    mock_model.audits = []
+
+    with pytest.raises(ValueError, match="does not have a SQL dialect configured"):
+        map_sqlmesh_model(mock_model)
+
+
 def test_wrapped_rule_execution() -> None:
     from tff.core.rules.no_select_star import NoSelectStar
 

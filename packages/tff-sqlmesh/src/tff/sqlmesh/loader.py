@@ -32,10 +32,13 @@ def map_sqlmesh_model(model: SqlMeshModel) -> ModelRepresentation:
         for audit_name, audit_args in model.audits:
             audits.append((audit_name, audit_args or {}))
 
+    if not model.dialect:
+        raise ValueError(f"Model {model.name} does not have a SQL dialect configured.")
+
     return ModelRepresentation(
         name=str(model.name),
         path=str(model._path),
-        dialect=model.dialect or "bigquery",
+        dialect=model.dialect,
         is_symbolic=bool(model.kind.is_symbolic),
         is_external=bool(model.kind.name == "EXTERNAL"),
         columns_to_types=columns_to_types,

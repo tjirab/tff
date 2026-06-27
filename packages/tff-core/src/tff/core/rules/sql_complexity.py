@@ -62,7 +62,7 @@ def has_nested_subquery_in_final_select(expression: exp.Expression) -> bool:
     return False
 
 
-def analyze_sql(sql: str, dialect: str = "bigquery") -> dict[str, int | bool]:
+def analyze_sql(sql: str, dialect: str) -> dict[str, int | bool]:
     stripped = strip_model_block(sql)
     line_count = len([line for line in stripped.splitlines() if line.strip()])
     metrics: dict[str, int | bool] = {

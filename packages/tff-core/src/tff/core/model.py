@@ -7,7 +7,7 @@ from dataclasses import dataclass, field
 class ModelRepresentation:
     name: str
     path: str
-    dialect: str = "bigquery"
+    dialect: str
     is_symbolic: bool = False
     is_external: bool = False
     columns_to_types: dict[str, str] = field(default_factory=dict)

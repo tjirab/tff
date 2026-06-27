@@ -9,7 +9,7 @@ from tff.core.model import ModelRepresentation
 def load_dbt_models(
     project_root: Path,
     target_dir: str = "target",
-    dialect: str = "bigquery",
+    dialect: str | None = None,
 ) -> dict[str, ModelRepresentation]:
     manifest_path = project_root / target_dir / "manifest.json"
     if not manifest_path.exists():
@@ -20,10 +20,15 @@ def load_dbt_models(
     with open(manifest_path, encoding="utf-8") as f:
         manifest = json.load(f)
 
-    # Auto-infer dialect from dbt adapter type
+    # Auto-infer dialect from dbt adapter type if not explicitly provided
     adapter_type = manifest.get("metadata", {}).get("adapter_type")
-    if adapter_type:
+    if dialect is None:
         dialect = adapter_type
+
+    if not dialect:
+        raise ValueError(
+            "SQL dialect could not be determined. Please specify a dialect or ensure your dbt manifest contains adapter metadata."
+        )
 
     # 1. Collect tests by model unique ID
     model_tests: dict[str, list[tuple[str, dict]]] = {}

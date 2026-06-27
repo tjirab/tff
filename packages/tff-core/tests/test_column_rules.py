@@ -17,6 +17,7 @@ def test_column_names_multiple_replacements():
     model = ModelRepresentation(
         name="test_model",
         path="models/marts/test_model.sql",
+        dialect="bigquery",
         columns_to_types={
             "api_request": "varchar",
             "user_dt": "timestamp",
@@ -47,6 +48,7 @@ def test_column_types_multiple_rules():
     model = ModelRepresentation(
         name="test_model",
         path="models/marts/test_model.sql",
+        dialect="bigquery",
         columns_to_types={
             "user_id": "int",  # should be text
             "created_date": "varchar",  # should be date

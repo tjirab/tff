@@ -37,6 +37,7 @@ def test_classification_macros_rule_missing_file() -> None:
     model = ModelRepresentation(
         name="core.model",
         path="models/core/non_existent_file.sql",
+        dialect="bigquery",
         query=None,
     )
     rule = ClassificationMacros()

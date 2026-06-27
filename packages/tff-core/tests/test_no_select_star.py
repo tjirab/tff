@@ -22,6 +22,7 @@ def test_no_select_star_violations(tmp_path: Path):
     model = ModelRepresentation(
         name="marts.my_model",
         path=str(sql_file),
+        dialect="bigquery",
         is_symbolic=False,
     )
     violation = rule.check_model(model)
@@ -36,6 +37,7 @@ def test_no_select_star_violations(tmp_path: Path):
     model_qualified = ModelRepresentation(
         name="core.my_model",
         path=str(sql_file_qualified),
+        dialect="bigquery",
         is_symbolic=False,
     )
     violation_qualified = rule.check_model(model_qualified)
@@ -49,6 +51,7 @@ def test_no_select_star_violations(tmp_path: Path):
     model_sources = ModelRepresentation(
         name="sources.my_model",
         path=str(sql_file_sources),
+        dialect="bigquery",
         is_symbolic=False,
     )
     violation_sources = rule.check_model(model_sources)
@@ -62,6 +65,7 @@ def test_no_select_star_violations(tmp_path: Path):
     model_compliant = ModelRepresentation(
         name="marts.compliant_model",
         path=str(sql_file_compliant),
+        dialect="bigquery",
         is_symbolic=False,
     )
     violation_compliant = rule.check_model(model_compliant)
@@ -71,6 +75,7 @@ def test_no_select_star_violations(tmp_path: Path):
     model_symbolic = ModelRepresentation(
         name="marts.symbolic_model",
         path=str(sql_file_compliant),
+        dialect="bigquery",
         is_symbolic=True,
     )
     violation_symbolic = rule.check_model(model_symbolic)
@@ -88,6 +93,7 @@ def test_no_select_star_error_paths(tmp_path: Path):
     model_missing = ModelRepresentation(
         name="marts.missing",
         path="non_existent_file.sql",
+        dialect="bigquery",
         is_symbolic=False,
     )
     assert rule.check_model(model_missing) is None
@@ -98,6 +104,7 @@ def test_no_select_star_error_paths(tmp_path: Path):
     model_invalid = ModelRepresentation(
         name="marts.invalid",
         path=str(sql_file),
+        dialect="bigquery",
         is_symbolic=False,
     )
     assert rule.check_model(model_invalid) is None

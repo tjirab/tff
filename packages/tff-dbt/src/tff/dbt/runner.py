@@ -67,7 +67,7 @@ def run_all_checks(
     project_root: Path | None = None,
     config: FitnessFunctionsConfig | None = None,
     checks: list[str] | None = None,
-    dialect: str = "bigquery",
+    dialect: str | None = None,
 ) -> tuple[list[LintFinding], int, list[str]]:
     project_root = project_root or Path.cwd()
     if config is None:

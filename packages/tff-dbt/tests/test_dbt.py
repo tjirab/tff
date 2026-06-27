@@ -120,6 +120,21 @@ def test_load_dbt_models_missing_manifest():
         load_dbt_models(Path("/non_existent_path"))
 
 
+def test_load_dbt_models_missing_dialect(tmp_path: Path):
+    import pytest
+    target_dir = tmp_path / "target"
+    target_dir.mkdir(parents=True, exist_ok=True)
+    manifest_file = target_dir / "manifest.json"
+    manifest_data = {
+        "nodes": {},
+        "sources": {}
+    }
+    manifest_file.write_text(json.dumps(manifest_data), encoding="utf-8")
+    
+    with pytest.raises(ValueError, match="SQL dialect could not be determined"):
+        load_dbt_models(tmp_path)
+
+
 def test_run_all_checks(tmp_path: Path):
     target_dir = tmp_path / "target"
     target_dir.mkdir(parents=True, exist_ok=True)
@@ -149,7 +164,10 @@ def test_run_all_checks(tmp_path: Path):
                 "depends_on": {"nodes": []}
             }
         },
-        "sources": {}
+        "sources": {},
+        "metadata": {
+            "adapter_type": "duckdb"
+        }
     }
     manifest_file.write_text(json.dumps(manifest_data), encoding="utf-8")
 
