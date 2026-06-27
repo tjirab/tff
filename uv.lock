@@ -4,6 +4,7 @@ requires-python = ">=3.12"
 
 [manifest]
 members = [
+    "sqlmesh-ff",
     "tff-core",
     "tff-dbt",
     "tff-sqlmesh",
@@ -1198,6 +1199,17 @@ sdist = { url = "https://files.pythonhosted.org/packages/8b/75/3bbc93c78a67546cd
 wheels = [
     { url = "https://files.pythonhosted.org/packages/de/57/3d144ad41e0e202da562e3cbf55eccb4bab2a33be77ba68e006c58a7c0e4/sqlmesh-0.235.4-py3-none-any.whl", hash = "sha256:097c8b8d28d4819984ec90c7985cb008a60e93a68df87a90f4299c2190a3342d", size = 5639012, upload-time = "2026-06-11T18:30:39.857Z" },
 ]
+
+[[package]]
+name = "sqlmesh-ff"
+version = "0.2.0"
+source = { editable = "packages/sqlmesh-ff" }
+dependencies = [
+    { name = "tff-sqlmesh" },
+]
+
+[package.metadata]
+requires-dist = [{ name = "tff-sqlmesh", editable = "packages/tff-sqlmesh" }]
 
 [[package]]
 name = "stack-data"
