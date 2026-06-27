@@ -55,6 +55,17 @@ def test_load_dbt_models(tmp_path: Path):
                     "nodes": ["model.my_project.stg_users"]
                 }
             },
+            "test.my_project.unique_stg_users_id": {
+                "resource_type": "test",
+                "name": "unique_stg_users_id",
+                "test_metadata": {
+                    "name": "unique",
+                    "kwargs": {"column_name": "id"}
+                },
+                "depends_on": {
+                    "nodes": ["model.my_project.stg_users"]
+                }
+            },
             "test.my_project.no_name_test": {
                 "resource_type": "test",
                 "name": "no_name_test",
@@ -72,6 +83,9 @@ def test_load_dbt_models(tmp_path: Path):
                 "description": "Raw users source table",
                 "meta": {"owner": "ingest-team"}
             }
+        },
+        "metadata": {
+            "adapter_type": "duckdb"
         }
     }
     manifest_file.write_text(json.dumps(manifest_data), encoding="utf-8")
@@ -86,7 +100,9 @@ def test_load_dbt_models(tmp_path: Path):
     assert user_model.owner == "data-team"
     assert user_model.description == "Staging table for users"
     assert user_model.depends_on == {"source.my_project.raw_users"}
-    assert user_model.audits == [("not_null", {"column_name": "id"})]
+    assert len(user_model.audits) == 2
+    assert ("not_null", {"column_name": "id"}) in user_model.audits
+    assert ("unique_values", {"column_name": "id"}) in user_model.audits
     assert user_model.grains == ["user_id"]
 
     invalid_grain_model = models["model.my_project.invalid_grain"]
