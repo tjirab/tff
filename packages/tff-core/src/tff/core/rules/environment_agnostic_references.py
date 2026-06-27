@@ -73,7 +73,7 @@ class EnvironmentAgnosticReferences(Rule):
 
         def is_sublist(sub: list[str], large: list[str]) -> bool:
             if not sub:
-                return True
+                return False
             n, m = len(large), len(sub)
             for i in range(n - m + 1):
                 if large[i:i+m] == sub:

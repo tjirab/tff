@@ -165,3 +165,95 @@ def test_custom_banned_environments(tmp_path: Path):
     assert len(violation.violation_msg) == 1
     assert "custom_env" in violation.violation_msg[0]
     assert "prod.table" not in violation.violation_msg[0]
+
+
+def test_environment_agnostic_references_edge_cases(tmp_path: Path):
+    rule = EnvironmentAgnosticReferences()
+
+    # 1. Rule is disabled
+    config = FitnessFunctionsConfig()
+    config.rules.environment_agnostic_references.enabled = False
+    config.rules.environment_agnostic_references.banned_environments = ["prod"]
+    set_ff_config(config)
+
+    model_disabled = ModelRepresentation(
+        name="marts.disabled",
+        path="non_existent.sql",
+        dialect="bigquery",
+        is_symbolic=False,
+        query="SELECT * FROM prod.table",
+    )
+    assert rule.check_model(model_disabled) is None
+
+    # 2. Model is symbolic
+    config.rules.environment_agnostic_references.enabled = True
+    set_ff_config(config)
+    model_symbolic = ModelRepresentation(
+        name="marts.symbolic",
+        path="non_existent.sql",
+        dialect="bigquery",
+        is_symbolic=True,
+        query="SELECT * FROM prod.table",
+    )
+    assert rule.check_model(model_symbolic) is None
+
+    # 3. Skip layer matches
+    config.rules.environment_agnostic_references.skip_layers = ["marts"]
+    set_ff_config(config)
+    model_skipped = ModelRepresentation(
+        name="marts.skipped",
+        path=str(tmp_path / "models/marts/skipped.sql"),
+        dialect="bigquery",
+        is_symbolic=False,
+        query="SELECT * FROM prod.table",
+    )
+    assert rule.check_model(model_skipped) is None
+
+    # Reset skip layers
+    config.rules.environment_agnostic_references.skip_layers = []
+    set_ff_config(config)
+
+    # 4. File does not exist and query is None
+    model_no_query = ModelRepresentation(
+        name="marts.no_query",
+        path="non_existent.sql",
+        dialect="bigquery",
+        is_symbolic=False,
+        query=None,
+    )
+    assert rule.check_model(model_no_query) is None
+
+    # 5. File does not exist but query fallback is set
+    model_fallback = ModelRepresentation(
+        name="marts.fallback",
+        path="non_existent.sql",
+        dialect="bigquery",
+        is_symbolic=False,
+        query="SELECT * FROM prod.table",
+    )
+    violation_fallback = rule.check_model(model_fallback)
+    assert violation_fallback is not None
+    assert "prod" in violation_fallback.violation_msg[0]
+
+    # 6. Parse exception (invalid SQL syntax)
+    model_invalid = ModelRepresentation(
+        name="marts.invalid",
+        path="non_existent.sql",
+        dialect="bigquery",
+        is_symbolic=False,
+        query="SELECT * FROM (invalid syntax",
+    )
+    assert rule.check_model(model_invalid) is None
+
+    # 7. Empty banned environment
+    config.rules.environment_agnostic_references.banned_environments = [""]
+    set_ff_config(config)
+    model_empty_env = ModelRepresentation(
+        name="marts.empty_env",
+        path="non_existent.sql",
+        dialect="bigquery",
+        is_symbolic=False,
+        query="SELECT * FROM schema.table",
+    )
+    assert rule.check_model(model_empty_env) is None
+
