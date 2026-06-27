@@ -4,12 +4,34 @@ version = "0.1.2"
 description = "Configurable fitness functions plugin for SQLMesh projects"
 readme = "README.md"
 requires-python = ">=3.12"
+license = { text = "MIT" }
+authors = [
+    { name = "Bart Schuijt", email = "schuijt.bart@gmail.com" }
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+    "Topic :: Database",
+]
+keywords = ["sqlmesh", "linter", "fitness-functions", "data-engineering"]
 dependencies = [
     "pydantic>=2.0",
     "pyyaml>=6.0",
     "rich>=13.0",
     "sqlmesh>=0.234.0",
 ]
+
+[project.urls]
+Homepage = "https://github.com/tjirab/sqlmesh-ff"
+Repository = "https://github.com/tjirab/sqlmesh-ff"
+"Bug Tracker" = "https://github.com/tjirab/sqlmesh-ff/issues"
+Changelog = "https://github.com/tjirab/sqlmesh-ff/blob/main/CHANGELOG.md"
+
 
 [project.optional-dependencies]
 dev = [
