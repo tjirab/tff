@@ -18,13 +18,13 @@ graph TD
     end
 
     subgraph SQLMesh Adapter [tff-sqlmesh]
-        SM_Loader[FitnessLoader] -->|Wraps via type()| Rules
-        SM_Runner[Runner] -->|Maps SQLMesh Model| Model
+        SM_Loader[FitnessLoader] -->|"Wraps via type()"| Rules
+        SM_Runner[Runner] -->|"Maps SQLMesh Model"| Model
         SM_CLI[tff-sqlmesh CLI] --> SM_Runner
     end
 
     subgraph dbt Adapter [tff-dbt]
-        DBT_Manifest[Manifest Parser] -->|Maps nodes & tests| Model
+        DBT_Manifest[Manifest Parser] -->|"Maps nodes & tests"| Model
         DBT_Runner[Runner] --> DBT_Manifest
         DBT_CLI[tff-dbt CLI] --> DBT_Runner
     end
