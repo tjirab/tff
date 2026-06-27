@@ -11,6 +11,13 @@ authors = [
 dependencies = [
     "tff-core",
 ]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+]
 
 [project.scripts]
 tff-dbt = "tff.dbt.cli:main"
