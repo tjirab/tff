@@ -19,6 +19,30 @@ Setup and usage details differ depending on your pipeline engine. Refer to the c
 
 ---
 
+## Quick Installation
+
+Install the adapter matching your pipeline tool:
+
+### 📐 For SQLMesh projects:
+```bash
+# With uv:
+uv add tff-sqlmesh
+
+# Or pip:
+pip install tff-sqlmesh
+```
+
+### ⚡ For dbt projects:
+```bash
+# With uv:
+uv add tff-dbt
+
+# Or pip:
+pip install tff-dbt
+```
+
+---
+
 ## Core Features
 
 TFF runs two categories of quality guardrails:
