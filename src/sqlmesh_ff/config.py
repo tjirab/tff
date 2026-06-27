@@ -110,6 +110,10 @@ class NoSelectStarRuleConfig(LayerFilterConfig):
     skip_layers: list[str] = Field(default_factory=lambda: ["sources"])
 
 
+class NoPositionalGroupByOrOrderByRuleConfig(LayerFilterConfig):
+    skip_layers: list[str] = Field(default_factory=lambda: ["sources"])
+
+
 class RulesConfig(BaseModel):
     classification_macros: ClassificationMacrosRuleConfig = Field(
         default_factory=ClassificationMacrosRuleConfig
@@ -126,6 +130,9 @@ class RulesConfig(BaseModel):
     )
     no_select_star: NoSelectStarRuleConfig = Field(
         default_factory=NoSelectStarRuleConfig
+    )
+    no_positional_group_by_or_order_by: NoPositionalGroupByOrOrderByRuleConfig = Field(
+        default_factory=NoPositionalGroupByOrOrderByRuleConfig
     )
 
 

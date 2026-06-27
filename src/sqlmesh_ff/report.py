@@ -35,6 +35,7 @@ CHECK_LABELS: dict[str, str] = {
     "martmodelnamingconvention": "Mart naming convention",
     "ambiguousorinvalidcolumn": "Ambiguous/invalid column",
     "invalidselectstarexpansion": "Invalid SELECT * expansion",
+    "nopositionalgroupbyororderby": "No positional GROUP BY or ORDER BY",
 }
 
 CONNASCENCE_CATEGORIES: dict[str, str] = {
@@ -49,6 +50,9 @@ CONNASCENCE_CATEGORIES: dict[str, str] = {
     # Connascence of Type (CoT)
     "columntypes": "Connascence of Type (CoT)",
     "schema_contracts": "Connascence of Type (CoT)",
+
+    # Connascence of Position (CoP)
+    "nopositionalgroupbyororderby": "Connascence of Position (CoP)",
 
     # Connascence of Meaning (CoM)
     "classificationmacros": "Connascence of Meaning (CoM)",
@@ -261,6 +265,7 @@ def render_lint_report(
         category_order = [
             "Connascence of Name (CoN)",
             "Connascence of Type (CoT)",
+            "Connascence of Position (CoP)",
             "Connascence of Meaning (CoM)",
             "Dynamic Coupling & DAG Structure",
             "Quality & Metadata (Non-Connascence)",

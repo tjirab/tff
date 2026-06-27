@@ -139,3 +139,34 @@ def test_render_lint_report_groups_by_model() -> None:
     assert "marts.users" in output
     assert "core.orders" in output
     assert "Connascence of Name (CoN)" not in output
+
+
+def test_render_lint_report_groups_by_connascence_cop() -> None:
+    from rich.console import Console
+
+    from sqlmesh_ff.report import LintFinding, render_lint_report
+
+    console = Console(record=True, width=120)
+    findings = [
+        LintFinding(
+            check="nopositionalgroupbyororderby",
+            severity="error",
+            message="Positional GROUP BY '1' found.",
+            model="marts.users",
+            path="models/marts/users.sql",
+        ),
+    ]
+
+    success = render_lint_report(
+        findings,
+        models_checked=1,
+        executed_checks=["sqlmesh"],
+        console=console,
+    )
+
+    assert success is False
+
+    output = console.export_text()
+    assert "Connascence of Position (CoP)" in output
+    assert "marts.users" in output
+

@@ -12,6 +12,9 @@ from sqlmesh_ff.rules.metadata import (
     NoMissingOwner,
     NoMissingUniqueValues,
 )
+from sqlmesh_ff.rules.no_positional_group_by_or_order_by import (
+    NoPositionalGroupByOrOrderBy,
+)
 from sqlmesh_ff.rules.no_select_star import NoSelectStar
 from sqlmesh_ff.rules.sql_complexity import SqlComplexity
 
@@ -28,6 +31,7 @@ ALL_RULES = [
     NoMissingUniqueValues,
     FilenameEqualsModelname,
     NoSelectStar,
+    NoPositionalGroupByOrOrderBy,
 ]
 
 __all__ = [
@@ -44,4 +48,5 @@ __all__ = [
     "NoMissingUniqueValues",
     "FilenameEqualsModelname",
     "NoSelectStar",
+    "NoPositionalGroupByOrOrderBy",
 ]
