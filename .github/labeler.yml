@@ -2,24 +2,35 @@
 
 rules:
   - changed-files:
-      - any-glob-to-any-file: "src/sqlmesh_ff/rules/**"
+      - any-glob-to-any-file: "packages/tff-core/src/tff/core/rules/**"
 
 checks:
   - changed-files:
-      - any-glob-to-any-file: "src/sqlmesh_ff/checks/**"
+      - any-glob-to-any-file: "packages/tff-core/src/tff/core/checks/**"
 
 core:
   - all:
       - changed-files:
-          - any-glob-to-any-file: "src/sqlmesh_ff/**"
+          - any-glob-to-any-file: "packages/tff-core/src/tff/core/**"
       - changed-files:
-          - all-globs-to-all-files: "!src/sqlmesh_ff/rules/**"
+          - all-globs-to-all-files: "!packages/tff-core/src/tff/core/rules/**"
       - changed-files:
-          - all-globs-to-all-files: "!src/sqlmesh_ff/checks/**"
+          - all-globs-to-all-files: "!packages/tff-core/src/tff/core/checks/**"
+
+dbt:
+  - changed-files:
+      - any-glob-to-any-file: "packages/tff-dbt/**"
+
+sqlmesh:
+  - changed-files:
+      - any-glob-to-any-file:
+          - "packages/tff-sqlmesh/**"
+          - "packages/sqlmesh-ff/**"
 
 tests:
   - changed-files:
-      - any-glob-to-any-file: "tests/**"
+      - any-glob-to-any-file:
+          - "**/tests/**"
 
 ci:
   - changed-files:
@@ -32,5 +43,5 @@ docs:
 dependencies:
   - changed-files:
       - any-glob-to-any-file:
-          - pyproject.toml
-          - uv.lock
+          - "**/pyproject.toml"
+          - "**/uv.lock"
