@@ -4,7 +4,6 @@ from pathlib import Path
 from tff.dbt.manifest import load_dbt_models
 from tff.dbt.runner import run_all_checks
 from tff.core.config import FitnessFunctionsConfig
-from tff.core.context import set_ff_config
 
 
 def test_load_dbt_models(tmp_path: Path):
