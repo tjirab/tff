@@ -13,7 +13,7 @@ jobs:
   release-please:
     runs-on: ubuntu-latest
     outputs:
-      release_created: ${{ steps.release.outputs.releases_created }}
+      release_created: ${{ steps.release.outputs['packages/tff-core--release_created'] || steps.release.outputs['packages/tff-sqlmesh--release_created'] || steps.release.outputs['packages/tff-dbt--release_created'] }}
     steps:
       - uses: googleapis/release-please-action@v4
         id: release
