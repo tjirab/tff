@@ -86,3 +86,29 @@ def test_no_positional_group_by_or_order_by_violations(tmp_path: Path):
     set_ff_config(config)
     violation_disabled = rule.check_model(model)
     assert violation_disabled is None
+
+
+def test_no_positional_group_by_or_order_by_error_paths(tmp_path: Path):
+    config = FitnessFunctionsConfig()
+    config.rules.no_positional_group_by_or_order_by.enabled = True
+    set_ff_config(config)
+
+    rule = NoPositionalGroupByOrOrderBy()
+
+    # Non-existent file path
+    model_missing = ModelRepresentation(
+        name="marts.missing",
+        path="non_existent_file.sql",
+        is_symbolic=False,
+    )
+    assert rule.check_model(model_missing) is None
+
+    # Invalid SQL syntax
+    sql_file = tmp_path / "invalid.sql"
+    sql_file.write_text("SELECT * FROM (invalid syntax", encoding="utf-8")
+    model_invalid = ModelRepresentation(
+        name="marts.invalid",
+        path=str(sql_file),
+        is_symbolic=False,
+    )
+    assert rule.check_model(model_invalid) is None

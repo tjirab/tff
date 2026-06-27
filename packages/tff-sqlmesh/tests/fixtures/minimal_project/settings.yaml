@@ -13,3 +13,4 @@ linter:
   rules:
     - classificationmacros
     - sqlcomplexity
+    - customdummyrule

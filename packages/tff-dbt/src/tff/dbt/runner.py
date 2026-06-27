@@ -94,8 +94,6 @@ def run_all_checks(
     for check_name, collector in CHECK_COLLECTORS.items():
         if check_name not in selected:
             continue
-        if checks is None and not _check_enabled(config, check_name):
-            continue
         findings.extend(collector(models, config))
 
     models_checked = sum(

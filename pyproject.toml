@@ -8,3 +8,12 @@ dev = [
     "pytest-cov>=7.1.0",
     "diff-cover>=10.3.0",
 ]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "raise NotImplementedError",
+    "if t.TYPE_CHECKING:",
+    "if typing.TYPE_CHECKING:",
+    "if TYPE_CHECKING:",
+]
