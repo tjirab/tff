@@ -15,6 +15,9 @@ rules:
   ban_select_star:
     enabled: true
     skip_layers: [sources]
+  environment_agnostic_references:
+    enabled: true
+    banned_environments: [prod, dev, staging, uat, qa]
   mart_naming:
     enabled: true
     layer_name: marts
