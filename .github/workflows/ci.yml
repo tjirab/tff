@@ -15,7 +15,15 @@ jobs:
       - uses: astral-sh/setup-uv@v5
         with:
           enable-cache: true
-      - run: uv sync --extra dev
+      - run: uv sync --all-extras
       - run: uv run ruff check .
-      - run: uv run pytest --cov=src --cov-report=xml
+      - run: uv run pytest --cov=packages --cov-report=xml
       - run: uv run diff-cover coverage.xml --compare-branch=origin/main --fail-under=100
+      - name: Verify packages build
+        run: |
+          for pkg in tff-core tff-sqlmesh tff-dbt; do
+            echo "Checking build for packages/$pkg..."
+            cd "packages/$pkg"
+            uv build
+            cd -
+          done

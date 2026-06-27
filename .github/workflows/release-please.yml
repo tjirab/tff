@@ -13,7 +13,7 @@ jobs:
   release-please:
     runs-on: ubuntu-latest
     outputs:
-      release_created: ${{ steps.release.outputs.release_created }}
+      release_created: ${{ steps.release.outputs.releases_created }}
     steps:
       - uses: googleapis/release-please-action@v4
         id: release
@@ -33,8 +33,17 @@ jobs:
         uses: astral-sh/setup-uv@v5
         with:
           enable-cache: true
-      - name: Build package
-        run: uv build
-      - name: Publish to PyPI
+      - name: Build all packages
+        run: |
+          for pkg in tff-core tff-sqlmesh tff-dbt; do
+            echo "Building packages/$pkg..."
+            cd "packages/$pkg"
+            uv build
+            cd -
+          done
+          mkdir -p dist
+          cp packages/*/dist/* dist/
+      - name: Publish all packages to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1
-
+        with:
+          packages-dir: dist/
