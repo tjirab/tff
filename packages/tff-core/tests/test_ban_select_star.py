@@ -2,17 +2,17 @@ from pathlib import Path
 from tff.core.config import FitnessFunctionsConfig
 from tff.core.context import set_ff_config
 from tff.core.model import ModelRepresentation
-from tff.core.rules.no_select_star import NoSelectStar
+from tff.core.rules.ban_select_star import BanSelectStar
 
 
-def test_no_select_star_violations(tmp_path: Path):
+def test_ban_select_star_violations(tmp_path: Path):
     config = FitnessFunctionsConfig()
-    config.rules.no_select_star.enabled = True
-    config.rules.no_select_star.skip_layers = ["sources"]
-    config.rules.no_select_star.only_layers = None
+    config.rules.ban_select_star.enabled = True
+    config.rules.ban_select_star.skip_layers = ["sources"]
+    config.rules.ban_select_star.only_layers = None
     set_ff_config(config)
 
-    rule = NoSelectStar()
+    rule = BanSelectStar()
 
     # 1. Violating model in non-skipped layer (marts)
     sql_file = tmp_path / "models/marts/my_model.sql"
@@ -82,12 +82,12 @@ def test_no_select_star_violations(tmp_path: Path):
     assert violation_symbolic is None
 
 
-def test_no_select_star_error_paths(tmp_path: Path):
+def test_ban_select_star_error_paths(tmp_path: Path):
     config = FitnessFunctionsConfig()
-    config.rules.no_select_star.enabled = True
+    config.rules.ban_select_star.enabled = True
     set_ff_config(config)
 
-    rule = NoSelectStar()
+    rule = BanSelectStar()
 
     # Non-existent file path
     model_missing = ModelRepresentation(

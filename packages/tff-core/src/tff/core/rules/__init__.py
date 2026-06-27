@@ -15,7 +15,7 @@ from tff.core.rules.metadata import (
 from tff.core.rules.no_positional_group_by_or_order_by import (
     NoPositionalGroupByOrOrderBy,
 )
-from tff.core.rules.no_select_star import NoSelectStar
+from tff.core.rules.ban_select_star import BanSelectStar
 from tff.core.rules.sql_complexity import SqlComplexity
 
 ALL_RULES = [
@@ -30,7 +30,7 @@ ALL_RULES = [
     NoMissingNotNull,
     NoMissingUniqueValues,
     FilenameEqualsModelname,
-    NoSelectStar,
+    BanSelectStar,
     NoPositionalGroupByOrOrderBy,
 ]
 
@@ -47,6 +47,6 @@ __all__ = [
     "NoMissingNotNull",
     "NoMissingUniqueValues",
     "FilenameEqualsModelname",
-    "NoSelectStar",
+    "BanSelectStar",
     "NoPositionalGroupByOrOrderBy",
 ]

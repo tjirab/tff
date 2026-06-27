@@ -64,13 +64,13 @@ def test_map_sqlmesh_model_missing_dialect() -> None:
 
 
 def test_wrapped_rule_execution() -> None:
-    from tff.core.rules.no_select_star import NoSelectStar
+    from tff.core.rules.ban_select_star import BanSelectStar
 
     config = FitnessFunctionsConfig()
-    config.rules.no_select_star.enabled = True
+    config.rules.ban_select_star.enabled = True
     set_ff_config(config)
 
-    WrappedRuleClass = wrap_core_rule(NoSelectStar)
+    WrappedRuleClass = wrap_core_rule(BanSelectStar)
     rule_instance = WrappedRuleClass(context=MagicMock())
 
     mock_model = MagicMock(spec=SqlMeshModel)
@@ -88,8 +88,8 @@ def test_wrapped_rule_execution() -> None:
     mock_model.audits = []
 
     from unittest.mock import patch
-    with patch("tff.core.rules.no_select_star.Path.exists", return_value=True), \
-         patch("tff.core.rules.no_select_star.Path.read_text", return_value="SELECT * FROM table"):
+    with patch("tff.core.rules.ban_select_star.Path.exists", return_value=True), \
+         patch("tff.core.rules.ban_select_star.Path.read_text", return_value="SELECT * FROM table"):
         violation = rule_instance.check_model(mock_model)
         assert violation is not None
         assert "SELECT * is prohibited" in str(violation)

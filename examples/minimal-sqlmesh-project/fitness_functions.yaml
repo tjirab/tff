@@ -12,7 +12,7 @@ checks:
     fan_in_warn: 5
 
 rules:
-  no_select_star:
+  ban_select_star:
     enabled: true
     skip_layers: [sources]
   mart_naming:

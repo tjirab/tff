@@ -87,7 +87,7 @@ checks:
     fan_in_warn: 10
 
 rules:
-  no_select_star:
+  ban_select_star:
     enabled: true
   no_positional_group_by_or_order_by:
     enabled: true
