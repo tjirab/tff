@@ -17,6 +17,7 @@ from tff.core.rules.no_positional_group_by_or_order_by import (
 )
 from tff.core.rules.ban_select_star import BanSelectStar
 from tff.core.rules.sql_complexity import SqlComplexity
+from tff.core.rules.environment_agnostic_references import EnvironmentAgnosticReferences
 
 ALL_RULES = [
     ClassificationMacros,
@@ -32,6 +33,7 @@ ALL_RULES = [
     FilenameEqualsModelname,
     BanSelectStar,
     NoPositionalGroupByOrOrderBy,
+    EnvironmentAgnosticReferences,
 ]
 
 __all__ = [
@@ -49,4 +51,5 @@ __all__ = [
     "FilenameEqualsModelname",
     "BanSelectStar",
     "NoPositionalGroupByOrOrderBy",
+    "EnvironmentAgnosticReferences",
 ]

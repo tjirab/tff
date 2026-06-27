@@ -62,6 +62,7 @@ TFF runs two categories of quality guardrails:
 * **Mart naming**: Ensure model filenames match their subfolder namespaces.
 * **Metadata checks**: Enforce owners, descriptions, grains, unique assertions, and non-null constraints on models.
 * **Filename equals model name**: Flags model name mismatch.
+* **Environment agnostic references**: Ban hardcoded environment/catalog prefixes in queries.
 
 ---
 
@@ -91,6 +92,9 @@ rules:
     enabled: true
   no_positional_group_by_or_order_by:
     enabled: true
+  environment_agnostic_references:
+    enabled: true
+    banned_environments: [prod, dev, staging, uat, qa]
   classification_macros:
     enabled: true
     skip_layers: [staging]

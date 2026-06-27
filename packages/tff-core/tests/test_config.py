@@ -130,3 +130,29 @@ rules:
     assert rule_config.should_run("sources") is False
     assert rule_config.should_run("derived") is False
 
+
+def test_environment_agnostic_references_config_parsing(tmp_path: Path) -> None:
+    yaml_path = tmp_path / "fitness_functions.yaml"
+    yaml_path.write_text(
+        """
+rules:
+  environment_agnostic_references:
+    enabled: true
+    banned_environments: [prod, custom]
+    skip_layers: [sources]
+    only_layers: [core, marts]
+""",
+        encoding="utf-8",
+    )
+    config = load_fitness_config(tmp_path)
+    rule_config = config.rules.environment_agnostic_references
+    assert rule_config.enabled is True
+    assert rule_config.banned_environments == ["prod", "custom"]
+    assert rule_config.skip_layers == ["sources"]
+    assert rule_config.only_layers == ["core", "marts"]
+
+    assert rule_config.should_run("core") is True
+    assert rule_config.should_run("sources") is False
+    assert rule_config.should_run("derived") is False
+
+

@@ -114,6 +114,12 @@ class NoPositionalGroupByOrOrderByRuleConfig(LayerFilterConfig):
     skip_layers: list[str] = Field(default_factory=lambda: ["sources"])
 
 
+class EnvironmentAgnosticReferencesRuleConfig(LayerFilterConfig):
+    banned_environments: list[str] = Field(
+        default_factory=lambda: ["prod", "dev", "staging", "uat", "qa"]
+    )
+
+
 class RulesConfig(BaseModel):
     classification_macros: ClassificationMacrosRuleConfig = Field(
         default_factory=ClassificationMacrosRuleConfig
@@ -133,6 +139,9 @@ class RulesConfig(BaseModel):
     )
     no_positional_group_by_or_order_by: NoPositionalGroupByOrOrderByRuleConfig = Field(
         default_factory=NoPositionalGroupByOrOrderByRuleConfig
+    )
+    environment_agnostic_references: EnvironmentAgnosticReferencesRuleConfig = Field(
+        default_factory=EnvironmentAgnosticReferencesRuleConfig
     )
 
 
