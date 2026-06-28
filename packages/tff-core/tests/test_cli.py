@@ -7,6 +7,8 @@ import pytest
 from tff.core.cli import _detect_provider, _get_runner, main
 
 
+
+
 def test_detect_provider_dbt(tmp_path: Path):
     (tmp_path / "dbt_project.yml").touch()
     assert _detect_provider(tmp_path) == "dbt"
@@ -35,7 +37,9 @@ def test_detect_provider_sqlmesh_dir(tmp_path: Path):
 def test_detect_provider_conflict(tmp_path: Path):
     (tmp_path / "dbt_project.yml").touch()
     (tmp_path / "config.py").touch()
-    with pytest.raises(ValueError, match="Both dbt and SQLMesh configuration files were detected"):
+    with pytest.raises(
+        ValueError, match="Both dbt and SQLMesh configuration files were detected"
+    ):
         _detect_provider(tmp_path)
 
 
@@ -63,13 +67,19 @@ def test_get_runner_success_sqlmesh():
 
 
 def test_get_runner_import_error_dbt():
-    with patch("importlib.import_module", side_effect=ImportError("No module named 'tff.dbt.runner'")):
+    with patch(
+        "importlib.import_module",
+        side_effect=ImportError("No module named 'tff.dbt.runner'"),
+    ):
         with pytest.raises(ImportError, match="tff-dbt is not installed"):
             _get_runner("dbt")
 
 
 def test_get_runner_import_error_sqlmesh():
-    with patch("importlib.import_module", side_effect=ImportError("No module named 'tff.sqlmesh.runner'")):
+    with patch(
+        "importlib.import_module",
+        side_effect=ImportError("No module named 'tff.sqlmesh.runner'"),
+    ):
         with pytest.raises(ImportError, match="tff-sqlmesh is not installed"):
             _get_runner("sqlmesh")
 
@@ -134,7 +144,17 @@ def test_main_lint_sqlmesh_explicit_provider(
 
     # Run the main cli with explicit provider
     project_str = str(tmp_path)
-    exit_code = main(["lint", "--project", project_str, "--provider", "sqlmesh", "--checks", "sqlmesh,layer_integrity"])
+    exit_code = main(
+        [
+            "lint",
+            "--project",
+            project_str,
+            "--provider",
+            "sqlmesh",
+            "--checks",
+            "sqlmesh,layer_integrity",
+        ]
+    )
 
     assert exit_code == 1  # Since mock_render returned False
     mock_get_runner.assert_called_once_with("sqlmesh")
@@ -148,7 +168,7 @@ def test_main_lint_sqlmesh_explicit_provider(
 @patch("tff.core.cli._detect_provider")
 def test_main_lint_detect_failure(mock_detect_provider, tmp_path: Path):
     mock_detect_provider.side_effect = ValueError("No project found")
-    
+
     project_str = str(tmp_path)
     exit_code = main(["lint", "--project", project_str])
     assert exit_code == 1
@@ -156,10 +176,12 @@ def test_main_lint_detect_failure(mock_detect_provider, tmp_path: Path):
 
 @patch("tff.core.cli._detect_provider")
 @patch("tff.core.cli._get_runner")
-def test_main_lint_import_error_exit(mock_get_runner, mock_detect_provider, tmp_path: Path):
+def test_main_lint_import_error_exit(
+    mock_get_runner, mock_detect_provider, tmp_path: Path
+):
     mock_detect_provider.return_value = "dbt"
     mock_get_runner.side_effect = ImportError("Not installed")
-    
+
     project_str = str(tmp_path)
     exit_code = main(["lint", "--project", project_str])
     assert exit_code == 1
@@ -191,7 +213,15 @@ def test_main_lint_sqlmesh_dialect_warning(
     project_str = str(tmp_path)
     with patch("sys.stderr", new_callable=MagicMock) as mock_stderr:
         exit_code = main(
-            ["lint", "--project", project_str, "--provider", "sqlmesh", "--dialect", "duckdb"]
+            [
+                "lint",
+                "--project",
+                project_str,
+                "--provider",
+                "sqlmesh",
+                "--dialect",
+                "duckdb",
+            ]
         )
         assert exit_code == 0
         # Check that warning was printed
@@ -215,10 +245,11 @@ def test_cli_main_block(tmp_path: Path):
     import runpy
 
     # Patch original source modules so that runpy imports pick up the mocks
-    with patch("importlib.import_module") as mock_import, \
-         patch("tff.core.config.load_fitness_config"), \
-         patch("tff.core.report.render_lint_report") as mock_render:
-         
+    with (
+        patch("importlib.import_module") as mock_import,
+        patch("tff.core.config.load_fitness_config"),
+        patch("tff.core.report.render_lint_report") as mock_render,
+    ):
         mock_runner = MagicMock()
         mock_runner.run_all_checks.return_value = ([], 0, [])
         mock_import.return_value = mock_runner
@@ -233,7 +264,7 @@ def test_cli_main_block(tmp_path: Path):
             assert excinfo.value.code == 0
         finally:
             sys.argv = orig_argv
-            
+
         mock_import.assert_any_call("tff.dbt.runner")
         mock_runner.run_all_checks.assert_called_once()
 
@@ -305,10 +336,12 @@ def test_help_info_subcommand(capsys):
 def test_info_command_dbt(tmp_path: Path, capsys):
     dbt_project = tmp_path / "dbt_project.yml"
     dbt_project.touch()
-    
+
     config_file = tmp_path / "fitness_functions.yaml"
-    config_file.write_text("contract_groups_path: linter_contract_groups.json\nexclusions_path: linter_exclusions.json")
-    
+    config_file.write_text(
+        "contract_groups_path: linter_contract_groups.json\nexclusions_path: linter_exclusions.json"
+    )
+
     (tmp_path / "linter_contract_groups.json").touch()
     (tmp_path / "target").mkdir()
     (tmp_path / "target" / "manifest.json").touch()
@@ -316,15 +349,19 @@ def test_info_command_dbt(tmp_path: Path, capsys):
     import importlib.metadata
 
     with patch("importlib.metadata.version") as mock_version:
+
         def mock_version_side_effect(pkg):
             if pkg == "tff-core":
                 return "1.0.0"
             raise importlib.metadata.PackageNotFoundError("Package not found")
+
         mock_version.side_effect = mock_version_side_effect
-        exit_code = main(["info", "--project", str(tmp_path), "--config", "fitness_functions.yaml"])
+        exit_code = main(
+            ["info", "--project", str(tmp_path), "--config", "fitness_functions.yaml"]
+        )
         assert exit_code == 0
         captured = capsys.readouterr()
-        
+
         assert "TFF Info" in captured.out
         assert "Project root:" in captured.out
         assert "Provider:" in captured.out
@@ -342,13 +379,13 @@ def test_info_command_dbt(tmp_path: Path, capsys):
 
 def test_info_command_sqlmesh(tmp_path: Path, capsys):
     (tmp_path / "config.py").touch()
-    
+
     with patch("importlib.metadata.version") as mock_version:
         mock_version.return_value = "0.1.0"
         exit_code = main(["info", "--project", str(tmp_path), "--provider", "sqlmesh"])
         assert exit_code == 0
         captured = capsys.readouterr()
-        
+
         assert "sqlmesh" in captured.out
         assert "config.py" in captured.out
         assert "settings.yaml" in captured.out
@@ -365,8 +402,10 @@ def test_info_command_invalid_config(tmp_path: Path, capsys):
     (tmp_path / "dbt_project.yml").touch()
     config_file = tmp_path / "fitness_functions.yaml"
     config_file.write_text("invalid: yaml: content: :")
-    
-    exit_code = main(["info", "--project", str(tmp_path), "--config", "fitness_functions.yaml"])
+
+    exit_code = main(
+        ["info", "--project", str(tmp_path), "--config", "fitness_functions.yaml"]
+    )
     assert exit_code == 0
     captured = capsys.readouterr()
     assert "Failed to load config:" in captured.out
@@ -374,9 +413,10 @@ def test_info_command_invalid_config(tmp_path: Path, capsys):
 
 def test_argv_fallback_error(capsys):
     from tff.core.cli import TFFArgumentParser
+
     parser = TFFArgumentParser(prog="tff")
     TFFArgumentParser._current_argv = None
-    
+
     with patch("sys.argv", ["tff", "lint", "--invalid-arg"]):
         with pytest.raises(SystemExit) as excinfo:
             parser.error("some error")
@@ -385,10 +425,38 @@ def test_argv_fallback_error(capsys):
         assert "For help, try 'tff lint --help'" in captured.err
 
 
+def test_info_command_with_virtualenv(tmp_path: Path, capsys):
+    # Setup simulated project root
+    (tmp_path / "config.py").touch()
 
+    # Create simulated virtualenv site-packages
+    site_packages = tmp_path / ".venv" / "lib" / "python3.13" / "site-packages"
+    site_packages.mkdir(parents=True)
 
+    # Create dist-info directories for metadata
+    tff_core_dist = site_packages / "tff_core-1.2.3.dist-info"
+    tff_core_dist.mkdir()
+    (tff_core_dist / "METADATA").write_text("Name: tff-core\nVersion: 1.2.3\n")
 
+    tff_sqlmesh_dist = site_packages / "tff_sqlmesh-4.5.6.dist-info"
+    tff_sqlmesh_dist.mkdir()
+    (tff_sqlmesh_dist / "METADATA").write_text("Name: tff-sqlmesh\nVersion: 4.5.6\n")
 
+    # Create Windows-style virtualenv site-packages for coverage
+    win_site_packages = tmp_path / ".venv" / "Lib" / "site-packages"
+    win_site_packages.mkdir(parents=True)
+    win_tff_core_dist = win_site_packages / "tff_core-1.2.3.dist-info"
+    win_tff_core_dist.mkdir()
+    (win_tff_core_dist / "METADATA").write_text("Name: tff-core\nVersion: 1.2.3\n")
 
+    exit_code = main(["info", "--project", str(tmp_path), "--provider", "sqlmesh"])
+    assert exit_code == 0
+    captured = capsys.readouterr()
 
-
+    # Verify that the versions from the simulated virtualenv are displayed
+    assert "tff-core" in captured.out
+    assert "1.2.3" in captured.out
+    assert "tff-sqlmesh" in captured.out
+    assert "4.5.6" in captured.out
+    assert "tff-dbt" in captured.out
+    assert "not installed" in captured.out

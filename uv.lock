@@ -1236,7 +1236,7 @@ wheels = [
 
 [[package]]
 name = "tff-core"
-version = "0.2.2"
+version = "0.2.3"
 source = { editable = "packages/tff-core" }
 dependencies = [
     { name = "pydantic" },
@@ -1255,7 +1255,7 @@ requires-dist = [
 
 [[package]]
 name = "tff-dbt"
-version = "0.2.2"
+version = "0.2.3"
 source = { editable = "packages/tff-dbt" }
 dependencies = [
     { name = "tff-core" },
@@ -1266,7 +1266,7 @@ requires-dist = [{ name = "tff-core", editable = "packages/tff-core" }]
 
 [[package]]
 name = "tff-sqlmesh"
-version = "0.2.2"
+version = "0.2.3"
 source = { editable = "packages/tff-sqlmesh" }
 dependencies = [
     { name = "sqlmesh" },

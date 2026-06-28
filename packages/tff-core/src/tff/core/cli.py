@@ -77,7 +77,7 @@ class TFFArgumentParser(argparse.ArgumentParser):
     def error(self, message: str) -> None:
         self.print_usage(sys.stderr)
         sys.stderr.write(f"{self.prog}: error: {message}\n")
-        
+
         hint_cmd = self.prog
         # If the prog is already subcommand-specific (e.g. 'tff lint'), use it.
         # Otherwise, check the arguments to see if a subcommand was targetted.
@@ -102,7 +102,9 @@ def main(argv: list[str] | None = None) -> int:
         prog="tff",
         description="Run Transformation Fitness Function (tff) checks",
     )
-    subparsers = parser.add_subparsers(dest="command", required=True, parser_class=TFFArgumentParser)
+    subparsers = parser.add_subparsers(
+        dest="command", required=True, parser_class=TFFArgumentParser
+    )
 
     lint_parser = subparsers.add_parser("lint", help="Run all enabled fitness checks")
     lint_parser.add_argument(
@@ -146,7 +148,9 @@ def main(argv: list[str] | None = None) -> int:
         help="SQL dialect of models (dbt only; auto-inferred by default)",
     )
 
-    health_parser = subparsers.add_parser("health", help="Show project health report and scores")
+    health_parser = subparsers.add_parser(
+        "health", help="Show project health report and scores"
+    )
     health_parser.add_argument(
         "--project",
         type=Path,
@@ -221,6 +225,25 @@ def main(argv: list[str] | None = None) -> int:
             parser.print_help()
         return 0
 
+    # Register target project's virtualenv site-packages if present
+    if hasattr(args, "project") and args.project:
+        import site
+
+        project_root = Path(args.project).resolve()
+        for venv_name in (".venv", "venv", "env"):
+            venv_dir = project_root / venv_name
+            if venv_dir.is_dir():
+                # Unix
+                libs_dir = venv_dir / "lib"
+                if libs_dir.is_dir():
+                    for p in libs_dir.glob("python*/site-packages"):
+                        if p.is_dir():
+                            site.addsitedir(str(p))
+                # Windows
+                win_lib = venv_dir / "Lib" / "site-packages"
+                if win_lib.is_dir():
+                    site.addsitedir(str(win_lib))
+
     if args.command == "info":
         # Run info command: show diagnostics
         from rich.console import Console
@@ -237,30 +260,77 @@ def main(argv: list[str] | None = None) -> int:
                 console.print(f"[red]Error detecting provider: {e}[/red]")
                 return 1
         config_path = args.config
-        resolved_config = project_root / config_path if not Path(config_path).is_absolute() else Path(config_path)
+        resolved_config = (
+            project_root / config_path
+            if not Path(config_path).is_absolute()
+            else Path(config_path)
+        )
         config_exists = resolved_config.is_file()
+        logo = (
+            "  [dim]_[/dim]    [dim]_[/dim][green]_[/green]  [green]_[/green][cyan]_[/cyan]\n"
+            " [dim]|[/dim] [dim]|[/dim][dim]_[/dim] [dim]/[/dim] [green]_[/green][green]|[/green][green]/[/green] [green]_[/green][cyan]|[/cyan]\n"
+            " [dim]|[/dim] [dim]_[/dim][dim]_[/dim][dim]|[/dim] [green]|[/green][green]_[/green][green]|[/green] [green]|[/green][cyan]_[/cyan]\n"
+            " [cyan]|[/cyan] [green]|[/green][green]_[/green][green]|[/green]  [dim]_[/dim][dim]|[/dim]  [dim]_[/dim][dim]|[/dim]\n"
+            "  [cyan]\\\\[/cyan][green]_[/green][green]_[/green][green]|[/green][green]_[/green][dim]|[/dim] [dim]|[/dim][dim]_[/dim][dim]|[/dim]"
+        )
+        console.print(logo)
+        console.print()
         console.print("[bold]TFF Info[/bold]")
         table = Table(show_header=False, box=None)
         table.add_row("Project root:", str(project_root))
         table.add_row("Provider:", provider)
-        table.add_row("Config file:", f"{args.config} ({'found' if config_exists else 'missing'})")
+        table.add_row(
+            "Config file:", f"{args.config} ({'found' if config_exists else 'missing'})"
+        )
         if config_exists:
             try:
                 cfg = load_fitness_config(project_root, config_path)
                 contract_path = resolve_project_path(cfg, cfg.contract_groups_path)
                 exclusions_path = resolve_project_path(cfg, cfg.exclusions_path)
-                table.add_row("Contract groups:", f"{contract_path} ({'found' if contract_path.exists() else 'missing'})")
-                table.add_row("Exclusions:", f"{exclusions_path} ({'found' if exclusions_path.exists() else 'missing'})")
+                table.add_row(
+                    "Contract groups:",
+                    f"{contract_path} ({'found' if contract_path.exists() else 'missing'})",
+                )
+                table.add_row(
+                    "Exclusions:",
+                    f"{exclusions_path} ({'found' if exclusions_path.exists() else 'missing'})",
+                )
             except Exception as e:
                 console.print(f"[yellow]Failed to load config: {e}[/yellow]")
         console.print(table)
 
         console.print("\n[bold]Adapter Versions[/bold]")
+        target_site_packages = []
+        for venv_name in (".venv", "venv", "env"):
+            venv_dir = project_root / venv_name
+            if venv_dir.is_dir():
+                # Unix
+                libs_dir = venv_dir / "lib"
+                if libs_dir.is_dir():
+                    for p in libs_dir.glob("python*/site-packages"):
+                        if p.is_dir():
+                            target_site_packages.append(str(p))
+                # Windows
+                win_lib = venv_dir / "Lib" / "site-packages"
+                if win_lib.is_dir():
+                    target_site_packages.append(str(win_lib))
+
         def get_version(pkg: str) -> str:
             try:
+                if target_site_packages:
+                    dists = metadata.distributions(path=target_site_packages)
+                    for dist in dists:
+                        name = dist.metadata.get("Name")
+                        if name and (
+                            name == pkg
+                            or name.replace("_", "-") == pkg.replace("_", "-")
+                        ):
+                            return dist.version
+                    return "not installed"
                 return metadata.version(pkg)
             except Exception:
                 return "not installed"
+
         ver_table = Table(show_header=False, box=None)
         ver_table.add_row("tff-core", get_version("tff-core"))
         ver_table.add_row("tff-dbt", get_version("tff-dbt"))
@@ -271,13 +341,25 @@ def main(argv: list[str] | None = None) -> int:
         if provider == "dbt":
             dbt_project = project_root / "dbt_project.yml"
             manifest = project_root / "target" / "manifest.json"
-            prov_table.add_row("dbt_project.yml", f"{dbt_project} ({'found' if dbt_project.exists() else 'missing'})")
-            prov_table.add_row("manifest.json", f"{manifest} ({'found' if manifest.exists() else 'missing'})")
+            prov_table.add_row(
+                "dbt_project.yml",
+                f"{dbt_project} ({'found' if dbt_project.exists() else 'missing'})",
+            )
+            prov_table.add_row(
+                "manifest.json",
+                f"{manifest} ({'found' if manifest.exists() else 'missing'})",
+            )
         elif provider == "sqlmesh":
             config_py = project_root / "config.py"
             settings_yaml = project_root / "settings.yaml"
-            prov_table.add_row("config.py", f"{config_py} ({'found' if config_py.exists() else 'missing'})")
-            prov_table.add_row("settings.yaml", f"{settings_yaml} ({'found' if settings_yaml.exists() else 'missing'})")
+            prov_table.add_row(
+                "config.py",
+                f"{config_py} ({'found' if config_py.exists() else 'missing'})",
+            )
+            prov_table.add_row(
+                "settings.yaml",
+                f"{settings_yaml} ({'found' if settings_yaml.exists() else 'missing'})",
+            )
         if prov_table.row_count > 0:
             console.print("\n[bold]Provider Files[/bold]")
             console.print(prov_table)
@@ -322,11 +404,13 @@ def main(argv: list[str] | None = None) -> int:
         # 4. Run checks
         try:
             if provider == "dbt":
-                findings, models_checked, executed_checks = runner_module.run_all_checks(
-                    project_root=project_root,
-                    config=config,
-                    checks=checks,
-                    dialect=args.dialect,
+                findings, models_checked, executed_checks = (
+                    runner_module.run_all_checks(
+                        project_root=project_root,
+                        config=config,
+                        checks=checks,
+                        dialect=args.dialect,
+                    )
                 )
             else:
                 if args.dialect is not None:
@@ -334,10 +418,12 @@ def main(argv: list[str] | None = None) -> int:
                         "Warning: --dialect is ignored for SQLMesh projects (dialects are defined directly on models).",
                         file=sys.stderr,
                     )
-                findings, models_checked, executed_checks = runner_module.run_all_checks(
-                    project_root=project_root,
-                    config=config,
-                    checks=checks,
+                findings, models_checked, executed_checks = (
+                    runner_module.run_all_checks(
+                        project_root=project_root,
+                        config=config,
+                        checks=checks,
+                    )
                 )
         except Exception as e:
             print(f"Error executing checks: {e}", file=sys.stderr)
@@ -356,6 +442,7 @@ def main(argv: list[str] | None = None) -> int:
         else:
             # health command
             from tff.core.health import calculate_health_scores, render_health_report
+
             scores = calculate_health_scores(findings, models_checked, config, provider)
             render_health_report(scores, config, provider)
 
