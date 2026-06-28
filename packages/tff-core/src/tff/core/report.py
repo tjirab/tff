@@ -36,6 +36,7 @@ CHECK_LABELS: dict[str, str] = {
     "ambiguousorinvalidcolumn": "Ambiguous/invalid column",
     "invalidselectstarexpansion": "Invalid SELECT * expansion",
     "nopositionalgroupbyororderby": "No positional GROUP BY or ORDER BY",
+    "materialization_depth": "Materialization depth",
 }
 
 CONNASCENCE_CATEGORIES: dict[str, str] = {
@@ -61,6 +62,8 @@ CONNASCENCE_CATEGORIES: dict[str, str] = {
     "layer_integrity": "Dynamic Coupling & DAG Structure",
     "custom_exclusions": "Dynamic Coupling & DAG Structure",
     "dependency_graph": "Dynamic Coupling & DAG Structure",
+    "materialization_depth": "Dynamic Coupling & DAG Structure",
+
 
     # Quality & Metadata
     "nomissingowner": "Quality & Metadata (Non-Connascence)",

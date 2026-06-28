@@ -84,7 +84,13 @@ def load_dbt_models(
         }
 
         # Ephemeral models behave like symbolic models
-        is_symbolic = node.get("config", {}).get("materialized") == "ephemeral"
+        materialized = node.get("config", {}).get("materialized")
+        if resource_type == "seed":
+            materialized = "seed"
+        elif not materialized:
+            materialized = "view"
+
+        is_symbolic = materialized == "ephemeral"
 
         rel_path = node.get("original_file_path", "")
         abs_path = str(project_root / rel_path)
@@ -105,7 +111,9 @@ def load_dbt_models(
             grains=grains,
             audits=audits,
             query=query,
+            materialized=materialized,
         )
+
 
     # 3. Map sources to ModelRepresentation so graph checks resolve them
     for source_id, source in manifest.get("sources", {}).items():
@@ -125,6 +133,8 @@ def load_dbt_models(
             owner=source.get("meta", {}).get("owner"),
             grains=[],
             audits=[],
+            materialized="table",
         )
+
 
     return mapped_models

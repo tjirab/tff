@@ -18,4 +18,6 @@ class ModelRepresentation:
     # Audits represent assertions/tests, e.g. [("not_null", {"columns": ["id"]})]
     audits: list[tuple[str, dict]] = field(default_factory=list)
     query: str | None = None
+    materialized: str | None = None
+
 

@@ -40,6 +40,11 @@ class DependencyGraphCheckConfig(LayerFilterConfig):
     fan_in_warn: int = 10
 
 
+class MaterializationDepthCheckConfig(LayerFilterConfig):
+    max_depth_warn: int = 3
+    max_depth_fail: int = 5
+
+
 class ChecksConfig(BaseModel):
     layer_integrity: CheckEnabled = Field(default_factory=CheckEnabled)
     custom_exclusions: CheckEnabled = Field(default_factory=CheckEnabled)
@@ -47,6 +52,10 @@ class ChecksConfig(BaseModel):
     dependency_graph: DependencyGraphCheckConfig = Field(
         default_factory=DependencyGraphCheckConfig
     )
+    materialization_depth: MaterializationDepthCheckConfig = Field(
+        default_factory=MaterializationDepthCheckConfig
+    )
+
 
 
 class ClassificationMacrosRuleConfig(LayerFilterConfig):
