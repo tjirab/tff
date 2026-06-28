@@ -47,7 +47,9 @@ def map_sqlmesh_model(model: SqlMeshModel) -> ModelRepresentation:
         owner=model.owner,
         grains=[str(g) for g in (model.grains or [])],
         audits=audits,
+        materialized="view" if model.kind.is_view else "table",
     )
+
 
 
 def wrap_core_rule(core_rule_cls) -> type[SqlMeshRule]:

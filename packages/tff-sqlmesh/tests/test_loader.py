@@ -38,9 +38,16 @@ def test_map_sqlmesh_model_with_audits() -> None:
     mock_model.grains = ["id"]
     mock_model.audits = [("not_null", {"column": "id"})]
 
+    mock_model.kind.is_view = True
     model_rep = map_sqlmesh_model(mock_model)
     assert model_rep.name == "my_model"
     assert model_rep.audits == [("not_null", {"column": "id"})]
+    assert model_rep.materialized == "view"
+
+    mock_model.kind.is_view = False
+    model_rep = map_sqlmesh_model(mock_model)
+    assert model_rep.materialized == "table"
+
 
 
 def test_map_sqlmesh_model_missing_dialect() -> None:
