@@ -197,14 +197,6 @@ rules:
 
 ---
 
-## CLI
-
-The CLI comes with different commands to help manage your project:
-* `tff lint`: run the linter
-* `tff health`: project health summary
-
----
-
 ## Further Reading & Learning Resources
 
 To learn more about the architectural concepts behind fitness functions and connascence, check out these resources:
