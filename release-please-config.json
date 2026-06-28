@@ -5,7 +5,6 @@
       "package-name": "tff-core",
       "release-type": "python",
       "bump-minor-pre-major": true,
-      "bump-patch-for-minor-pre-major": true,
       "extra-files": [
         {
           "type": "toml",
@@ -18,7 +17,6 @@
       "package-name": "tff-sqlmesh",
       "release-type": "python",
       "bump-minor-pre-major": true,
-      "bump-patch-for-minor-pre-major": true,
       "extra-files": [
         {
           "type": "toml",
@@ -31,7 +29,6 @@
       "package-name": "tff-dbt",
       "release-type": "python",
       "bump-minor-pre-major": true,
-      "bump-patch-for-minor-pre-major": true,
       "extra-files": [
         {
           "type": "toml",
