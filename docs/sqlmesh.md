@@ -2,7 +2,7 @@
 
 TFF integrates with [SQLMesh](https://sqlmesh.com) using the `tff-sqlmesh` package. It runs fitness checks in two ways:
 1. **Directly inside SQLMesh**: Automatically hooks into SQLMesh's native `sqlmesh lint` CLI via a custom project loader.
-2. **Via the standalone CLI**: Run checks independently with the `tff-sqlmesh lint` command.
+2. **Via the standalone CLI**: Run checks independently with the `tff lint` command.
 
 ---
 
@@ -31,7 +31,7 @@ pip install tff-sqlmesh
 sqlmesh lint
 
 # Via TFF standalone CLI (runs rules + architectural checks like layers & graphs):
-tff-sqlmesh lint
+tff lint
 ```
 
 ---
@@ -91,9 +91,13 @@ When using SQLMesh's native linter (`sqlmesh lint`), rules are enabled under `li
 ## CLI Options
 
 ```bash
-tff-sqlmesh lint [--project PATH] [--config PATH] [--checks CHECK,...] [--fail-level error|warning] [--group-by connascence|model]
+tff lint [--project PATH] [--config PATH] [--provider PROVIDER] [--checks CHECK,...] [--fail-level error|warning] [--group-by connascence|model]
 ```
 
-* **`--checks`**: comma-separated list of checks (e.g., `layer_integrity,custom_exclusions`).
-* **`--fail-level`**: set to `warning` to fail the run if warnings are present.
-* **`--group-by`**: changes report grouping format (default: `connascence`).
+* **`--project`**: Path to your project root (default: current directory).
+* **`--config`**: Path to `fitness_functions.yaml` (default: `fitness_functions.yaml`).
+* **`--provider`**: The pipeline engine provider: `auto`, `dbt`, or `sqlmesh` (default: `auto`).
+* **`--checks`**: Comma-separated list of checks (e.g., `layer_integrity,custom_exclusions`).
+* **`--fail-level`**: Exit non-zero when findings at or above this severity exist (`error` or `warning`, default: `error`).
+* **`--group-by`**: Changes report grouping format (`connascence` or `model`, default: `connascence`).
+

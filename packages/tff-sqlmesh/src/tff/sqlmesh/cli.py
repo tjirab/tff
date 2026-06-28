@@ -20,6 +20,11 @@ def _parse_checks(value: str | None) -> list[str] | None:
 
 
 def main(argv: list[str] | None = None) -> int:
+    print(
+        "WARNING: 'tff-sqlmesh' is deprecated and will be removed in a future version.\n"
+        "Please migrate to the unified 'tff' CLI (e.g., run 'tff lint').\n",
+        file=sys.stderr,
+    )
     parser = argparse.ArgumentParser(
         prog="tff-sqlmesh",
         description="Run SQLMesh Transformation Fitness Function (tff) checks",
