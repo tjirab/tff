@@ -27,7 +27,7 @@ pip install tff-dbt
    ```
 3. Run the linter CLI:
    ```bash
-   tff-dbt lint
+   tff lint
    ```
 
 ---
@@ -56,11 +56,14 @@ This layer and domain structure is evaluated against your `layers.order` configu
 ## CLI Options
 
 ```bash
-tff-dbt lint [--project PATH] [--target-dir PATH] [--dialect DIALECT] [--checks CHECK,...] [--fail-level error|warning] [--group-by connascence|model]
+tff lint [--project PATH] [--config PATH] [--provider PROVIDER] [--checks CHECK,...] [--fail-level error|warning] [--group-by connascence|model] [--dialect DIALECT]
 ```
 
-* **`--project`**: Path to your dbt project root (default: current directory).
-* **`--target-dir`**: Path to the target compilation folder containing `manifest.json` (default: `target`).
-* **`--dialect`**: The SQL dialect used by your data warehouse, used for SQL parsing checks (default: `bigquery`).
+* **`--project`**: Path to your project root (default: current directory).
+* **`--config`**: Path to `fitness_functions.yaml` (default: `fitness_functions.yaml`).
+* **`--provider`**: The pipeline engine provider: `auto`, `dbt`, or `sqlmesh` (default: `auto`).
+* **`--dialect`**: The SQL dialect used by your data warehouse, used for SQL parsing checks (dbt only; default: auto-inferred).
 * **`--checks`**: Comma-separated list of active checks to execute.
-* **`--group-by`**: Changes report grouping format (default: `connascence`).
+* **`--fail-level`**: Exit non-zero when findings at or above this severity exist (`error` or `warning`, default: `error`).
+* **`--group-by`**: Changes report grouping format (`connascence` or `model`, default: `connascence`).
+
