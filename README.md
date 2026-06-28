@@ -55,7 +55,7 @@ TFF runs two categories of quality guardrails:
 * **Dependency graph**: Track DAG metrics and fail if model fan-in or fan-out exceeds defined thresholds.
 
 ### 2. Linter Rules
-* **No SELECT ***: Require explicit columns to reduce upstream coupling.
+* **Ban `SELECT *`**: Require explicit columns to reduce upstream coupling.
 * **No positional GROUP BY/ORDER BY**: Prevent using ordinal indexes (e.g., `GROUP BY 1, 2`) in queries.
 * **Classification macros**: Require using standardized macros instead of inline CASE statements for classification fields.
 * **Sql complexity**: Limits CTE count, join count, decision points, and line count in SQL.
@@ -130,6 +130,14 @@ rules:
   filename_equals_modelname:
     enabled: true
 ```
+
+---
+
+## CLI
+
+The CLI comes with different commands to help manage your project:
+* `tff lint`: run the linter
+* `tff health`: project health summary
 
 ---
 
