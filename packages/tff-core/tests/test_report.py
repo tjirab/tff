@@ -170,3 +170,56 @@ def test_render_lint_report_groups_by_connascence_cop() -> None:
     assert "Connascence of Position (CoP)" in output
     assert "marts.users" in output
 
+
+def test_render_lint_report_warnings_and_multiline() -> None:
+    from rich.console import Console
+
+    from tff.core.report import LintFinding, render_lint_report
+
+    console = Console(record=True, width=120)
+    findings = [
+        LintFinding(
+            check="banselectstar",
+            severity="warning",
+            message="SELECT *\nis prohibited.",
+            model="marts.users",
+            path="models/marts/users.sql",
+        ),
+        LintFinding(
+            check="schema_contracts",
+            severity="warning",
+            message="some contract\nviolation",
+            model=None,
+            path=None,
+        ),
+    ]
+
+    success = render_lint_report(
+        findings,
+        models_checked=2,
+        executed_checks=["sqlmesh"],
+        console=console,
+    )
+    assert success is True
+
+    output = console.export_text()
+    assert "LINT WARNINGS" in output
+    assert "SELECT *" in output
+    assert "is prohibited." in output
+    assert "Repository-level" in output
+
+    console_model = Console(record=True, width=120)
+    success_model = render_lint_report(
+        findings,
+        models_checked=2,
+        executed_checks=["sqlmesh"],
+        console=console_model,
+        group_by="model",
+    )
+    assert success_model is True
+    output_model = console_model.export_text()
+    assert "Issues by Model" in output_model
+    assert "SELECT *" in output_model
+    assert "is prohibited." in output_model
+
+
