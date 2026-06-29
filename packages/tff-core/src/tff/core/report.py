@@ -9,7 +9,6 @@ from typing import Literal
 from rich import box
 from rich.console import Console
 from rich.panel import Panel
-from rich.rule import Rule
 from rich.table import Table
 from rich.text import Text
 
@@ -171,6 +170,16 @@ def render_lint_report(
     else:
         status.append("0 warnings", style="bold green")
 
+    if has_errors:
+        title = "[bold red]LINT FAILED[/bold red]"
+        border_style = "red"
+    elif warnings:
+        title = "[bold yellow]LINT WARNINGS[/bold yellow]"
+        border_style = "yellow"
+    else:
+        title = "[bold green]LINT PASSED[/bold green]"
+        border_style = "green"
+
     console.print(
         Panel(
             Text.assemble(
@@ -178,9 +187,9 @@ def render_lint_report(
                 "\n",
                 status,
             ),
-            title="[bold]Lint report[/bold]",
-            border_style="cyan",
-            padding=(0, 1),
+            title=title,
+            border_style=border_style,
+            padding=(1, 2),
         )
     )
 
@@ -190,34 +199,37 @@ def render_lint_report(
     for finding in findings:
         by_check[finding.check][finding.severity] += 1
 
+    console.print("\n[bold cyan]Issues by Check[/bold cyan]")
     summary = Table(
-        box=box.SIMPLE_HEAVY,
+        box=box.SIMPLE,
         show_header=True,
-        header_style="bold",
+        header_style="bold cyan",
+        padding=(0, 2, 0, 0),
     )
-    summary.add_column("Check", style="cyan", no_wrap=True)
+    summary.add_column("Check", style="bold", no_wrap=True)
     summary.add_column("Errors", justify="right")
     summary.add_column("Warnings", justify="right")
 
     check_names = _summary_check_names(executed_checks, by_check)
     for check in check_names:
         counts = by_check.get(check, {"error": 0, "warning": 0})
-        error_cell = str(counts["error"]) if counts["error"] else "·"
-        warn_cell = str(counts["warning"]) if counts["warning"] else "·"
+        error_cell = (
+            Text(str(counts["error"]), style="bold red")
+            if counts["error"]
+            else Text("·", style="dim")
+        )
+        warn_cell = (
+            Text(str(counts["warning"]), style="bold yellow")
+            if counts["warning"]
+            else Text("·", style="dim")
+        )
         summary.add_row(
             CHECK_LABELS.get(check, check),
-            Text(error_cell, style="red" if counts["error"] else "dim"),
-            Text(warn_cell, style="yellow" if counts["warning"] else "dim"),
+            error_cell,
+            warn_cell,
         )
 
-    console.print(
-        Panel(
-            summary,
-            title="[bold]Issues by check[/bold]",
-            border_style="cyan",
-            padding=(0, 1),
-        )
-    )
+    console.print(summary)
 
     if not findings:
         console.print("\n[bold green]All checks passed.[/bold green]")
@@ -232,34 +244,57 @@ def render_lint_report(
             else:
                 repo_level.append(finding)
 
-        console.print()
-        console.print("[bold]Issues by model[/bold]")
+        console.print("\n[bold cyan]Issues by Model[/bold cyan]")
 
         for model_name in sorted(by_model):
             model_findings = by_model[model_name]
             path = next((f.path for f in model_findings if f.path), None)
-            header = f"[bold cyan]{model_name}[/bold cyan]"
+            header = f"[bold cyan]● {model_name}[/bold cyan]"
             if path:
                 header += f" [dim]({path})[/dim]"
             console.print(header)
+
+            table = Table(box=None, show_header=False, padding=0)
+            table.add_column(width=4, no_wrap=True)
+            table.add_column()
+
             for finding in sorted(model_findings, key=lambda f: (f.severity, f.check)):
-                icon = "✗" if finding.severity == "error" else "⚠"
+                icon = "✘" if finding.severity == "error" else "⚠"
                 style = "red" if finding.severity == "error" else "yellow"
-                label = CHECK_LABELS.get(finding.check, finding.check)
-                console.print(
-                    f"  [{style}]{icon}[/{style}] [dim]{label}:[/dim] {finding.message}"
-                )
+                
+                msg_text = Text()
+                msg_lines = finding.message.split("\n")
+                for i, line in enumerate(msg_lines):
+                    if i > 0:
+                        msg_text.append("\n")
+                    msg_text.append(line)
+                msg_text.append(" ")
+                msg_text.append(f"({finding.check})", style="dim")
+                
+                table.add_row(f"  [{style}]{icon}[/{style}] ", msg_text)
+            console.print(table)
             console.print()
 
         if repo_level:
-            console.print("[bold]Repository-level issues[/bold]")
+            console.print("[bold cyan]Repository-level issues[/bold cyan]")
+            table = Table(box=None, show_header=False, padding=0)
+            table.add_column(width=4, no_wrap=True)
+            table.add_column()
             for finding in repo_level:
-                icon = "✗" if finding.severity == "error" else "⚠"
+                icon = "✘" if finding.severity == "error" else "⚠"
                 style = "red" if finding.severity == "error" else "yellow"
-                label = CHECK_LABELS.get(finding.check, finding.check)
-                console.print(
-                    f"  [{style}]{icon}[/{style}] [dim]{label}:[/dim] {finding.message}"
-                )
+                
+                msg_text = Text()
+                msg_lines = finding.message.split("\n")
+                for i, line in enumerate(msg_lines):
+                    if i > 0:
+                        msg_text.append("\n")
+                    msg_text.append(line)
+                msg_text.append(" ")
+                msg_text.append(f"({finding.check})", style="dim")
+                
+                table.add_row(f"  [{style}]{icon}[/{style}] ", msg_text)
+            console.print(table)
             console.print()
     else:
         by_category: dict[str, list[LintFinding]] = defaultdict(list)
@@ -284,7 +319,7 @@ def render_lint_report(
             if not cat_findings:
                 continue
 
-            console.print(Rule(Text(category, style="bold cyan"), align="left"))
+            console.print(f"[bold cyan]● {category}[/bold cyan]")
 
             sorted_findings = sorted(
                 cat_findings,
@@ -294,22 +329,41 @@ def render_lint_report(
                     f.check,
                 ),
             )
+
+            table = Table(box=None, show_header=False, padding=0)
+            table.add_column(width=4, no_wrap=True)
+            table.add_column()
+
             for finding in sorted_findings:
-                icon = "✗" if finding.severity == "error" else "⚠"
+                icon = "✘" if finding.severity == "error" else "⚠"
                 style = "red" if finding.severity == "error" else "yellow"
 
-                model_part = ""
                 if finding.model:
                     model_name = normalize_model_name(finding.model)
-                    model_part = f"[bold]{model_name}[/bold]"
+                    model_part = Text()
+                    model_part.append(model_name, style="bold")
                     if finding.path:
-                        model_part += f" [dim]({finding.path})[/dim]"
+                        model_part.append(f" ({finding.path})", style="dim")
                 else:
-                    model_part = "[bold]Repository-level[/bold]"
+                    model_part = Text("Repository-level", style="bold")
 
-                console.print(
-                    f"  [{style}]{icon}[/{style}] {model_part}: {finding.message} [dim]({finding.check})[/dim]"
-                )
+                cell_content = Text()
+                cell_content.append(model_part)
+                cell_content.append("\n")
+                
+                msg_text = Text()
+                msg_lines = finding.message.split("\n")
+                for i, line in enumerate(msg_lines):
+                    if i > 0:
+                        msg_text.append("\n")
+                    msg_text.append(line)
+                msg_text.append(" ")
+                msg_text.append(f"({finding.check})", style="dim")
+                
+                cell_content.append(msg_text)
+
+                table.add_row(f"  [{style}]{icon}[/{style}] ", cell_content)
+            console.print(table)
             console.print()
 
     failed = any(f.severity == fail_level for f in findings)

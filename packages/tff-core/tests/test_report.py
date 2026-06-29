@@ -134,7 +134,7 @@ def test_render_lint_report_groups_by_model() -> None:
     assert success is False
 
     output = console.export_text()
-    assert "Issues by model" in output
+    assert "Issues by Model" in output
     assert "Repository-level issues" in output
     assert "marts.users" in output
     assert "core.orders" in output
