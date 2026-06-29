@@ -148,7 +148,7 @@ def render_lint_report(
     executed_checks: list[str] | None = None,
     console: Console | None = None,
     fail_level: Severity = "error",
-    group_by: Literal["connascence", "model"] = "connascence",
+    group_by: Literal["connascence", "model"] = "model",
 ) -> bool:
     """Render lint report. Returns True when findings are below fail_level."""
     console = console or Console()

@@ -80,6 +80,7 @@ def test_render_lint_report_groups_by_connascence() -> None:
         models_checked=2,
         executed_checks=["sqlmesh", "layer_integrity"],
         console=console,
+        group_by="connascence",
     )
 
     assert success is False
@@ -162,6 +163,7 @@ def test_render_lint_report_groups_by_connascence_cop() -> None:
         models_checked=1,
         executed_checks=["sqlmesh"],
         console=console,
+        group_by="connascence",
     )
 
     assert success is False
@@ -199,6 +201,7 @@ def test_render_lint_report_warnings_and_multiline() -> None:
         models_checked=2,
         executed_checks=["sqlmesh"],
         console=console,
+        group_by="connascence",
     )
     assert success is True
 

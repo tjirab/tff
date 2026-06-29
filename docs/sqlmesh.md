@@ -99,5 +99,5 @@ tff lint [--project PATH] [--config PATH] [--provider PROVIDER] [--checks CHECK,
 * **`--provider`**: The pipeline engine provider: `auto`, `dbt`, or `sqlmesh` (default: `auto`).
 * **`--checks`**: Comma-separated list of checks (e.g., `layer_integrity,custom_exclusions`).
 * **`--fail-level`**: Exit non-zero when findings at or above this severity exist (`error` or `warning`, default: `error`).
-* **`--group-by`**: Changes report grouping format (`connascence` or `model`, default: `connascence`).
+* **`--group-by`**: Changes report grouping format (`connascence` or `model`, default: `model`).
 

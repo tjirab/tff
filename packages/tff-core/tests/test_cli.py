@@ -124,7 +124,7 @@ def test_main_lint_dbt(
         models_checked=5,
         executed_checks=["rules"],
         fail_level="error",
-        group_by="connascence",
+        group_by="model",
     )
 
 
