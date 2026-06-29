@@ -140,7 +140,7 @@ def test_render_health_report() -> None:
 
     output = console.export_text()
     assert "TFF PROJECT HEALTH REPORT" in output
-    assert "HEALTH SCORE BY CATEGORY" in output
+    assert "Health Score by Category" in output
     assert "Connascence of Name (CoN)" in output
     assert "banselectstar" in output
     assert "filenameequalsmodelname" in output

@@ -2,11 +2,11 @@
 
 from __future__ import annotations
 
-import re
 from collections import defaultdict
 from typing import Any
 
-from rich.console import Console, Group
+from rich import box
+from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
 from rich.text import Text
@@ -248,24 +248,26 @@ def render_health_report(
             ("\n", ""),
             (f"Active checks: {len(enabled_checks)}  ·  Categories: {sum(1 for v in category_scores.values() if v is not None)}", "dim")
         ),
-        title="[bold cyan]TFF PROJECT HEALTH REPORT[/bold cyan]",
-        border_style="cyan",
+        title=f"[bold {score_color}]TFF PROJECT HEALTH REPORT[/bold {score_color}]",
+        border_style=score_color,
         padding=(1, 2),
     )
     console.print(score_panel)
     console.print()
     
     # 1. Summary Table
+    console.print("[bold cyan]Health Score by Category[/bold cyan]")
     summary_table = Table(
+        box=box.SIMPLE,
         show_header=True,
         header_style="bold cyan",
-        border_style="dim",
+        padding=(0, 2, 0, 0),
     )
-    summary_table.add_column("Connascence Category", style="bold", width=40)
-    summary_table.add_column("Active Checks", justify="center")
-    summary_table.add_column("Errors", justify="right")
-    summary_table.add_column("Warnings", justify="right")
-    summary_table.add_column("Health Score", justify="left")
+    summary_table.add_column("Category", style="bold", no_wrap=True)
+    summary_table.add_column("Checks", justify="center", no_wrap=True)
+    summary_table.add_column("Errors", justify="right", no_wrap=True)
+    summary_table.add_column("Warnings", justify="right", no_wrap=True)
+    summary_table.add_column("Score", justify="right", no_wrap=True)
     
     for cat_name, cat_score in category_scores.items():
         if cat_score is None:
@@ -287,11 +289,11 @@ def render_health_report(
         total_in_cat = len(cat_checks) if cat_name in CATEGORIES else len(enabled_cat_checks)
         checks_ratio = f"{len(enabled_cat_checks)}/{total_in_cat}"
         
-        error_cell = Text(str(errors) if errors else "·", style="red" if errors else "dim")
-        warn_cell = Text(str(warnings) if warnings else "·", style="yellow" if warnings else "dim")
+        error_cell = Text(str(errors) if errors else "·", style="bold red" if errors else "dim")
+        warn_cell = Text(str(warnings) if warnings else "·", style="bold yellow" if warnings else "dim")
         
-        bar = make_progress_bar(cat_score)
-        score_cell = Text.from_markup(f"{bar} {cat_score:.1f}%")
+        score_color = "green" if cat_score >= 90 else "yellow" if cat_score >= 70 else "red"
+        score_cell = Text(f"{cat_score:.1f}%", style=f"bold {score_color}")
         
         summary_table.add_row(
             cat_name,
@@ -301,28 +303,29 @@ def render_health_report(
             score_cell,
         )
         
-    summary_panel = Panel(
-        summary_table,
-        title="[bold cyan]HEALTH SCORE BY CATEGORY[/bold cyan]",
-        border_style="cyan",
-        padding=(1, 2),
-    )
-    console.print(summary_panel)
+    console.print(summary_table)
     console.print()
     
     # 2. Detailed Breakdown
-    breakdown_renderables = []
+    console.print("[bold cyan]Detailed Breakdown by Check[/bold cyan]")
     
+    table = Table(box=None, show_header=False, padding=(0, 2, 0, 0))
+    table.add_column()
+    table.add_column(width=22, no_wrap=True)
+    table.add_column(no_wrap=True)
+    
+    first_cat = True
     for cat_name, cat_checks in CATEGORIES.items():
         # Only print category if it contains enabled checks
         enabled_cat_checks = [c for c in cat_checks if c in enabled_checks]
         if not enabled_cat_checks:
             continue
             
-        if breakdown_renderables:
-            breakdown_renderables.append(Text())
+        if not first_cat:
+            table.add_row("", "", "")
+        first_cat = False
             
-        breakdown_renderables.append(Text.from_markup(f"[bold cyan]● {cat_name}[/bold cyan]"))
+        table.add_row(Text.from_markup(f"[bold cyan]● {cat_name}[/bold cyan]"), "", "")
         
         for check in cat_checks:
             label = CHECK_LABELS.get(check, check)
@@ -333,11 +336,11 @@ def render_health_report(
                 
                 # Determine status icon and color
                 if score == 100.0:
-                    icon = "[green]✓[/green]"
+                    icon = "[green]✔[/green]"
                     score_text = "[green]100.0%[/green]"
                     violation_text = ""
                 else:
-                    icon_char = "✗" if score < 70 else "⚠"
+                    icon_char = "✘" if score < 70 else "⚠"
                     color = "red" if score < 70 else "yellow"
                     icon = f"[{color}]{icon_char}[/{color}]"
                     score_text = f"[{color}]{score:.1f}%[/{color}]"
@@ -349,20 +352,16 @@ def render_health_report(
                         parts.append(f"{errors} error{'s' if errors != 1 else ''}")
                     if warnings:
                         parts.append(f"{warnings} warning{'s' if warnings != 1 else ''}")
-                    violation_text = f" [dim]({', '.join(parts)})[/dim]"
+                    violation_text = f"[dim]({', '.join(parts)})[/dim]"
                     
-                prefix = f"  {icon} {label} [dim]({check})[/dim]"
-                clean_prefix = re.sub(r"\[.*?\]", "", prefix)
-                dot_count = max(2, 65 - len(clean_prefix))
-                dots = "." * dot_count
+                check_desc = Text.from_markup(f"  {icon} {label}\n    [dim]({check})[/dim]")
+                bar = make_progress_bar(score, width=10)
+                score_cell = Text.from_markup(f"{bar} {score_text}")
                 
-                breakdown_renderables.append(Text.from_markup(f"{prefix} {dots} {score_text}{violation_text}"))
+                table.add_row(check_desc, score_cell, Text.from_markup(violation_text))
             else:
-                prefix = f"  [dim]- {label} ({check})[/dim]"
-                clean_prefix = re.sub(r"\[.*?\]", "", prefix)
-                dot_count = max(2, 65 - len(clean_prefix))
-                dots = "." * dot_count
-                breakdown_renderables.append(Text.from_markup(f"{prefix} [dim]{dots} Disabled[/dim]"))
+                check_desc = Text.from_markup(f"  [dim]- {label}\n    ({check})[/dim]")
+                table.add_row(check_desc, Text("[dim]Disabled[/dim]"), "")
                 
     # Print other checks if any
     all_known_checks = set()
@@ -370,20 +369,21 @@ def render_health_report(
         all_known_checks.update(cat_checks)
     unknown_enabled = [c for c in enabled_checks if c not in all_known_checks]
     if unknown_enabled:
-        if breakdown_renderables:
-            breakdown_renderables.append(Text())
-        breakdown_renderables.append(Text.from_markup("[bold cyan]● Other Checks[/bold cyan]"))
+        if not first_cat:
+            table.add_row("", "", "")
+        table.add_row(Text.from_markup("[bold cyan]● Other Checks[/bold cyan]"), "", "")
+        
         for check in unknown_enabled:
             label = CHECK_LABELS.get(check, check)
             score = check_scores[check]
             cf = check_findings[check]
             
             if score == 100.0:
-                icon = "[green]✓[/green]"
+                icon = "[green]✔[/green]"
                 score_text = "[green]100.0%[/green]"
                 violation_text = ""
             else:
-                icon_char = "✗" if score < 70 else "⚠"
+                icon_char = "✘" if score < 70 else "⚠"
                 color = "red" if score < 70 else "yellow"
                 icon = f"[{color}]{icon_char}[/{color}]"
                 score_text = f"[{color}]{score:.1f}%[/{color}]"
@@ -395,20 +395,13 @@ def render_health_report(
                     parts.append(f"{errors} error{'s' if errors != 1 else ''}")
                 if warnings:
                     parts.append(f"{warnings} warning{'s' if warnings != 1 else ''}")
-                violation_text = f" [dim]({', '.join(parts)})[/dim]"
+                violation_text = f"[dim]({', '.join(parts)})[/dim]"
                 
-            prefix = f"  {icon} {label} [dim]({check})[/dim]"
-            clean_prefix = re.sub(r"\[.*?\]", "", prefix)
-            dot_count = max(2, 65 - len(clean_prefix))
-            dots = "." * dot_count
+            check_desc = Text.from_markup(f"  {icon} {label}\n    [dim]({check})[/dim]")
+            bar = make_progress_bar(score, width=10)
+            score_cell = Text.from_markup(f"{bar} {score_text}")
             
-            breakdown_renderables.append(Text.from_markup(f"{prefix} {dots} {score_text}{violation_text}"))
-
-    breakdown_panel = Panel(
-        Group(*breakdown_renderables),
-        title="[bold cyan]DETAILED BREAKDOWN BY CHECK[/bold cyan]",
-        border_style="cyan",
-        padding=(1, 2),
-    )
-    console.print(breakdown_panel)
+            table.add_row(check_desc, score_cell, Text.from_markup(violation_text))
+            
+    console.print(table)
     console.print()

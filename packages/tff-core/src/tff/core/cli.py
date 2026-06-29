@@ -267,39 +267,46 @@ def main(argv: list[str] | None = None) -> int:
         )
         config_exists = resolved_config.is_file()
         logo = (
-            "  [dim]_[/dim]    [dim]_[/dim][green]_[/green]  [green]_[/green][cyan]_[/cyan]\n"
-            " [dim]|[/dim] [dim]|[/dim][dim]_[/dim] [dim]/[/dim] [green]_[/green][green]|[/green][green]/[/green] [green]_[/green][cyan]|[/cyan]\n"
-            " [dim]|[/dim] [dim]_[/dim][dim]_[/dim][dim]|[/dim] [green]|[/green][green]_[/green][green]|[/green] [green]|[/green][cyan]_[/cyan]\n"
-            " [cyan]|[/cyan] [green]|[/green][green]_[/green][green]|[/green]  [dim]_[/dim][dim]|[/dim]  [dim]_[/dim][dim]|[/dim]\n"
-            "  [cyan]\\\\[/cyan][green]_[/green][green]_[/green][green]|[/green][green]_[/green][dim]|[/dim] [dim]|[/dim][dim]_[/dim][dim]|[/dim]"
+            " [cyan]████████╗[/cyan][green]███████╗███████╗[/green]\n"
+            " [cyan]╚══██╔══╝[/cyan][green]██╔════╝██╔════╝[/green]\n"
+            " [cyan]   ██║   [/cyan][green]█████╗  █████╗  [/green]\n"
+            " [cyan]   ██║   [/cyan][green]██╔══╝  ██╔══╝  [/green]\n"
+            " [cyan]   ██║   [/cyan][green]██║     ██║     [/green]\n"
+            " [cyan]   ╚═╝   [/cyan][green]╚═╝     ╚═╝     [/green]"
         )
         console.print(logo)
         console.print()
-        console.print("[bold]TFF Info[/bold]")
-        table = Table(show_header=False, box=None)
-        table.add_row("Project root:", str(project_root))
-        table.add_row("Provider:", provider)
+        console.print("[bold cyan]● TFF Info[/bold cyan]")
+        table = Table(show_header=False, box=None, padding=(0, 2, 0, 0))
+        table.add_column()
+        table.add_column()
+        
+        table.add_row("  [bold]Project root:[/bold]", str(project_root))
+        table.add_row("  [bold]Provider:[/bold]", provider)
+        config_status = "[green]found[/green]" if config_exists else "[red]missing[/red]"
         table.add_row(
-            "Config file:", f"{args.config} ({'found' if config_exists else 'missing'})"
+            "  [bold]Config file:[/bold]", f"{args.config} ({config_status})"
         )
         if config_exists:
             try:
                 cfg = load_fitness_config(project_root, config_path)
                 contract_path = resolve_project_path(cfg, cfg.contract_groups_path)
                 exclusions_path = resolve_project_path(cfg, cfg.exclusions_path)
+                contract_status = "[green]found[/green]" if contract_path.exists() else "[red]missing[/red]"
+                exclusions_status = "[green]found[/green]" if exclusions_path.exists() else "[red]missing[/red]"
                 table.add_row(
-                    "Contract groups:",
-                    f"{contract_path} ({'found' if contract_path.exists() else 'missing'})",
+                    "  [bold]Contract groups:[/bold]",
+                    f"{contract_path} ({contract_status})",
                 )
                 table.add_row(
-                    "Exclusions:",
-                    f"{exclusions_path} ({'found' if exclusions_path.exists() else 'missing'})",
+                    "  [bold]Exclusions:[/bold]",
+                    f"{exclusions_path} ({exclusions_status})",
                 )
             except Exception as e:
                 console.print(f"[yellow]Failed to load config: {e}[/yellow]")
         console.print(table)
 
-        console.print("\n[bold]Adapter Versions[/bold]")
+        console.print("\n[bold cyan]● Adapter Versions[/bold cyan]")
         target_site_packages = []
         for venv_name in (".venv", "venv", "env"):
             venv_dir = project_root / venv_name
@@ -331,37 +338,53 @@ def main(argv: list[str] | None = None) -> int:
             except Exception:
                 return "not installed"
 
-        ver_table = Table(show_header=False, box=None)
-        ver_table.add_row("tff-core", get_version("tff-core"))
-        ver_table.add_row("tff-dbt", get_version("tff-dbt"))
-        ver_table.add_row("tff-sqlmesh", get_version("tff-sqlmesh"))
+        ver_table = Table(show_header=False, box=None, padding=(0, 2, 0, 0))
+        ver_table.add_column()
+        ver_table.add_column()
+        
+        def format_ver(pkg: str) -> str:
+            ver = get_version(pkg)
+            if ver == "not installed":
+                return "[dim red]not installed[/dim red]"
+            return f"[cyan]{ver}[/cyan]"
+
+        ver_table.add_row("  [bold]tff-core[/bold]", format_ver("tff-core"))
+        ver_table.add_row("  [bold]tff-dbt[/bold]", format_ver("tff-dbt"))
+        ver_table.add_row("  [bold]tff-sqlmesh[/bold]", format_ver("tff-sqlmesh"))
         console.print(ver_table)
 
-        prov_table = Table(show_header=False, box=None)
+        prov_table = Table(show_header=False, box=None, padding=(0, 2, 0, 0))
+        prov_table.add_column()
+        prov_table.add_column()
+        
         if provider == "dbt":
             dbt_project = project_root / "dbt_project.yml"
             manifest = project_root / "target" / "manifest.json"
+            dbt_project_status = "[green]found[/green]" if dbt_project.exists() else "[red]missing[/red]"
+            manifest_status = "[green]found[/green]" if manifest.exists() else "[red]missing[/red]"
             prov_table.add_row(
-                "dbt_project.yml",
-                f"{dbt_project} ({'found' if dbt_project.exists() else 'missing'})",
+                "  [bold]dbt_project.yml[/bold]",
+                f"{dbt_project} ({dbt_project_status})",
             )
             prov_table.add_row(
-                "manifest.json",
-                f"{manifest} ({'found' if manifest.exists() else 'missing'})",
+                "  [bold]manifest.json[/bold]",
+                f"{manifest} ({manifest_status})",
             )
         elif provider == "sqlmesh":
             config_py = project_root / "config.py"
             settings_yaml = project_root / "settings.yaml"
+            config_py_status = "[green]found[/green]" if config_py.exists() else "[red]missing[/red]"
+            settings_yaml_status = "[green]found[/green]" if settings_yaml.exists() else "[red]missing[/red]"
             prov_table.add_row(
-                "config.py",
-                f"{config_py} ({'found' if config_py.exists() else 'missing'})",
+                "  [bold]config.py[/bold]",
+                f"{config_py} ({config_py_status})",
             )
             prov_table.add_row(
-                "settings.yaml",
-                f"{settings_yaml} ({'found' if settings_yaml.exists() else 'missing'})",
+                "  [bold]settings.yaml[/bold]",
+                f"{settings_yaml} ({settings_yaml_status})",
             )
         if prov_table.row_count > 0:
-            console.print("\n[bold]Provider Files[/bold]")
+            console.print("\n[bold cyan]● Provider Files[/bold cyan]")
             console.print(prov_table)
         return 0
 
