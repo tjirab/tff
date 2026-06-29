@@ -15,7 +15,9 @@ jobs:
       - uses: astral-sh/setup-uv@v5
         with:
           enable-cache: true
-      - run: uv sync --all-extras
+      - run: uv sync --all-extras --frozen
+      - name: Run dependency audit
+        run: uv run python scripts/audit.py --min-severity HIGH
       - run: uv run ruff check .
       - run: uv run pytest --cov=packages --cov-report=xml
       - run: uv run diff-cover coverage.xml --compare-branch=origin/main --fail-under=100
