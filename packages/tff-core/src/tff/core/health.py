@@ -361,7 +361,7 @@ def render_health_report(
                 table.add_row(check_desc, score_cell, Text.from_markup(violation_text))
             else:
                 check_desc = Text.from_markup(f"  [dim]- {label}\n    ({check})[/dim]")
-                table.add_row(check_desc, Text("[dim]Disabled[/dim]"), "")
+                table.add_row(check_desc, Text("Disabled", style="dim"), "")
                 
     # Print other checks if any
     all_known_checks = set()

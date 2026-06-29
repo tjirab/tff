@@ -145,6 +145,7 @@ def test_render_health_report() -> None:
     assert "banselectstar" in output
     assert "filenameequalsmodelname" in output
     assert "Disabled" in output  # filenameequalsmodelname is disabled, should show in breakdown
+    assert "[dim]Disabled[/dim]" not in output
 
 
 def test_cli_health_command(tmp_path, monkeypatch) -> None:
