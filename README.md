@@ -70,7 +70,7 @@ For detailed option explanations, run `tff help <command>` or `tff <command> --h
 * `--provider {auto,dbt,sqlmesh}`: Pipeline engine provider (default: auto-detected).
 * `--checks CHECKS`: Comma-separated list of specific checks to run (default: all enabled).
 * `--fail-level {error,warning}`: Exit non-zero when findings at or above this severity exist (default: `error`).
-* `--group-by {connascence,model}`: How to group violations in the report (default: `connascence`).
+* `--group-by {connascence,model}`: How to group violations in the report (default: `model`).
 * `--dialect DIALECT`: SQL dialect of models (dbt only; auto-inferred by default).
 
 #### `tff health`

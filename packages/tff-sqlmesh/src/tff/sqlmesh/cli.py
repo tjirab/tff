@@ -58,8 +58,8 @@ def main(argv: list[str] | None = None) -> int:
     lint_parser.add_argument(
         "--group-by",
         choices=["connascence", "model"],
-        default="connascence",
-        help="How to group violations in the report (default: connascence)",
+        default="model",
+        help="How to group violations in the report (default: model)",
     )
 
     args = parser.parse_args(argv)

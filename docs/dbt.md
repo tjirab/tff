@@ -65,5 +65,5 @@ tff lint [--project PATH] [--config PATH] [--provider PROVIDER] [--checks CHECK,
 * **`--dialect`**: The SQL dialect used by your data warehouse, used for SQL parsing checks (dbt only; default: auto-inferred).
 * **`--checks`**: Comma-separated list of active checks to execute.
 * **`--fail-level`**: Exit non-zero when findings at or above this severity exist (`error` or `warning`, default: `error`).
-* **`--group-by`**: Changes report grouping format (`connascence` or `model`, default: `connascence`).
+* **`--group-by`**: Changes report grouping format (`connascence` or `model`, default: `model`).
 
