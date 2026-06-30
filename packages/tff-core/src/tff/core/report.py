@@ -35,8 +35,8 @@ CHECK_LABELS: dict[str, str] = {
     "ambiguousorinvalidcolumn": "Ambiguous/invalid column",
     "invalidselectstarexpansion": "Invalid SELECT * expansion",
     "nopositionalgroupbyororderby": "No positional GROUP BY or ORDER BY",
-    "materialization_depth": "Materialization depth",
     "environmentagnosticreferences": "Environment-agnostic references",
+    "duplicate_ctes": "Duplicate CTEs",
 }
 
 CONNASCENCE_CATEGORIES: dict[str, str] = {
@@ -74,6 +74,7 @@ CONNASCENCE_CATEGORIES: dict[str, str] = {
     "nomissingnotnull": "Quality & Metadata (Non-Connascence)",
     "nomissinguniquevalues": "Quality & Metadata (Non-Connascence)",
     "sqlcomplexity": "Quality & Metadata (Non-Connascence)",
+    "duplicate_ctes": "Connascence of Algorithm (CoA)",
 }
 
 ARCHITECTURAL_CHECKS = frozenset(
@@ -82,6 +83,7 @@ ARCHITECTURAL_CHECKS = frozenset(
         "custom_exclusions",
         "schema_contracts",
         "dependency_graph",
+        "duplicate_ctes",
     }
 )
 
@@ -307,6 +309,7 @@ def render_lint_report(
             "Connascence of Type (CoT)",
             "Connascence of Position (CoP)",
             "Connascence of Meaning (CoM)",
+            "Connascence of Algorithm (CoA)",
             "Dynamic Coupling & DAG Structure",
             "Quality & Metadata (Non-Connascence)",
             "Other Checks",

@@ -13,6 +13,7 @@ from tff.core.checks.dependency_graph import collect_dependency_graph_findings
 from tff.core.checks.layer_integrity import collect_layer_integrity_findings
 from tff.core.checks.schema_contracts import collect_schema_contract_findings
 from tff.core.checks.materialization_depth import collect_materialization_depth_findings
+from tff.core.checks.duplicate_ctes import collect_duplicate_cte_findings
 from tff.core.config import FitnessFunctionsConfig, load_fitness_config
 from tff.core.context import set_ff_config
 from tff.core.report import LintFinding, format_message, normalize_model_name
@@ -28,6 +29,7 @@ CHECK_COLLECTORS = {
     "schema_contracts": lambda _models, cfg: collect_schema_contract_findings(cfg),
     "dependency_graph": lambda models, cfg: collect_dependency_graph_findings(models, cfg),
     "materialization_depth": lambda models, cfg: collect_materialization_depth_findings(models, cfg),
+    "duplicate_ctes": lambda models, cfg: collect_duplicate_cte_findings(models, cfg),
 }
 
 

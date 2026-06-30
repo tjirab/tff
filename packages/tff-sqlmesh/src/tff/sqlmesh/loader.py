@@ -35,6 +35,14 @@ def map_sqlmesh_model(model: SqlMeshModel) -> ModelRepresentation:
     if not model.dialect:
         raise ValueError(f"Model {model.name} does not have a SQL dialect configured.")
 
+    query_obj = getattr(model, "query", None)
+    query_sql = None
+    if query_obj and hasattr(query_obj, "sql"):
+        try:
+            query_sql = query_obj.sql(dialect=model.dialect)
+        except Exception:
+            pass
+
     return ModelRepresentation(
         name=str(model.name),
         path=str(model._path),
@@ -48,6 +56,7 @@ def map_sqlmesh_model(model: SqlMeshModel) -> ModelRepresentation:
         grains=[str(g) for g in (model.grains or [])],
         audits=audits,
         materialized="view" if model.kind.is_view else "table",
+        query=query_sql,
     )
 
 

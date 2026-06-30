@@ -119,3 +119,28 @@ def test_fitness_loader_integration() -> None:
     assert "sqlcomplexity" in rule_names
     # Verify local custom dummy rule was loaded
     assert "customdummyrule" in rule_names
+
+
+def test_map_sqlmesh_model_query_exception() -> None:
+    mock_model = MagicMock(spec=SqlMeshModel)
+    mock_model.name = "my_model"
+    mock_model._path = Path("models/my_model.sql")
+    mock_model.dialect = "duckdb"
+    mock_model.kind = MagicMock()
+    mock_model.kind.is_symbolic = False
+    mock_model.kind.name = "FULL"
+    mock_model.columns_to_types = {}
+    mock_model.depends_on = set()
+    mock_model.description = None
+    mock_model.owner = None
+    mock_model.grains = []
+    mock_model.audits = []
+    mock_model.kind.is_view = False
+
+    mock_query = MagicMock()
+    mock_query.sql.side_effect = Exception("Rendering failed")
+    mock_model.query = mock_query
+
+    model_rep = map_sqlmesh_model(mock_model)
+    assert model_rep.query is None
+
