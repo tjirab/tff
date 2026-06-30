@@ -26,7 +26,7 @@ Architectural checks evaluate the structure, dependencies, and layout of your en
 
 * **What it checks**:
   * **Unidirectional Dependency Flow**: Ensures models in upstream layers do not depend on models in downstream layers (as defined by the index order in `layers.order`).
-  * **Mart Domain Isolation**: Ensures models within the `marts` layer do not depend on models in other domains within the `marts` layer (e.g., `marts/finance` cannot depend on `marts/marketing`).
+  * **Mart Domain Isolation**: Ensures models within the `marts` layer (models/marts) do not depend on models in other domains within the `marts` layer (e.g., `models/marts/finance` cannot depend on `models/marts/marketing`).
 * **How to configure**:
   Defined under `checks.layer_integrity` in `fitness_functions.yaml`.
   ```yaml
@@ -37,6 +37,7 @@ Architectural checks evaluate the structure, dependencies, and layout of your en
     layer_integrity:
       enabled: true
   ```
+  Layers are located at the first level within the models/ directory, e.g. `order: [staging, core, marts]` assumes `models/staging`, `models/core`, and `models/marts` directories. These can contain subdirectories with models.
 
 ---
 
