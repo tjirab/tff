@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.4.0](https://github.com/tjirab/tff/compare/tff-core-v0.3.0...tff-core-v0.4.0) (2026-06-30)
+
+
+### Features
+
+* add duplicate CTE fingerprinting linter check (Connascence of Algorithm) ([#83](https://github.com/tjirab/tff/issues/83)) ([96bdb40](https://github.com/tjirab/tff/commit/96bdb406c4cd3249886a25afb0adbb90e0d158dc))
+* default tff lint grouping to model ([#71](https://github.com/tjirab/tff/issues/71)) ([#72](https://github.com/tjirab/tff/issues/72)) ([f980aa3](https://github.com/tjirab/tff/commit/f980aa3193fc3e9c317a78a5e7793d1a0fd313f6))
+
+
+### Bug Fixes
+
+* resolve [dim]Disabled[/dim] rich text formatting in health report ([#75](https://github.com/tjirab/tff/issues/75)) ([a63be79](https://github.com/tjirab/tff/commit/a63be79f26fcc13e48924c911f593e1c0fe83fe8))
+
 ## [0.3.0](https://github.com/tjirab/tff/compare/tff-core-v0.2.3...tff-core-v0.3.0) (2026-06-29)
 
 

@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.3.0](https://github.com/tjirab/tff/compare/tff-sqlmesh-v0.2.4...tff-sqlmesh-v0.3.0) (2026-06-30)
+
+
+### Features
+
+* add duplicate CTE fingerprinting linter check (Connascence of Algorithm) ([#83](https://github.com/tjirab/tff/issues/83)) ([96bdb40](https://github.com/tjirab/tff/commit/96bdb406c4cd3249886a25afb0adbb90e0d158dc))
+* default tff lint grouping to model ([#71](https://github.com/tjirab/tff/issues/71)) ([#72](https://github.com/tjirab/tff/issues/72)) ([f980aa3](https://github.com/tjirab/tff/commit/f980aa3193fc3e9c317a78a5e7793d1a0fd313f6))
+
 ## [0.2.4](https://github.com/tjirab/tff/compare/tff-sqlmesh-v0.2.3...tff-sqlmesh-v0.2.4) (2026-06-29)
 
 

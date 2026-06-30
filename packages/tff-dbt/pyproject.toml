@@ -1,6 +1,6 @@
 [project]
 name = "tff-dbt"
-version = "0.2.4"
+version = "0.3.0"
 description = "dbt adapter for Transformation Fitness Functions (tff)"
 readme = "README.md"
 requires-python = ">=3.12"
