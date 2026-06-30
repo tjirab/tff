@@ -117,6 +117,7 @@ TFF runs two categories of quality guardrails:
 * **Custom exclusions**: Enforce custom domain isolation boundaries (e.g., prevent `marts/finance` from depending on `marts/marketing`).
 * **Schema contracts**: Ensure matching structures between model schemas (e.g., source tables and target core columns).
 * **Dependency graph**: Track DAG metrics and fail if model fan-in or fan-out exceeds defined thresholds.
+* **Duplicate CTEs**: Detect duplicate complex transformation logic in CTEs across different models (Connascence of Algorithm).
 
 ### 2. Linter Rules
 * **Ban `SELECT *`**: Require explicit columns to reduce upstream coupling.
@@ -150,6 +151,10 @@ checks:
     fan_out_warn: 15
     fan_out_fail: 25
     fan_in_warn: 10
+  duplicate_ctes:
+    enabled: true
+    severity: warning
+    min_ast_nodes: 12
 
 rules:
   ban_select_star:
