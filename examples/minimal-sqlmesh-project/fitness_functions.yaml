@@ -10,6 +10,7 @@ checks:
     fan_out_warn: 5
     fan_out_fail: 10
     fan_in_warn: 5
+  duplicate_ctes: { enabled: true }
 
 rules:
   ban_select_star:

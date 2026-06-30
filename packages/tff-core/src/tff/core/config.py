@@ -45,6 +45,11 @@ class MaterializationDepthCheckConfig(LayerFilterConfig):
     max_depth_fail: int = 5
 
 
+class DuplicateCtesCheckConfig(LayerFilterConfig):
+    severity: str = "warning"
+    min_ast_nodes: int = 12
+
+
 class ChecksConfig(BaseModel):
     layer_integrity: CheckEnabled = Field(default_factory=CheckEnabled)
     custom_exclusions: CheckEnabled = Field(default_factory=CheckEnabled)
@@ -54,6 +59,9 @@ class ChecksConfig(BaseModel):
     )
     materialization_depth: MaterializationDepthCheckConfig = Field(
         default_factory=MaterializationDepthCheckConfig
+    )
+    duplicate_ctes: DuplicateCtesCheckConfig = Field(
+        default_factory=DuplicateCtesCheckConfig
     )
 
 
