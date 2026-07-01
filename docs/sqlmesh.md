@@ -90,6 +90,8 @@ When using SQLMesh's native linter (`sqlmesh lint`), rules are enabled under `li
 
 ## CLI Options
 
+### `tff lint`
+
 ```bash
 tff lint [--project PATH] [--config PATH] [--provider PROVIDER] [--checks CHECK,...] [--fail-level error|warning] [--group-by connascence|model]
 ```
@@ -100,4 +102,28 @@ tff lint [--project PATH] [--config PATH] [--provider PROVIDER] [--checks CHECK,
 * **`--checks`**: Comma-separated list of checks (e.g., `layer_integrity,custom_exclusions`).
 * **`--fail-level`**: Exit non-zero when findings at or above this severity exist (`error` or `warning`, default: `error`).
 * **`--group-by`**: Changes report grouping format (`connascence` or `model`, default: `model`).
+
+### `tff health`
+
+```bash
+tff health [--project PATH] [--config PATH] [--provider PROVIDER] [--fail-under SCORE] [--scope PATH_PREFIX ...] [--group-by connascence|domain]
+```
+
+* **`--project`**: Path to your project root (default: current directory).
+* **`--config`**: Path to `fitness_functions.yaml` (default: `fitness_functions.yaml`).
+* **`--provider`**: The pipeline engine provider: `auto`, `dbt`, or `sqlmesh` (default: `auto`).
+* **`--fail-under`**: Exit non-zero when the overall health score (0–100) is below this threshold (default: `0.0`).
+* **`--scope`**: Restrict the report to models whose path starts with one or more given prefixes. Multiple prefixes are supported. Examples:
+  ```bash
+  tff health --scope models/sources
+  tff health --scope models/marts/marketing
+  tff health --scope models/marts/marketing models/marts/finance
+  ```
+* **`--group-by`**: Controls the grouping of the detailed health breakdown:
+  * `connascence` *(default)* — groups checks by connascence category (CoN, CoT, CoP, …).
+  * `domain` — groups by path segment under `models/` (e.g. `models/sources`, `models/marts/marketing`), making it easy to see which domain is the weakest.
+  ```bash
+  tff health --group-by domain
+  tff health --scope models/marts --group-by domain
+  ```
 

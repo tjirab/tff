@@ -92,6 +92,8 @@ For detailed option explanations, run `tff help <command>` or `tff <command> --h
 #### `tff health`
 * `--project PATH`, `--config PATH`, `--provider {auto,dbt,sqlmesh}`, `--dialect DIALECT`: (Same as above)
 * `--fail-under SCORE`: Exit non-zero when overall health score (0.0 - 100.0) is below this threshold (default: `0.0`).
+* `--scope PATH_PREFIX [...]`: Restrict the health report to models whose path starts with one of the given prefixes (e.g. `models/sources` or `models/marts/marketing`). Multiple prefixes can be provided.
+* `--group-by {connascence,domain}`: How to group the detailed health breakdown. `connascence` (default) groups by connascence category; `domain` groups by path segment under `models/` (e.g. `models/sources`, `models/marts/marketing`).
 
 #### `tff info`
 * `--project PATH`: Path to the project root directory (default: current directory).
@@ -108,6 +110,21 @@ tff lint
 Show project health report and require a score of at least 80% to pass:
 ```bash
 tff health --fail-under 80
+```
+
+Show health scores only for the `models/marts/marketing` domain:
+```bash
+tff health --scope models/marts/marketing
+```
+
+Group health breakdown by domain instead of connascence category:
+```bash
+tff health --group-by domain
+```
+
+Combine domain scoping and grouping:
+```bash
+tff health --scope models/marts --group-by domain
 ```
 
 Show configuration, adapter versions, and provider files for the current project:
