@@ -61,7 +61,7 @@ git checkout -b feat/<task-summary> # For new features
     git commit -m "feat(scope): [TICKET-ID] Descriptive summary of the change and why it was needed."
     ```
 3.  Push the branch (`git push origin <branch-name>`).
-4.  Create a Pull Request (PR) against `main`, ensuring all changes are logically grouped and ready for peer review.
+4.  Create a Pull Request (PR) against `main` with `gh pr create`, ensuring all changes are logically grouped and ready for peer review.
 
 ## 🚨 Mandatory Principles
 *   **Atomic Commits:** Each commit should represent one logical change. Do not group unrelated fixes or features into a single commit message.
