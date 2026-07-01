@@ -1,9 +1,8 @@
 import pytest
 from unittest.mock import MagicMock
-from pathlib import Path
 
 # Assuming this module contains the main CLI logic
-from tff.core.cli import main, TFFArgumentParser
+from tff.core.cli import main
 
 
 @pytest.fixture(scope="module")

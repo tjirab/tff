@@ -109,7 +109,8 @@ def main(argv: list[str] | None = None) -> int:
     lint_parser = subparsers.add_parser("lint", help="Run all enabled fitness checks")
     lint_parser.add_argument(
         "--project",
-         default=Path.cwd(),\n         help="Project root directory (default: current directory)",
+         default=Path.cwd(),
+         help="Project root directory (default: current directory)",
     )
     lint_parser.add_argument(
         "--config",
@@ -151,7 +152,8 @@ def main(argv: list[str] | None = None) -> int:
     )
     health_parser.add_argument(
         "--project",
-         default=Path.cwd(),\n         help="Project root directory (default: current directory)",
+         default=Path.cwd(),
+         help="Project root directory (default: current directory)",
     )
     health_parser.add_argument(
         "--config",
@@ -184,7 +186,8 @@ def main(argv: list[str] | None = None) -> int:
     )
     info_parser.add_argument(
         "--project",
-         default=Path.cwd(),\n         help="Project root directory (default: current directory)",
+         default=Path.cwd(),
+         help="Project root directory (default: current directory)",
     )
     info_parser.add_argument(
         "--config",
