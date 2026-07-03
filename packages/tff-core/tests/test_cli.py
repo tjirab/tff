@@ -579,3 +579,90 @@ def test_main_health_normal_and_json(
     log_files = list((tmp_path / ".tff_logs" / "health").glob("*.log"))
     assert len(log_files) == 1
 
+
+def test_main_stats_no_logs(tmp_path: Path, capsys):
+    # Running stats when no logs exist should exit 1 and show error
+    project_str = str(tmp_path)
+    exit_code = main(["stats", "--project", project_str])
+    assert exit_code == 1
+    captured = capsys.readouterr()
+    assert "No TFF run logs found" in captured.err
+
+
+def test_main_stats(tmp_path: Path, capsys):
+    project_str = str(tmp_path)
+    # Create mock logs
+    health_dir = tmp_path / ".tff_logs" / "health"
+    health_dir.mkdir(parents=True)
+    import json
+    # Write a health log
+    with open(health_dir / "h1.log", "w", encoding="utf-8") as f:
+        json.dump({"timestamp": "2026-07-03T12:00:00+02:00", "overall_score": 92.5}, f)
+
+    # 1. Run stats command (ASCII output)
+    exit_code = main(["stats", "--project", project_str])
+    assert exit_code == 0
+    captured = capsys.readouterr()
+    assert "TFF Project Health Score Trend" in captured.out
+    assert "Summary History" in captured.out
+    assert "92.5%" in captured.out
+
+    # 2. Run stats command with --json flag
+    exit_code_json = main(["stats", "--project", project_str, "--json"])
+    assert exit_code_json == 0
+    captured_json = capsys.readouterr()
+    data = json.loads(captured_json.out)
+    assert data["days"] == 7
+    assert len(data["history"]) == 7
+    assert data["history"][-1]["health_score"] == 92.5
+
+
+def test_help_stats_subcommand(capsys):
+    assert main(["help", "stats"]) == 0
+    captured = capsys.readouterr()
+    assert "Show history and trends of fitness checks" in captured.out
+    assert "--days" in captured.out
+
+
+def test_main_stats_variations(tmp_path: Path, capsys):
+    project_str = str(tmp_path)
+    lint_dir = tmp_path / ".tff_logs" / "lint"
+    lint_dir.mkdir(parents=True)
+    import json
+    
+    # Write a lint log (with errors and warnings)
+    with open(lint_dir / "l1.log", "w", encoding="utf-8") as f:
+        json.dump({
+            "timestamp": "2026-07-03T12:00:00+02:00",
+            "errors_count": 2,
+            "warnings_count": 3
+        }, f)
+
+    # 1. Run stats command (ASCII output)
+    # This covers:
+    # - No health score data in this timeframe
+    # - Lint violations trend rendering
+    # - non-zero errors and warnings in table rows
+    exit_code = main(["stats", "--project", project_str])
+    assert exit_code == 0
+    captured = capsys.readouterr()
+    assert "No health score data in this timeframe" in captured.out
+    assert "TFF Lint Violations Trend" in captured.out
+    assert "Summary History" in captured.out
+
+    # 2. Test invalid date parsing exception handling in summary table formatting
+    # Mock collect_stats to return history containing an invalid date
+    with patch("tff.core.logs.collect_stats") as mock_collect:
+        mock_collect.return_value = [{
+            "date": "invalid-date-format",
+            "health_score": 90.0,
+            "errors_count": 0,
+            "warnings_count": 0
+        }]
+        exit_code_mock = main(["stats", "--project", project_str])
+        assert exit_code_mock == 0
+        captured_mock = capsys.readouterr()
+        assert "invalid-date-format" in captured_mock.out
+
+
+
