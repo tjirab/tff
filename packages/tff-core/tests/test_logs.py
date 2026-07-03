@@ -1,7 +1,6 @@
 import os
 import time
 from pathlib import Path
-from datetime import datetime
 from unittest.mock import patch
 
 from tff.core.report import LintFinding

@@ -88,12 +88,14 @@ For detailed option explanations, run `tff help <command>` or `tff <command> --h
 * `--fail-level {error,warning}`: Exit non-zero when findings at or above this severity exist (default: `error`).
 * `--group-by {connascence,model}`: How to group violations in the report (default: `model`).
 * `--dialect DIALECT`: SQL dialect of models (dbt only; auto-inferred by default).
+* `--json`: Output results in JSON format to stdout.
 
 #### `tff health`
 * `--project PATH`, `--config PATH`, `--provider {auto,dbt,sqlmesh}`, `--dialect DIALECT`: (Same as above)
 * `--fail-under SCORE`: Exit non-zero when overall health score (0.0 - 100.0) is below this threshold (default: `0.0`).
 * `--scope PATH_PREFIX [...]`: Restrict the health report to models whose path starts with one of the given prefixes (e.g. `models/sources` or `models/marts/marketing`). Multiple prefixes can be provided.
 * `--group-by {connascence,domain}`: How to group the detailed health breakdown. `connascence` (default) groups by connascence category; `domain` groups by path segment under `models/` (e.g. `models/sources`, `models/marts/marketing`).
+* `--json`: Output results in JSON format to stdout.
 
 #### `tff info`
 * `--project PATH`: Path to the project root directory (default: current directory).
@@ -139,7 +141,20 @@ tff help lint
 tff lint --help
 ```
 
+### Local Run Logging & JSON Output
+
+TFF automatically logs every execution of `tff lint` and `tff health` to the project's local directory:
+* Logs are stored as JSON files under `.tff_logs/lint/<timestamp>.log` and `.tff_logs/health/<timestamp>.log`.
+* TFF automatically keeps only the last 60 days of logs, cleaning up older ones during each execution.
+
+If you want to integrate TFF with other tools (e.g. `jq`, CI pipelines), you can output the run reports as JSON using the `--json` flag:
+```bash
+tff lint --json
+tff health --json
+```
+
 ---
+
 
 ## Core Features
 
