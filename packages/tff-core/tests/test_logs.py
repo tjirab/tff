@@ -1,6 +1,7 @@
 import os
 import time
 from pathlib import Path
+from datetime import datetime, timedelta
 from unittest.mock import patch
 
 from tff.core.report import LintFinding
@@ -9,6 +10,8 @@ from tff.core.logs import (
     get_lint_json_data,
     get_health_json_data,
     save_log,
+    collect_stats,
+    render_ascii_chart,
 )
 
 
@@ -157,4 +160,110 @@ def test_save_log_pruning_handles_exception(mock_unlink, tmp_path: Path):
     new_log_path = save_log(tmp_path, "lint", {"test": "data"})
     assert new_log_path.exists()
     mock_unlink.assert_called_once()
+
+
+def test_collect_stats(tmp_path: Path):
+    # Test empty log folders
+    stats = collect_stats(tmp_path, days=7)
+    assert stats == []
+
+    # Setup directories
+    health_dir = tmp_path / ".tff_logs" / "health"
+    health_dir.mkdir(parents=True)
+    lint_dir = tmp_path / ".tff_logs" / "lint"
+    lint_dir.mkdir(parents=True)
+
+    # Helper to write log with timestamp
+    def write_log(directory, filename, timestamp, payload):
+        log_file = directory / filename
+        data = {"timestamp": timestamp, **payload}
+        import json
+        with open(log_file, "w", encoding="utf-8") as f:
+            json.dump(data, f)
+
+    # Write some logs
+    # 2 days ago:
+    two_days_ago_dt = datetime.now() - timedelta(days=2)
+    write_log(health_dir, "h1.log", two_days_ago_dt.astimezone().isoformat(), {"overall_score": 90.0})
+    write_log(lint_dir, "l1.log", two_days_ago_dt.astimezone().isoformat(), {"errors_count": 1, "warnings_count": 0})
+
+    # Today (first run):
+    today_dt_1 = datetime.now() - timedelta(minutes=10)
+    write_log(health_dir, "h2.log", today_dt_1.astimezone().isoformat(), {"overall_score": 95.0})
+    # Today (second run):
+    today_dt_2 = datetime.now()
+    write_log(health_dir, "h3.log", today_dt_2.astimezone().isoformat(), {"overall_score": 98.0})
+    write_log(lint_dir, "l2.log", today_dt_2.astimezone().isoformat(), {"errors_count": 0, "warnings_count": 1})
+
+    stats = collect_stats(tmp_path, days=3)
+    assert len(stats) == 3
+
+    # Check today-2
+    assert stats[0]["health_score"] == 90.0
+    assert stats[0]["errors_count"] == 1
+    assert stats[0]["warnings_count"] == 0
+
+    # Check today-1 (carried forward)
+    assert stats[1]["health_score"] == 90.0
+    assert stats[1]["errors_count"] == 1
+    assert stats[1]["warnings_count"] == 0
+
+    # Check today (final run of today)
+    assert stats[2]["health_score"] == 98.0
+    assert stats[2]["errors_count"] == 0
+    assert stats[2]["warnings_count"] == 1
+
+
+def test_render_ascii_chart():
+    # Test no data
+    assert render_ascii_chart([], [], height=5) == "  (No data)"
+
+    # Test single point/flat line
+    dates = ["2026-07-01", "2026-07-02"]
+    values = [90.0, 90.0]
+    chart = render_ascii_chart(values, dates, height=5, is_percentage=True)
+    assert "90.0%" in chart
+    assert "●" in chart
+    assert "─" in chart
+
+    # Test non-percentage rendering (e.g. violation counts)
+    chart_non_pct = render_ascii_chart(values, dates, height=5, is_percentage=False)
+    assert "   90 " in chart_non_pct
+    assert "●" in chart_non_pct
+
+    # Test invalid dates fall back gracefully
+    invalid_dates = ["invalid-date-1", "invalid-date-2"]
+    chart_invalid_dates = render_ascii_chart(values, invalid_dates, height=5, is_percentage=True)
+    assert "invali" in chart_invalid_dates
+
+    # Test values going up
+    values_up = [80.0, 100.0]
+    chart_up = render_ascii_chart(values_up, dates, height=3, is_percentage=True)
+    assert "●" in chart_up
+    assert "╭" in chart_up or "╯" in chart_up or "│" in chart_up
+
+    # Test values going down
+    values_down = [100.0, 80.0]
+    chart_down = render_ascii_chart(values_down, dates, height=3, is_percentage=True)
+    assert "●" in chart_down
+    assert "╮" in chart_down or "╰" in chart_down or "│" in chart_down
+
+
+def test_collect_stats_corrupt_files(tmp_path: Path):
+    health_dir = tmp_path / ".tff_logs" / "health"
+    health_dir.mkdir(parents=True)
+    lint_dir = tmp_path / ".tff_logs" / "lint"
+    lint_dir.mkdir(parents=True)
+
+    # Write corrupt JSON files
+    with open(health_dir / "corrupt.log", "w", encoding="utf-8") as f:
+        f.write("invalid json content")
+    with open(lint_dir / "corrupt.log", "w", encoding="utf-8") as f:
+        f.write("invalid json content")
+
+    # Collect stats (should pass without raising exceptions, and return empty list since no valid logs exist)
+    stats = collect_stats(tmp_path, days=7)
+    assert stats == []
+
+
 

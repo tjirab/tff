@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 import time
-from datetime import datetime
+from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -108,3 +108,179 @@ def save_log(project_root: Path, command: str, data: dict[str, Any]) -> Path:
                         pass
 
     return log_file
+
+
+def collect_stats(project_root: Path, days: int) -> list[dict[str, Any]]:
+    """Collect TFF health and lint history over the last N days from log files."""
+    # Generate list of dates from (today - days + 1) to today
+    today = date.today()
+    dates = [today - timedelta(days=d) for d in range(days - 1, -1, -1)]
+
+    # Read all health logs and sort them by timestamp
+    health_logs: list[dict[str, Any]] = []
+    health_dir = project_root / ".tff_logs" / "health"
+    if health_dir.exists():
+        for file in health_dir.glob("*.log"):
+            try:
+                with open(file, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                    dt = datetime.fromisoformat(data["timestamp"])
+                    health_logs.append({
+                        "dt": dt,
+                        "date": dt.date(),
+                        "overall_score": data.get("overall_score")
+                    })
+            except Exception:
+                pass
+    health_logs.sort(key=lambda x: x["dt"])
+
+    # Read all lint logs and sort by timestamp
+    lint_logs: list[dict[str, Any]] = []
+    lint_dir = project_root / ".tff_logs" / "lint"
+    if lint_dir.exists():
+        for file in lint_dir.glob("*.log"):
+            try:
+                with open(file, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                    dt = datetime.fromisoformat(data["timestamp"])
+                    lint_logs.append({
+                        "dt": dt,
+                        "date": dt.date(),
+                        "errors_count": data.get("errors_count", 0),
+                        "warnings_count": data.get("warnings_count", 0)
+                    })
+            except Exception:
+                pass
+    lint_logs.sort(key=lambda x: x["dt"])
+
+    # If no logs exist at all, return empty list
+    if not health_logs and not lint_logs:
+        return []
+
+    history = []
+    for d in dates:
+        # Find latest health log on or before date d
+        latest_health = None
+        for log in health_logs:
+            if log["date"] <= d:
+                latest_health = log
+            else:
+                break
+
+        # Find latest lint log on or before date d
+        latest_lint = None
+        for log in lint_logs:
+            if log["date"] <= d:
+                latest_lint = log
+            else:
+                break
+
+        history.append({
+            "date": d.isoformat(),
+            "health_score": latest_health["overall_score"] if latest_health else None,
+            "errors_count": latest_lint["errors_count"] if latest_lint else None,
+            "warnings_count": latest_lint["warnings_count"] if latest_lint else None,
+        })
+
+    return history
+
+
+def render_ascii_chart(
+    values: list[float | None],
+    dates: list[str],
+    height: int = 6,
+    is_percentage: bool = False
+) -> str:
+    """Render a line chart in ASCII connecting points with box drawing characters."""
+    valid_values = [v for v in values if v is not None]
+    if not valid_values:
+        return "  (No data)"
+
+    min_val = min(valid_values)
+    max_val = max(valid_values)
+
+    # If all values are the same, expand the range to make it look nice
+    if min_val == max_val:
+        min_val = max(0.0, min_val - 5.0)
+        max_val = min_val + 10.0
+
+    col_spacing = 6
+    num_cols = (len(values) - 1) * col_spacing + 1
+    grid = [[" " for _ in range(num_cols)] for _ in range(height)]
+
+    # Map values to row indexes
+    points = []
+    for i, val in enumerate(values):
+        x = i * col_spacing
+        if val is None:
+            points.append(None)
+            continue
+        ratio = (val - min_val) / (max_val - min_val)
+        y = int(round((1.0 - ratio) * (height - 1)))
+        grid[y][x] = "●"
+        points.append((x, y))
+
+    # Draw connections
+    for i in range(len(points) - 1):
+        p1 = points[i]
+        p2 = points[i+1]
+        if p1 is None or p2 is None:
+            continue
+        x1, y1 = p1
+        x2, y2 = p2
+
+        x_mid = x1 + col_spacing // 2
+
+        if y1 == y2:
+            for x in range(x1 + 1, x2):
+                grid[y1][x] = "─"
+        elif y1 < y2:  # going down in grid row index (decreasing value)
+            for x in range(x1 + 1, x_mid):
+                grid[y1][x] = "─"
+            grid[y1][x_mid] = "╮"
+            for y in range(y1 + 1, y2):
+                grid[y][x_mid] = "│"
+            grid[y2][x_mid] = "╰"
+            for x in range(x_mid + 1, x2):
+                grid[y2][x] = "─"
+        else:  # going up in grid row index (increasing value)
+            for x in range(x1 + 1, x_mid):
+                grid[y1][x] = "─"
+            grid[y1][x_mid] = "╯"
+            for y in range(y2 + 1, y1):
+                grid[y][x_mid] = "│"
+            grid[y2][x_mid] = "╭"
+            for x in range(x_mid + 1, x2):
+                grid[y2][x] = "─"
+
+    lines = []
+    for r in range(height):
+        ratio = 1.0 - r / (height - 1)
+        val = min_val + ratio * (max_val - min_val)
+
+        # Format label to be exactly 6 characters
+        if is_percentage:
+            label = f"{val:5.1f}%"
+        else:
+            label = f"{int(round(val)):5d} "
+
+        row_str = "".join(grid[r])
+        lines.append(f"{label} │ {row_str}")
+
+    # Add x-axis line
+    lines.append("       └" + "─" * (num_cols + 1))
+
+    # Add x-axis labels (dates) formatted as "MMM DD" (6 characters)
+    formatted_dates = []
+    for d_str in dates:
+        try:
+            dt = datetime.strptime(d_str, "%Y-%m-%d")
+            formatted_dates.append(dt.strftime("%b %d"))
+        except Exception:
+            formatted_dates.append(d_str[:6].ljust(6))
+
+    date_line = " " * 7 + "".join(formatted_dates)
+    lines.append(date_line)
+
+    return "\n".join(lines)
+
