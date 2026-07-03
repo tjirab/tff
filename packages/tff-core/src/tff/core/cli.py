@@ -147,6 +147,11 @@ def main(argv: list[str] | None = None) -> int:
         default=None,
         help="SQL dialect of models (dbt only; auto-inferred by default)",
     )
+    lint_parser.add_argument(
+        "--json",
+        action="store_true",
+        help="Output results in JSON format to stdout",
+    )
 
     health_parser = subparsers.add_parser(
         "health", help="Show project health report and scores"
@@ -195,6 +200,11 @@ def main(argv: list[str] | None = None) -> int:
         default="connascence",
         dest="group_by",
         help="How to group the health breakdown (default: connascence)",
+    )
+    health_parser.add_argument(
+        "--json",
+        action="store_true",
+        help="Output results in JSON format to stdout",
     )
 
     # Info subcommand
@@ -471,17 +481,29 @@ def main(argv: list[str] | None = None) -> int:
 
         if args.command == "lint":
             # 5. Render report
-            passed = render_lint_report(
-                findings,
-                models_checked=models_checked,
-                executed_checks=executed_checks,
-                fail_level=args.fail_level,  # type: ignore[arg-type]
-                group_by=args.group_by,  # type: ignore[arg-type]
-            )
+            from tff.core.logs import get_lint_json_data, save_log
+            import json
+
+            json_data = get_lint_json_data(findings, models_checked, args.fail_level)
+            save_log(project_root, "lint", json_data)
+
+            if args.json:
+                print(json.dumps(json_data, indent=2))
+                passed = json_data["passed"]
+            else:
+                passed = render_lint_report(
+                    findings,
+                    models_checked=models_checked,
+                    executed_checks=executed_checks,
+                    fail_level=args.fail_level,  # type: ignore[arg-type]
+                    group_by=args.group_by,  # type: ignore[arg-type]
+                )
             return 0 if passed else 1
         else:
             # health command
             from tff.core.health import calculate_health_scores, render_health_report
+            from tff.core.logs import get_health_json_data, save_log
+            import json
 
             scope: list[str] | None = getattr(args, "scope", None)
             group_by: str = getattr(args, "group_by", "connascence")
@@ -489,14 +511,22 @@ def main(argv: list[str] | None = None) -> int:
             scores = calculate_health_scores(
                 findings, models_checked, config, provider, scope=scope
             )
-            render_health_report(scores, config, provider, group_by=group_by)
+
+            json_data = get_health_json_data(scores, models_checked)
+            save_log(project_root, "health", json_data)
+
+            if args.json:
+                print(json.dumps(json_data, indent=2))
+            else:
+                render_health_report(scores, config, provider, group_by=group_by)
 
             overall_score = scores["overall_score"]
             if args.fail_under > 0.0 and overall_score < args.fail_under:
-                print(
-                    f"Error: Project health score {overall_score:.1f}% is below threshold {args.fail_under:.1f}%",
-                    file=sys.stderr,
-                )
+                if not args.json:
+                    print(
+                        f"Error: Project health score {overall_score:.1f}% is below threshold {args.fail_under:.1f}%",
+                        file=sys.stderr,
+                    )
                 return 1
             return 0
 

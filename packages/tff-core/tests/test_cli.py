@@ -495,3 +495,87 @@ def test_info_command_with_virtualenv(tmp_path: Path, capsys):
     assert "4.5.6" in captured.out
     assert "tff-dbt" in captured.out
     assert "not installed" in captured.out
+
+
+@patch("tff.core.cli._detect_provider")
+@patch("tff.core.cli._get_runner")
+@patch("tff.core.cli.load_fitness_config")
+@patch("tff.core.cli.render_lint_report")
+def test_main_lint_json(
+    mock_render,
+    mock_load_config,
+    mock_get_runner,
+    mock_detect_provider,
+    tmp_path: Path,
+    capsys,
+):
+    mock_detect_provider.return_value = "dbt"
+    mock_runner = MagicMock()
+    mock_runner.run_all_checks.return_value = ([], 5, ["rules"])
+    mock_get_runner.return_value = mock_runner
+
+    project_str = str(tmp_path)
+    exit_code = main(["lint", "--project", project_str, "--json"])
+
+    assert exit_code == 0
+    mock_render.assert_not_called()
+
+    captured = capsys.readouterr()
+    import json
+    data = json.loads(captured.out)
+    assert data["command"] == "lint"
+    assert data["models_checked"] == 5
+    assert data["passed"] is True
+
+    # Verify log file was written
+    log_files = list((tmp_path / ".tff_logs" / "lint").glob("*.log"))
+    assert len(log_files) == 1
+
+
+@patch("tff.core.cli._detect_provider")
+@patch("tff.core.cli._get_runner")
+@patch("tff.core.cli.load_fitness_config")
+@patch("tff.core.health.render_health_report")
+def test_main_health_normal_and_json(
+    mock_render_health,
+    mock_load_config,
+    mock_get_runner,
+    mock_detect_provider,
+    tmp_path: Path,
+    capsys,
+):
+    mock_detect_provider.return_value = "dbt"
+    mock_runner = MagicMock()
+    # health command expects findings, models_checked, executed_checks
+    mock_runner.run_all_checks.return_value = ([], 8, ["rules"])
+    mock_get_runner.return_value = mock_runner
+
+    # 1. Run without --json
+    project_str = str(tmp_path)
+    exit_code = main(["health", "--project", project_str])
+    assert exit_code == 0
+    mock_render_health.assert_called_once()
+    mock_render_health.reset_mock()
+
+    log_files = list((tmp_path / ".tff_logs" / "health").glob("*.log"))
+    assert len(log_files) == 1
+    # Clean up logs for the next run
+    for lf in log_files:
+        lf.unlink()
+
+    # 2. Run with --json
+    exit_code_json = main(["health", "--project", project_str, "--json"])
+    assert exit_code_json == 0
+    mock_render_health.assert_not_called()
+
+    captured = capsys.readouterr()
+    import json
+    data = json.loads(captured.out)
+    assert data["command"] == "health"
+    assert data["models_checked"] == 8
+    assert data["overall_score"] == 100.0
+
+    # Verify log file was written again
+    log_files = list((tmp_path / ".tff_logs" / "health").glob("*.log"))
+    assert len(log_files) == 1
+
