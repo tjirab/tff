@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.5.0](https://github.com/tjirab/tff/compare/tff-core-v0.4.0...tff-core-v0.5.0) (2026-07-04)
+
+
+### Features
+
+* `tff health` domain filtering and grouping ([#90](https://github.com/tjirab/tff/issues/90)) ([0fc2441](https://github.com/tjirab/tff/commit/0fc2441c0070fc84538007c4801a3fd5b90f83c3))
+* add JSON CLI output and local execution logging with 60-day cleanup ([#92](https://github.com/tjirab/tff/issues/92)) ([0010e8e](https://github.com/tjirab/tff/commit/0010e8ea1727e6e23c006d74424d4b8403e52a47))
+* add tff stats command with ASCII trend graphs and daily history summaries ([#93](https://github.com/tjirab/tff/issues/93)) ([f6d2ee1](https://github.com/tjirab/tff/commit/f6d2ee1328c690dec6fd379cd31846edb00f8864))
+
 ## [0.4.0](https://github.com/tjirab/tff/compare/tff-core-v0.3.0...tff-core-v0.4.0) (2026-06-30)
 
 
