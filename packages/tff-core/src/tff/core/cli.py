@@ -82,12 +82,12 @@ class TFFArgumentParser(argparse.ArgumentParser):
         # If the prog is already subcommand-specific (e.g. 'tff lint'), use it.
         # Otherwise, check the arguments to see if a subcommand was targetted.
         if hint_cmd == "tff" and TFFArgumentParser._current_argv is not None:
-            for sub in ("lint", "health", "info", "help"):
+            for sub in ("lint", "health", "info", "help", "stats"):
                 if sub in TFFArgumentParser._current_argv:
                     hint_cmd = f"tff {sub}"
                     break
         elif hint_cmd == "tff":
-            for sub in ("lint", "health", "info", "help"):
+            for sub in ("lint", "health", "info", "help", "stats"):
                 if sub in sys.argv:
                     hint_cmd = f"tff {sub}"
                     break
@@ -231,11 +231,35 @@ def main(argv: list[str] | None = None) -> int:
         help="Pipeline engine provider (default: auto-detected)",
     )
 
+    # Stats subcommand
+    stats_parser = subparsers.add_parser(
+        "stats",
+        help="Show history and trends of fitness checks",
+        description="Show history and trends of fitness checks",
+    )
+    stats_parser.add_argument(
+        "--project",
+        type=Path,
+        default=Path.cwd(),
+        help="Project root directory (default: current directory)",
+    )
+    stats_parser.add_argument(
+        "--days",
+        type=int,
+        default=7,
+        help="Number of days of history to display (default: 7)",
+    )
+    stats_parser.add_argument(
+        "--json",
+        action="store_true",
+        help="Output stats in JSON format to stdout",
+    )
+
     help_parser = subparsers.add_parser("help", help="Show help details for a command")
     help_parser.add_argument(
         "subcommand",
         nargs="?",
-        choices=["lint", "health", "info"],
+        choices=["lint", "health", "info", "stats"],
         help="Specific command to get help for",
     )
 
@@ -248,6 +272,8 @@ def main(argv: list[str] | None = None) -> int:
             health_parser.print_help()
         elif args.subcommand == "info":
             info_parser.print_help()
+        elif args.subcommand == "stats":
+            stats_parser.print_help()
         else:
             parser.print_help()
         return 0
@@ -413,6 +439,97 @@ def main(argv: list[str] | None = None) -> int:
         if prov_table.row_count > 0:
             console.print("\n[bold cyan]● Provider Files[/bold cyan]")
             console.print(prov_table)
+        return 0
+
+    if args.command == "stats":
+        project_root = args.project.resolve()
+        from tff.core.logs import collect_stats, render_ascii_chart
+        from datetime import datetime
+        import json
+
+        history = collect_stats(project_root, args.days)
+        if not history:
+            print("No TFF run logs found under .tff_logs/.", file=sys.stderr)
+            print("Please run 'tff lint' or 'tff health' to generate reports first.", file=sys.stderr)
+            return 1
+
+        if args.json:
+            print(json.dumps({
+                "project_root": str(project_root),
+                "days": args.days,
+                "history": history
+            }, indent=2))
+            return 0
+
+        # Output ASCII trend charts
+        dates = [item["date"] for item in history]
+        health_scores = [item["health_score"] for item in history]
+        errors = [item["errors_count"] for item in history]
+        warnings = [item["warnings_count"] for item in history]
+
+        # 1. Health Score Trend
+        from rich.console import Console
+        console = Console()
+        console.print("[bold cyan]● TFF Project Health Score Trend[/bold cyan]")
+        has_health_data = any(h is not None for h in health_scores)
+        if has_health_data:
+            chart = render_ascii_chart(health_scores, dates, height=6, is_percentage=True)
+            console.print(chart)
+        else:
+            console.print("  (No health score data in this timeframe)")
+        console.print()
+
+        # 2. Lint Violations Trend
+        console.print("[bold cyan]● TFF Lint Violations Trend (Errors & Warnings)[/bold cyan]")
+        has_lint_data = any(e is not None or w is not None for e, w in zip(errors, warnings))
+        if has_lint_data:
+            total_violations = []
+            for e, w in zip(errors, warnings):
+                if e is None and w is None:
+                    total_violations.append(None)
+                else:
+                    total_violations.append((e or 0) + (w or 0))
+            chart = render_ascii_chart(total_violations, dates, height=6, is_percentage=False)
+            console.print(chart)
+        else:
+            console.print("  (No lint violation data in this timeframe)")
+        console.print()
+
+        # 3. Summary Table
+        from rich.table import Table
+        from rich import box
+        table = Table(box=box.SIMPLE, show_header=True, header_style="bold cyan", padding=(0, 2, 0, 0))
+        table.add_column("Date", style="bold", no_wrap=True)
+        table.add_column("Health Score", justify="right")
+        table.add_column("Errors", justify="right")
+        table.add_column("Warnings", justify="right")
+
+        for item in history:
+            try:
+                dt = datetime.strptime(item["date"], "%Y-%m-%d")
+                d_formatted = dt.strftime("%b %d")
+            except Exception:
+                d_formatted = item["date"]
+
+            h_val = f"{item['health_score']:.1f}%" if item["health_score"] is not None else "·"
+            e_val = str(item["errors_count"]) if item["errors_count"] is not None else "·"
+            w_val = str(item["warnings_count"]) if item["warnings_count"] is not None else "·"
+
+            # Colorize output
+            if item["health_score"] is not None:
+                score = item["health_score"]
+                color = "green" if score >= 90 else "yellow" if score >= 70 else "red"
+                h_val = f"[{color}]{h_val}[/{color}]"
+            
+            if item["errors_count"] and item["errors_count"] > 0:
+                e_val = f"[red]{e_val}[/red]"
+            if item["warnings_count"] and item["warnings_count"] > 0:
+                w_val = f"[yellow]{w_val}[/yellow]"
+
+            table.add_row(d_formatted, h_val, e_val, w_val)
+
+        console.print("[bold cyan]● Summary History[/bold cyan]")
+        console.print(table)
         return 0
 
     if args.command in ("lint", "health"):
