@@ -28,15 +28,6 @@ wheels = [
 ]
 
 [[package]]
-name = "astor"
-version = "0.8.1"
-source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/5a/21/75b771132fee241dfe601d39ade629548a9626d1d39f333fde31bc46febe/astor-0.8.1.tar.gz", hash = "sha256:6a6effda93f4e1ce9f618779b2dd1d9d84f1e32812c23a29b3fff6fd7f63fa5e", size = 35090, upload-time = "2019-12-10T01:50:35.51Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/c3/88/97eef84f48fa04fbd6750e62dcceafba6c63c81b7ac1420856c8dcc0a3f9/astor-0.8.1-py2.py3-none-any.whl", hash = "sha256:070a54e890cefb5b3739d19f30f5a5ec840ffc9c50ffa7d23cc9fc1a38ebbfc5", size = 27488, upload-time = "2019-12-10T01:50:33.628Z" },
-]
-
-[[package]]
 name = "asttokens"
 version = "3.0.1"
 source = { registry = "https://pypi.org/simple" }
@@ -1171,10 +1162,9 @@ wheels = [
 
 [[package]]
 name = "sqlmesh"
-version = "0.235.4"
+version = "0.236.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "astor" },
     { name = "click" },
     { name = "croniter" },
     { name = "dateparser" },
@@ -1195,9 +1185,9 @@ dependencies = [
     { name = "tenacity" },
     { name = "time-machine" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/8b/75/3bbc93c78a67546cd0d7158d3de93b203682deaa3972c434174998d8fd98/sqlmesh-0.235.4.tar.gz", hash = "sha256:21c8e8f7a0aafae99b864c22a13cf521787c598d2d20f1826f856696fb3ec950", size = 13558405, upload-time = "2026-06-11T18:30:42.642Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/18/b5/e62827cfdf4fdc43f9ac36ae52ee0269bbf80e346556518cdda0cac08646/sqlmesh-0.236.0.tar.gz", hash = "sha256:50e49dab5d1e669f47a319263f4d68dce620949a1fc1f15beece8e6e4f006fa2", size = 13597987, upload-time = "2026-07-06T16:38:23.658Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/de/57/3d144ad41e0e202da562e3cbf55eccb4bab2a33be77ba68e006c58a7c0e4/sqlmesh-0.235.4-py3-none-any.whl", hash = "sha256:097c8b8d28d4819984ec90c7985cb008a60e93a68df87a90f4299c2190a3342d", size = 5639012, upload-time = "2026-06-11T18:30:39.857Z" },
+    { url = "https://files.pythonhosted.org/packages/44/37/29f5d88b369d68cc40cd8c532c15fc4c7b2ad94ca15b6342c7cf4cf810b9/sqlmesh-0.236.0-py3-none-any.whl", hash = "sha256:b1a65b2c9d76857e6b5360a91c8b8ea770a6a37d413c5b8a575ff14130920756", size = 5663988, upload-time = "2026-07-06T16:38:21.098Z" },
 ]
 
 [[package]]
@@ -1275,7 +1265,7 @@ dependencies = [
 
 [package.metadata]
 requires-dist = [
-    { name = "sqlmesh", specifier = ">=0.234.0" },
+    { name = "sqlmesh", specifier = ">=0.236.0" },
     { name = "tff-core", editable = "packages/tff-core" },
 ]
 

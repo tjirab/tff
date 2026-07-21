@@ -10,7 +10,7 @@ authors = [
 ]
 dependencies = [
     "tff-core>=0.5.0",
-    "sqlmesh>=0.234.0",
+    "sqlmesh>=0.236.0",
 ]
 classifiers = [
     "Programming Language :: Python :: 3",
