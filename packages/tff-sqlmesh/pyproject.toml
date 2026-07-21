@@ -9,7 +9,7 @@ authors = [
     { name = "Bart Schuijt", email = "schuijt.bart@gmail.com" }
 ]
 dependencies = [
-    "tff-core>=0.2.3",
+    "tff-core>=0.5.0",
     "sqlmesh>=0.234.0",
 ]
 classifiers = [
