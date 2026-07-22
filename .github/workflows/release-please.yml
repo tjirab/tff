@@ -13,7 +13,7 @@ jobs:
   release-please:
     runs-on: ubuntu-latest
     outputs:
-      release_created: ${{ steps.release.outputs['packages/tff-core--release_created'] || steps.release.outputs['packages/tff-sqlmesh--release_created'] || steps.release.outputs['packages/tff-dbt--release_created'] }}
+      release_created: ${{ steps.release.outputs['packages/tff--release_created'] || steps.release.outputs['packages/tff-sqlmesh--release_created'] || steps.release.outputs['packages/tff-dbt--release_created'] }}
     steps:
       - uses: googleapis/release-please-action@v5
         id: release
@@ -35,7 +35,7 @@ jobs:
           enable-cache: true
       - name: Build all packages
         run: |
-          uv build --package tff-core
+          uv build --package tff
           uv build --package tff-sqlmesh
           uv build --package tff-dbt
       - name: Publish all packages to PyPI

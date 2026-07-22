@@ -1,5 +1,5 @@
 [project]
-name = "tff-core"
+name = "tff"
 version = "0.5.0"
 description = "Core rules and fitness functions engine for transformation projects"
 readme = "README.md"
@@ -22,8 +22,16 @@ classifiers = [
     "Operating System :: OS Independent",
 ]
 
+[project.optional-dependencies]
+sqlmesh = [
+    "sqlmesh>=0.234.0",
+]
+dbt = []
+
 [project.scripts]
 tff = "tff.core.cli:main"
+tff-dbt = "tff.dbt.cli:main"
+tff-sqlmesh = "tff.sqlmesh.cli:main"
 
 [build-system]
 requires = ["hatchling"]

@@ -71,7 +71,7 @@ def test_get_runner_import_error_dbt():
         "importlib.import_module",
         side_effect=ImportError("No module named 'tff.dbt.runner'"),
     ):
-        with pytest.raises(ImportError, match="tff-dbt is not installed"):
+        with pytest.raises(ImportError, match="tff is not installed with dbt support"):
             _get_runner("dbt")
 
 
@@ -80,7 +80,7 @@ def test_get_runner_import_error_sqlmesh():
         "importlib.import_module",
         side_effect=ImportError("No module named 'tff.sqlmesh.runner'"),
     ):
-        with pytest.raises(ImportError, match="tff-sqlmesh is not installed"):
+        with pytest.raises(ImportError, match="tff is not installed with sqlmesh support"):
             _get_runner("sqlmesh")
 
 
@@ -386,7 +386,7 @@ def test_info_command_dbt(tmp_path: Path, capsys):
     with patch("importlib.metadata.version") as mock_version:
 
         def mock_version_side_effect(pkg):
-            if pkg == "tff-core":
+            if pkg == "tff":
                 return "1.0.0"
             raise importlib.metadata.PackageNotFoundError("Package not found")
 
@@ -405,8 +405,8 @@ def test_info_command_dbt(tmp_path: Path, capsys):
         assert "Contract groups:" in captured.out
         assert "Exclusions:" in captured.out
         assert "Adapter Versions" in captured.out
-        assert "tff-core" in captured.out
-        assert "not installed" in captured.out
+        assert "tff (core)" in captured.out
+        assert "dbt integration" in captured.out
         assert "Provider Files" in captured.out
         assert "dbt_project.yml" in captured.out
         assert "manifest.json" in captured.out
@@ -469,32 +469,26 @@ def test_info_command_with_virtualenv(tmp_path: Path, capsys):
     site_packages.mkdir(parents=True)
 
     # Create dist-info directories for metadata
-    tff_core_dist = site_packages / "tff_core-1.2.3.dist-info"
-    tff_core_dist.mkdir()
-    (tff_core_dist / "METADATA").write_text("Name: tff-core\nVersion: 1.2.3\n")
-
-    tff_sqlmesh_dist = site_packages / "tff_sqlmesh-4.5.6.dist-info"
-    tff_sqlmesh_dist.mkdir()
-    (tff_sqlmesh_dist / "METADATA").write_text("Name: tff-sqlmesh\nVersion: 4.5.6\n")
+    tff_dist = site_packages / "tff-1.2.3.dist-info"
+    tff_dist.mkdir()
+    (tff_dist / "METADATA").write_text("Name: tff\nVersion: 1.2.3\n")
 
     # Create Windows-style virtualenv site-packages for coverage
     win_site_packages = tmp_path / ".venv" / "Lib" / "site-packages"
     win_site_packages.mkdir(parents=True)
-    win_tff_core_dist = win_site_packages / "tff_core-1.2.3.dist-info"
-    win_tff_core_dist.mkdir()
-    (win_tff_core_dist / "METADATA").write_text("Name: tff-core\nVersion: 1.2.3\n")
+    win_tff_dist = win_site_packages / "tff-1.2.3.dist-info"
+    win_tff_dist.mkdir()
+    (win_tff_dist / "METADATA").write_text("Name: tff\nVersion: 1.2.3\n")
 
     exit_code = main(["info", "--project", str(tmp_path), "--provider", "sqlmesh"])
     assert exit_code == 0
     captured = capsys.readouterr()
 
     # Verify that the versions from the simulated virtualenv are displayed
-    assert "tff-core" in captured.out
+    assert "tff (core)" in captured.out
     assert "1.2.3" in captured.out
-    assert "tff-sqlmesh" in captured.out
-    assert "4.5.6" in captured.out
-    assert "tff-dbt" in captured.out
-    assert "not installed" in captured.out
+    assert "sqlmesh integration" in captured.out
+    assert "dbt integration" in captured.out
 
 
 @patch("tff.core.cli._detect_provider")

@@ -10,20 +10,20 @@ TFF is structured to separate the core, adapter-agnostic logic of parsing and ch
 
 ```mermaid
 graph TD
-    subgraph Core Engine [tff-core]
+    subgraph Core Engine [tff.core]
         Model[ModelRepresentation]
         Rules[Linter Rules]
         Checks[Architectural Checks]
         Report[Rich Lint Reporter]
     end
 
-    subgraph SQLMesh Adapter [tff-sqlmesh]
+    subgraph SQLMesh Adapter [tff.sqlmesh]
         SM_Loader[FitnessLoader] -->|"Wraps via type()"| Rules
         SM_Runner[Runner] -->|"Maps SQLMesh Model"| Model
         SM_CLI[tff-sqlmesh CLI] --> SM_Runner
     end
 
-    subgraph dbt Adapter [tff-dbt]
+    subgraph dbt Adapter [tff.dbt]
         DBT_Manifest[Manifest Parser] -->|"Maps nodes & tests"| Model
         DBT_Runner[Runner] --> DBT_Manifest
         DBT_CLI[tff-dbt CLI] --> DBT_Runner
@@ -36,9 +36,9 @@ graph TD
 ```
 
 ### Core Architecture Components
-1. **[tff-core](../packages/tff-core)**: Contains the base model definitions (`ModelRepresentation`), abstract rule classes, the 13 built-in rules/checks, and the console rendering engine using `rich`. It has **no dependency** on SQLMesh or dbt.
-2. **[tff-sqlmesh](../packages/tff-sqlmesh)**: Plugs directly into SQLMesh. It maps native SQLMesh models into `ModelRepresentation` objects and wraps core rules dynamically using Python's `type()` constructor.
-3. **[tff-dbt](../packages/tff-dbt)**: Parsers compile-time artifacts (`manifest.json`) and resolves references, schemas, and tests, running core rules on the compiled model layout.
+1. **[tff](../packages/tff)**: Contains the base model definitions (`ModelRepresentation`), abstract rule classes, the built-in rules/checks, and the console rendering engine. It also contains the `dbt` and `sqlmesh` adapters under submodules.
+2. **dbt Adapter (`tff.dbt`)**: Parses compile-time artifacts (`manifest.json`) and resolves references, schemas, and tests, running core rules on the compiled model layout.
+3. **SQLMesh Adapter (`tff.sqlmesh`)**: Plugs directly into SQLMesh. It maps native SQLMesh models into `ModelRepresentation` objects and wraps core rules dynamically.
 
 ---
 
@@ -48,9 +48,9 @@ graph TD
 ├── pyproject.toml              # Root workspace settings
 ├── release-please-config.json  # Release Please configurations
 ├── packages/
-│   ├── tff-core/               # Shared logic & engine
-│   ├── tff-sqlmesh/            # SQLMesh loader, runner, & CLI
-│   ├── tff-dbt/                # dbt parser, runner, & CLI
+│   ├── tff/                    # Unified codebase (core, dbt, sqlmesh)
+│   ├── tff-dbt/                # Backward compatibility wrapper for tff[dbt]
+│   ├── tff-sqlmesh/            # Backward compatibility wrapper for tff[sqlmesh]
 │   └── sqlmesh-ff/             # Deprecated backward compatibility wrapper
 ```
 

@@ -1,19 +1,19 @@
 # Using TFF with dbt
 
-TFF integrates with [dbt](https://www.getdbt.com) using the `tff-dbt` package. Rather than running at query time, it inspects your compiled dbt project manifest to run linter rules and architectural validation.
+TFF integrates with [dbt](https://www.getdbt.com) using the `tff` package with the `dbt` extra. Rather than running at query time, it inspects your compiled dbt project manifest to run linter rules and architectural validation.
 
 ---
 
 ## Installation
 
-Install the dbt adapter:
+Install the dbt adapter extra:
 
 ```bash
 # With uv:
-uv add tff-dbt
+uv add "tff[dbt]"
 
 # Or pip:
-pip install tff-dbt
+pip install "tff[dbt]"
 ```
 
 ---
@@ -34,7 +34,7 @@ pip install tff-dbt
 
 ## How It Works
 
-The `tff-dbt` linter reads `target/manifest.json` relative to your project root. It maps dbt resource nodes into a generic representations to run adapter-agnostic rule checks:
+The `tff` dbt linter reads `target/manifest.json` relative to your project root. It maps dbt resource nodes into generic representations to run adapter-agnostic rule checks:
 
 ### 1. Model & Source Mapping
 * **Models, Seeds, and Snapshots** are mapped to active models.
