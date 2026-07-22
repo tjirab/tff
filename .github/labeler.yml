@@ -2,33 +2,33 @@
 
 rules:
   - changed-files:
-      - any-glob-to-any-file: "packages/tff/src/tff/core/rules/**"
+      - any-glob-to-any-file: "packages/tff-core/src/tff/core/rules/**"
 
 checks:
   - changed-files:
-      - any-glob-to-any-file: "packages/tff/src/tff/core/checks/**"
+      - any-glob-to-any-file: "packages/tff-core/src/tff/core/checks/**"
 
 core:
   - all:
       - changed-files:
-          - any-glob-to-any-file: "packages/tff/src/tff/core/**"
+          - any-glob-to-any-file: "packages/tff-core/src/tff/core/**"
       - changed-files:
-          - all-globs-to-all-files: "!packages/tff/src/tff/core/rules/**"
+          - all-globs-to-all-files: "!packages/tff-core/src/tff/core/rules/**"
       - changed-files:
-          - all-globs-to-all-files: "!packages/tff/src/tff/core/checks/**"
+          - all-globs-to-all-files: "!packages/tff-core/src/tff/core/checks/**"
 
 dbt:
   - changed-files:
       - any-glob-to-any-file:
           - "packages/tff-dbt/**"
-          - "packages/tff/src/tff/dbt/**"
+          - "packages/tff-core/src/tff/dbt/**"
 
 sqlmesh:
   - changed-files:
       - any-glob-to-any-file:
           - "packages/tff-sqlmesh/**"
           - "packages/sqlmesh-ff/**"
-          - "packages/tff/src/tff/sqlmesh/**"
+          - "packages/tff-core/src/tff/sqlmesh/**"
 
 tests:
   - changed-files:

@@ -1,6 +1,6 @@
 # Using TFF with dbt
 
-TFF integrates with [dbt](https://www.getdbt.com) using the `tff` package with the `dbt` extra. Rather than running at query time, it inspects your compiled dbt project manifest to run linter rules and architectural validation.
+TFF integrates with [dbt](https://www.getdbt.com) using the `tff-core` package with the `dbt` extra. Rather than running at query time, it inspects your compiled dbt project manifest to run linter rules and architectural validation.
 
 ---
 
@@ -10,10 +10,10 @@ Install the dbt adapter extra:
 
 ```bash
 # With uv:
-uv add "tff[dbt]"
+uv add "tff-core[dbt]"
 
 # Or pip:
-pip install "tff[dbt]"
+pip install "tff-core[dbt]"
 ```
 
 ---

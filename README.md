@@ -1,7 +1,7 @@
 # TFF: Transformation Fitness Functions
 
-[![PyPI version](https://img.shields.io/pypi/v/tff.svg?logo=pypi)](https://pypi.org/project/tff/)
-[![Python versions](https://img.shields.io/pypi/pyversions/tff.svg?logo=python)](https://pypi.org/project/tff/)
+[![PyPI version](https://img.shields.io/pypi/v/tff-core.svg?logo=pypi)](https://pypi.org/project/tff-core/)
+[![Python versions](https://img.shields.io/pypi/pyversions/tff-core.svg?logo=python)](https://pypi.org/project/tff-core/)
 
 Configurable fitness functions engine and linter for transformation projects. 
 
@@ -43,19 +43,19 @@ Install the package with the adapter matching your pipeline tool:
 ### 📐 For SQLMesh projects:
 ```bash
 # With uv:
-uv add "tff[sqlmesh]"
+uv add "tff-core[sqlmesh]"
 
 # Or pip:
-pip install "tff[sqlmesh]"
+pip install "tff-core[sqlmesh]"
 ```
 
 ### ⚡ For dbt projects:
 ```bash
 # With uv:
-uv add "tff[dbt]"
+uv add "tff-core[dbt]"
 
 # Or pip:
-pip install "tff[dbt]"
+pip install "tff-core[dbt]"
 ```
 
 

@@ -23,6 +23,6 @@ jobs:
       - run: uv run diff-cover coverage.xml --compare-branch=origin/main --fail-under=100
       - name: Verify packages build
         run: |
-          uv build --package tff
+          uv build --package tff-core
           uv build --package tff-sqlmesh
           uv build --package tff-dbt

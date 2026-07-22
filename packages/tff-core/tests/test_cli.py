@@ -386,7 +386,7 @@ def test_info_command_dbt(tmp_path: Path, capsys):
     with patch("importlib.metadata.version") as mock_version:
 
         def mock_version_side_effect(pkg):
-            if pkg == "tff":
+            if pkg == "tff-core":
                 return "1.0.0"
             raise importlib.metadata.PackageNotFoundError("Package not found")
 
@@ -405,7 +405,7 @@ def test_info_command_dbt(tmp_path: Path, capsys):
         assert "Contract groups:" in captured.out
         assert "Exclusions:" in captured.out
         assert "Adapter Versions" in captured.out
-        assert "tff (core)" in captured.out
+        assert "tff-core" in captured.out
         assert "dbt integration" in captured.out
         assert "Provider Files" in captured.out
         assert "dbt_project.yml" in captured.out
@@ -469,23 +469,23 @@ def test_info_command_with_virtualenv(tmp_path: Path, capsys):
     site_packages.mkdir(parents=True)
 
     # Create dist-info directories for metadata
-    tff_dist = site_packages / "tff-1.2.3.dist-info"
-    tff_dist.mkdir()
-    (tff_dist / "METADATA").write_text("Name: tff\nVersion: 1.2.3\n")
+    tff_core_dist = site_packages / "tff_core-1.2.3.dist-info"
+    tff_core_dist.mkdir()
+    (tff_core_dist / "METADATA").write_text("Name: tff-core\nVersion: 1.2.3\n")
 
     # Create Windows-style virtualenv site-packages for coverage
     win_site_packages = tmp_path / ".venv" / "Lib" / "site-packages"
     win_site_packages.mkdir(parents=True)
-    win_tff_dist = win_site_packages / "tff-1.2.3.dist-info"
-    win_tff_dist.mkdir()
-    (win_tff_dist / "METADATA").write_text("Name: tff\nVersion: 1.2.3\n")
+    win_tff_core_dist = win_site_packages / "tff_core-1.2.3.dist-info"
+    win_tff_core_dist.mkdir()
+    (win_tff_core_dist / "METADATA").write_text("Name: tff-core\nVersion: 1.2.3\n")
 
     exit_code = main(["info", "--project", str(tmp_path), "--provider", "sqlmesh"])
     assert exit_code == 0
     captured = capsys.readouterr()
 
     # Verify that the versions from the simulated virtualenv are displayed
-    assert "tff (core)" in captured.out
+    assert "tff-core" in captured.out
     assert "1.2.3" in captured.out
     assert "sqlmesh integration" in captured.out
     assert "dbt integration" in captured.out

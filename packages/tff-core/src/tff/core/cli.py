@@ -51,7 +51,7 @@ def _get_runner(provider: str) -> Any:
         except ImportError as e:
             raise ImportError(
                 "dbt project detected, but tff is not installed with dbt support.\n"
-                "Please install it using: pip install \"tff[dbt]\" or uv add \"tff[dbt]\""
+                "Please install it using: pip install \"tff-core[dbt]\" or uv add \"tff-core[dbt]\""
             ) from e
     elif provider == "sqlmesh":
         try:
@@ -59,7 +59,7 @@ def _get_runner(provider: str) -> Any:
         except ImportError as e:
             raise ImportError(
                 "SQLMesh project detected, but tff is not installed with sqlmesh support.\n"
-                "Please install it using: pip install \"tff[sqlmesh]\" or uv add \"tff[sqlmesh]\""
+                "Please install it using: pip install \"tff-core[sqlmesh]\" or uv add \"tff-core[sqlmesh]\""
             ) from e
     else:
         raise ValueError(f"Unknown provider: {provider}")
@@ -401,13 +401,13 @@ def main(argv: list[str] | None = None) -> int:
                 return "[dim red]not installed[/dim red]"
             return f"[cyan]{ver}[/cyan]"
 
-        tff_ver = format_ver("tff")
-        ver_table.add_row("  [bold]tff (core)[/bold]", tff_ver)
+        tff_ver = format_ver("tff-core")
+        ver_table.add_row("  [bold]tff-core[/bold]", tff_ver)
         
         import importlib.util
         has_sqlmesh = importlib.util.find_spec("sqlmesh") is not None
             
-        sqlmesh_status = f"{tff_ver} [dim](sqlmesh extra enabled)[/dim]" if has_sqlmesh else "[dim red]not enabled[/dim red] [dim](install using 'tff[sqlmesh]')[/dim]"
+        sqlmesh_status = f"{tff_ver} [dim](sqlmesh extra enabled)[/dim]" if has_sqlmesh else "[dim red]not enabled[/dim red] [dim](install using 'tff-core[sqlmesh]')[/dim]"
         ver_table.add_row("  [bold]sqlmesh integration[/bold]", sqlmesh_status)
         ver_table.add_row("  [bold]dbt integration[/bold]", f"{tff_ver} [dim](core)[/dim]")
         console.print(ver_table)

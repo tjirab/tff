@@ -36,7 +36,7 @@ graph TD
 ```
 
 ### Core Architecture Components
-1. **[tff](../packages/tff)**: Contains the base model definitions (`ModelRepresentation`), abstract rule classes, the built-in rules/checks, and the console rendering engine. It also contains the `dbt` and `sqlmesh` adapters under submodules.
+1. **[tff-core](../packages/tff-core)**: Contains the base model definitions (`ModelRepresentation`), abstract rule classes, the built-in rules/checks, and the console rendering engine. It also contains the `dbt` and `sqlmesh` adapters under submodules.
 2. **dbt Adapter (`tff.dbt`)**: Parses compile-time artifacts (`manifest.json`) and resolves references, schemas, and tests, running core rules on the compiled model layout.
 3. **SQLMesh Adapter (`tff.sqlmesh`)**: Plugs directly into SQLMesh. It maps native SQLMesh models into `ModelRepresentation` objects and wraps core rules dynamically.
 
@@ -48,9 +48,9 @@ graph TD
 ├── pyproject.toml              # Root workspace settings
 ├── release-please-config.json  # Release Please configurations
 ├── packages/
-│   ├── tff/                    # Unified codebase (core, dbt, sqlmesh)
-│   ├── tff-dbt/                # Backward compatibility wrapper for tff[dbt]
-│   ├── tff-sqlmesh/            # Backward compatibility wrapper for tff[sqlmesh]
+│   ├── tff-core/               # Unified codebase (core, dbt, sqlmesh)
+│   ├── tff-dbt/                # Backward compatibility wrapper for tff-core[dbt]
+│   ├── tff-sqlmesh/            # Backward compatibility wrapper for tff-core[sqlmesh]
 │   └── sqlmesh-ff/             # Deprecated backward compatibility wrapper
 ```
 
