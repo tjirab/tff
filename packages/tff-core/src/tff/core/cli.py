@@ -50,16 +50,16 @@ def _get_runner(provider: str) -> Any:
             return importlib.import_module("tff.dbt.runner")
         except ImportError as e:
             raise ImportError(
-                "dbt project detected, but tff-dbt is not installed in the current environment.\n"
-                "Please install it using: pip install tff-dbt"
+                "dbt project detected, but tff is not installed with dbt support.\n"
+                "Please install it using: pip install \"tff-core[dbt]\" or uv add \"tff-core[dbt]\""
             ) from e
     elif provider == "sqlmesh":
         try:
             return importlib.import_module("tff.sqlmesh.runner")
         except ImportError as e:
             raise ImportError(
-                "SQLMesh project detected, but tff-sqlmesh is not installed in the current environment.\n"
-                "Please install it using: pip install tff-sqlmesh"
+                "SQLMesh project detected, but tff is not installed with sqlmesh support.\n"
+                "Please install it using: pip install \"tff-core[sqlmesh]\" or uv add \"tff-core[sqlmesh]\""
             ) from e
     else:
         raise ValueError(f"Unknown provider: {provider}")
@@ -401,9 +401,15 @@ def main(argv: list[str] | None = None) -> int:
                 return "[dim red]not installed[/dim red]"
             return f"[cyan]{ver}[/cyan]"
 
-        ver_table.add_row("  [bold]tff-core[/bold]", format_ver("tff-core"))
-        ver_table.add_row("  [bold]tff-dbt[/bold]", format_ver("tff-dbt"))
-        ver_table.add_row("  [bold]tff-sqlmesh[/bold]", format_ver("tff-sqlmesh"))
+        tff_ver = format_ver("tff-core")
+        ver_table.add_row("  [bold]tff-core[/bold]", tff_ver)
+        
+        import importlib.util
+        has_sqlmesh = importlib.util.find_spec("sqlmesh") is not None
+            
+        sqlmesh_status = f"{tff_ver} [dim](sqlmesh extra enabled)[/dim]" if has_sqlmesh else "[dim red]not enabled[/dim red] [dim](install using 'tff-core[sqlmesh]')[/dim]"
+        ver_table.add_row("  [bold]sqlmesh integration[/bold]", sqlmesh_status)
+        ver_table.add_row("  [bold]dbt integration[/bold]", f"{tff_ver} [dim](core)[/dim]")
         console.print(ver_table)
 
         prov_table = Table(show_header=False, box=None, padding=(0, 2, 0, 0))

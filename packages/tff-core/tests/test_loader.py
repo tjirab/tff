@@ -105,7 +105,7 @@ def test_wrapped_rule_execution() -> None:
 def test_fitness_loader_integration() -> None:
     from sqlmesh.core.context import Context
 
-    fixture_path = Path(__file__).parent / "fixtures" / "minimal_project"
+    fixture_path = Path(__file__).parent / "fixtures" / "sqlmesh_minimal_project"
     context = Context(paths=[str(fixture_path)], loader=FitnessLoader)
 
     # Verify that the FitnessLoader configured fitness settings

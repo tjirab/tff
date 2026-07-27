@@ -38,24 +38,24 @@ Setup and usage details differ depending on your pipeline engine. Refer to the c
 
 ## Quick Installation
 
-Install the adapter matching your pipeline tool:
+Install the package with the adapter matching your pipeline tool:
 
 ### 📐 For SQLMesh projects:
 ```bash
 # With uv:
-uv add tff-sqlmesh
+uv add "tff-core[sqlmesh]"
 
 # Or pip:
-pip install tff-sqlmesh
+pip install "tff-core[sqlmesh]"
 ```
 
 ### ⚡ For dbt projects:
 ```bash
 # With uv:
-uv add tff-dbt
+uv add "tff-core[dbt]"
 
 # Or pip:
-pip install tff-dbt
+pip install "tff-core[dbt]"
 ```
 
 

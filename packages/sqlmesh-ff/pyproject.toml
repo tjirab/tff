@@ -9,7 +9,7 @@ authors = [
     { name = "Bart Schuijt", email = "schuijt.bart@gmail.com" }
 ]
 dependencies = [
-    "tff-sqlmesh>=0.2.0"
+    "tff-core[sqlmesh]>=0.5.0"
 ]
 
 [build-system]
@@ -20,4 +20,4 @@ build-backend = "hatchling.build"
 packages = ["src/sqlmesh_ff"]
 
 [tool.uv.sources]
-tff-sqlmesh = { workspace = true }
+tff-core = { workspace = true }

@@ -1,6 +1,6 @@
 # Using TFF with SQLMesh
 
-TFF integrates with [SQLMesh](https://sqlmesh.com) using the `tff-sqlmesh` package. It runs fitness checks in two ways:
+TFF integrates with [SQLMesh](https://sqlmesh.com) using the `tff-core` package with the `sqlmesh` extra. It runs fitness checks in two ways:
 1. **Directly inside SQLMesh**: Automatically hooks into SQLMesh's native `sqlmesh lint` CLI via a custom project loader.
 2. **Via the standalone CLI**: Run checks independently with the `tff lint` command.
 
@@ -8,14 +8,14 @@ TFF integrates with [SQLMesh](https://sqlmesh.com) using the `tff-sqlmesh` packa
 
 ## Installation
 
-Install the SQLMesh adapter:
+Install the SQLMesh adapter extra:
 
 ```bash
 # With uv:
-uv add tff-sqlmesh
+uv add "tff-core[sqlmesh]"
 
 # Or pip:
-pip install tff-sqlmesh
+pip install "tff-core[sqlmesh]"
 ```
 
 ---
