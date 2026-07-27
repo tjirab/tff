@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.0](https://github.com/tjirab/tff/compare/tff-core-v0.5.0...tff-core-v0.6.0) (2026-07-27)
+
+
+### Features
+
+* consolidate packages into tff-core with extras ([#98](https://github.com/tjirab/tff/issues/98)) ([1c1cfd9](https://github.com/tjirab/tff/commit/1c1cfd9d0637876518a0ff59c6760ec7ceb909db))
+
 ## [0.5.0](https://github.com/tjirab/tff/compare/tff-core-v0.4.0...tff-core-v0.5.0) (2026-07-04)
 
 
