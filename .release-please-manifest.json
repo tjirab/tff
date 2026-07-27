@@ -1,5 +1,3 @@
 {
-  "packages/tff-core": "0.6.0",
-  "packages/tff-sqlmesh": "0.4.0",
-  "packages/tff-dbt": "0.4.0"
+  "packages/tff-core": "0.6.0"
 }
