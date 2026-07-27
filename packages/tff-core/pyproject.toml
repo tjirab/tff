@@ -24,7 +24,7 @@ classifiers = [
 
 [project.optional-dependencies]
 sqlmesh = [
-    "sqlmesh>=0.234.0",
+    "sqlmesh>=0.236.1",
 ]
 dbt = []
 
