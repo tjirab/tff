@@ -65,9 +65,16 @@ def load_dbt_models(
 
         # Metadata parsing
         meta = node.get("meta", {})
-        owner = meta.get("owner") or node.get("config", {}).get("meta", {}).get("owner")
+        config_meta = node.get("config", {}).get("meta", {})
+        owner = meta.get("owner") or config_meta.get("owner")
 
-        grains_raw = meta.get("grain") or meta.get("grains") or []
+        grains_raw = (
+            meta.get("grain")
+            or meta.get("grains")
+            or config_meta.get("grain")
+            or config_meta.get("grains")
+            or []
+        )
         if isinstance(grains_raw, str):
             grains = [grains_raw]
         elif isinstance(grains_raw, list):
