@@ -58,7 +58,7 @@ git checkout -b feat/<task-summary> # For new features
 1.  Stage all final changes (`git add .`).
 2.  Commit with a comprehensive, atomic message that references the original task/ticket ID.
     ```bash
-    git commit -m "feat(scope): [TICKET-ID] Descriptive summary of the change and why it was needed."
+    git commit -m "feat(scope): Descriptive summary of the change and why it was needed."
     ```
 3.  Push the branch (`git push origin <branch-name>`).
 4.  Create a Pull Request (PR) against `main` with `gh pr create`, ensuring all changes are logically grouped and ready for peer review.
