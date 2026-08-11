@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.7.0](https://github.com/tjirab/tff/compare/tff-core-v0.6.0...tff-core-v0.7.0) (2026-08-11)
+
+
+### Features
+
+* **dbt:** Assert dbt metadata check coverage ([#112](https://github.com/tjirab/tff/issues/112)) ([2f9d4b7](https://github.com/tjirab/tff/commit/2f9d4b75494bb82d96e1068bcbea1ce84bcd40e4))
+* support nested layer and domain resolution ([#108](https://github.com/tjirab/tff/issues/108)) ([#109](https://github.com/tjirab/tff/issues/109)) ([8cdb7be](https://github.com/tjirab/tff/commit/8cdb7be86b0abe58bd092d866d3cf5d3a2112c83))
+
 ## [0.6.0](https://github.com/tjirab/tff/compare/tff-core-v0.5.0...tff-core-v0.6.0) (2026-07-27)
 
 
