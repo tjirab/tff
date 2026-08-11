@@ -1,7 +1,13 @@
 from tff.core.config import FitnessFunctionsConfig
 from tff.core.context import set_ff_config
 from tff.core.model import ModelRepresentation
-from tff.core.rules.metadata import NoMissingNotNull, NoMissingUniqueValues
+from tff.core.rules.metadata import (
+    NoMissingOwner,
+    NoMissingDescription,
+    NoMissingGrain,
+    NoMissingNotNull,
+    NoMissingUniqueValues,
+)
 
 
 def test_no_missing_not_null_rule():
@@ -74,14 +80,125 @@ def test_no_missing_unique_values_rule():
     assert rule.check_model(model) is None
 
 
+def test_no_missing_owner_rule():
+    config = FitnessFunctionsConfig()
+    config.rules.metadata.owner = True
+    set_ff_config(config)
+
+    rule = NoMissingOwner()
+
+    # Model with no owner
+    model = ModelRepresentation(
+        name="test_model",
+        path="models/marts/test_model.sql",
+        dialect="bigquery",
+        is_symbolic=False,
+        is_external=False,
+    )
+    assert rule.check_model(model) is not None
+
+    # Model with owner
+    model_with_owner = ModelRepresentation(
+        name="test_model",
+        path="models/marts/test_model.sql",
+        dialect="bigquery",
+        owner="data-team",
+        is_symbolic=False,
+        is_external=False,
+    )
+    assert rule.check_model(model_with_owner) is None
+
+    # Disabled
+    config.rules.metadata.owner = False
+    set_ff_config(config)
+    assert rule.check_model(model) is None
+
+
+def test_no_missing_description_rule():
+    config = FitnessFunctionsConfig()
+    config.rules.metadata.description = True
+    set_ff_config(config)
+
+    rule = NoMissingDescription()
+
+    # Model with no description
+    model = ModelRepresentation(
+        name="test_model",
+        path="models/marts/test_model.sql",
+        dialect="bigquery",
+        is_symbolic=False,
+        is_external=False,
+    )
+    assert rule.check_model(model) is not None
+
+    # Model with description
+    model_with_desc = ModelRepresentation(
+        name="test_model",
+        path="models/marts/test_model.sql",
+        dialect="bigquery",
+        description="A great model",
+        is_symbolic=False,
+        is_external=False,
+    )
+    assert rule.check_model(model_with_desc) is None
+
+    # Disabled
+    config.rules.metadata.description = False
+    set_ff_config(config)
+    assert rule.check_model(model) is None
+
+
+def test_no_missing_grain_rule():
+    config = FitnessFunctionsConfig()
+    config.rules.metadata.grain = True
+    set_ff_config(config)
+
+    rule = NoMissingGrain()
+
+    # Model with no grain
+    model = ModelRepresentation(
+        name="test_model",
+        path="models/marts/test_model.sql",
+        dialect="bigquery",
+        grains=[],
+        is_symbolic=False,
+        is_external=False,
+    )
+    assert rule.check_model(model) is not None
+
+    # Model with grain
+    model_with_grain = ModelRepresentation(
+        name="test_model",
+        path="models/marts/test_model.sql",
+        dialect="bigquery",
+        grains=["user_id"],
+        is_symbolic=False,
+        is_external=False,
+    )
+    assert rule.check_model(model_with_grain) is None
+
+    # Disabled
+    config.rules.metadata.grain = False
+    set_ff_config(config)
+    assert rule.check_model(model) is None
+
+
 def test_rules_skip_symbolic_and_external_models():
     config = FitnessFunctionsConfig()
+    config.rules.metadata.owner = True
+    config.rules.metadata.description = True
+    config.rules.metadata.grain = True
     config.rules.metadata.not_null = True
     config.rules.metadata.unique_values = True
     set_ff_config(config)
 
-    rule_not_null = NoMissingNotNull()
-    rule_unique = NoMissingUniqueValues()
+    rules = [
+        NoMissingOwner(),
+        NoMissingDescription(),
+        NoMissingGrain(),
+        NoMissingNotNull(),
+        NoMissingUniqueValues(),
+    ]
 
     # Symbolic model
     symbolic_model = ModelRepresentation(
@@ -92,8 +209,8 @@ def test_rules_skip_symbolic_and_external_models():
         is_symbolic=True,
         is_external=False,
     )
-    assert rule_not_null.check_model(symbolic_model) is None
-    assert rule_unique.check_model(symbolic_model) is None
+    for rule in rules:
+        assert rule.check_model(symbolic_model) is None
 
     # External model
     external_model = ModelRepresentation(
@@ -104,5 +221,6 @@ def test_rules_skip_symbolic_and_external_models():
         is_symbolic=False,
         is_external=True,
     )
-    assert rule_not_null.check_model(external_model) is None
-    assert rule_unique.check_model(external_model) is None
+    for rule in rules:
+        assert rule.check_model(external_model) is None
+

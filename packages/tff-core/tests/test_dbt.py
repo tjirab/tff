@@ -208,3 +208,219 @@ def test_run_all_checks(tmp_path: Path):
     assert selected_subset == ["rules"]
     assert len(findings_subset) > 0
 
+
+def test_dbt_metadata_checks_coverage(tmp_path: Path):
+    target_dir = tmp_path / "target"
+    target_dir.mkdir(parents=True, exist_ok=True)
+    manifest_file = target_dir / "manifest.json"
+
+    # Define test models
+    models_data = {
+        "model.my_project.model_ok": {
+            "resource_type": "model",
+            "name": "model_ok",
+            "original_file_path": "models/staging/model_ok.sql",
+            "columns": {},
+            "config": {"materialized": "table"},
+            "meta": {"owner": "data-team", "grain": "user_id"},
+            "description": "An okay model",
+            "depends_on": {"nodes": []}
+        },
+        "model.my_project.model_config_meta": {
+            "resource_type": "model",
+            "name": "model_config_meta",
+            "original_file_path": "models/staging/model_config_meta.sql",
+            "columns": {},
+            "config": {
+                "materialized": "table",
+                "meta": {"owner": "config-owner", "grain": "config-grain"}
+            },
+            "description": "Model config meta",
+            "depends_on": {"nodes": []}
+        },
+        "model.my_project.model_missing_owner": {
+            "resource_type": "model",
+            "name": "model_missing_owner",
+            "original_file_path": "models/staging/model_missing_owner.sql",
+            "columns": {},
+            "config": {},
+            "meta": {"grain": "user_id"},
+            "description": "Missing owner",
+            "depends_on": {"nodes": []}
+        },
+        "model.my_project.model_missing_desc": {
+            "resource_type": "model",
+            "name": "model_missing_desc",
+            "original_file_path": "models/staging/model_missing_desc.sql",
+            "columns": {},
+            "config": {},
+            "meta": {"owner": "data-team", "grain": "user_id"},
+            "depends_on": {"nodes": []}
+        },
+        "model.my_project.model_missing_grain": {
+            "resource_type": "model",
+            "name": "model_missing_grain",
+            "original_file_path": "models/staging/model_missing_grain.sql",
+            "columns": {},
+            "config": {},
+            "meta": {"owner": "data-team"},
+            "description": "Missing grain",
+            "depends_on": {"nodes": []}
+        },
+        "model.my_project.model_missing_not_null": {
+            "resource_type": "model",
+            "name": "model_missing_not_null",
+            "original_file_path": "models/staging/model_missing_not_null.sql",
+            "columns": {},
+            "config": {},
+            "meta": {"owner": "data-team", "grain": "user_id"},
+            "description": "Missing not null",
+            "depends_on": {"nodes": []}
+        },
+        "model.my_project.model_missing_unique": {
+            "resource_type": "model",
+            "name": "model_missing_unique",
+            "original_file_path": "models/staging/model_missing_unique.sql",
+            "columns": {},
+            "config": {},
+            "meta": {"owner": "data-team", "grain": "user_id"},
+            "description": "Missing unique",
+            "depends_on": {"nodes": []}
+        }
+    }
+
+    # Define test node mappings for not_null and unique tests
+    test_nodes = {
+        # model_ok has both
+        "test.my_project.not_null_model_ok_id": {
+            "resource_type": "test",
+            "name": "not_null_model_ok_id",
+            "test_metadata": {"name": "not_null", "kwargs": {"column_name": "id"}},
+            "depends_on": {"nodes": ["model.my_project.model_ok"]}
+        },
+        "test.my_project.unique_model_ok_id": {
+            "resource_type": "test",
+            "name": "unique_model_ok_id",
+            "test_metadata": {"name": "unique", "kwargs": {"column_name": "id"}},
+            "depends_on": {"nodes": ["model.my_project.model_ok"]}
+        },
+        # model_config_meta has both
+        "test.my_project.not_null_model_config_meta_id": {
+            "resource_type": "test",
+            "name": "not_null_model_config_meta_id",
+            "test_metadata": {"name": "not_null", "kwargs": {"column_name": "id"}},
+            "depends_on": {"nodes": ["model.my_project.model_config_meta"]}
+        },
+        "test.my_project.unique_model_config_meta_id": {
+            "resource_type": "test",
+            "name": "unique_model_config_meta_id",
+            "test_metadata": {"name": "unique", "kwargs": {"column_name": "id"}},
+            "depends_on": {"nodes": ["model.my_project.model_config_meta"]}
+        },
+        # model_missing_owner has both
+        "test.my_project.not_null_model_missing_owner_id": {
+            "resource_type": "test",
+            "name": "not_null_model_missing_owner_id",
+            "test_metadata": {"name": "not_null", "kwargs": {"column_name": "id"}},
+            "depends_on": {"nodes": ["model.my_project.model_missing_owner"]}
+        },
+        "test.my_project.unique_model_missing_owner_id": {
+            "resource_type": "test",
+            "name": "unique_model_missing_owner_id",
+            "test_metadata": {"name": "unique", "kwargs": {"column_name": "id"}},
+            "depends_on": {"nodes": ["model.my_project.model_missing_owner"]}
+        },
+        # model_missing_desc has both
+        "test.my_project.not_null_model_missing_desc_id": {
+            "resource_type": "test",
+            "name": "not_null_model_missing_desc_id",
+            "test_metadata": {"name": "not_null", "kwargs": {"column_name": "id"}},
+            "depends_on": {"nodes": ["model.my_project.model_missing_desc"]}
+        },
+        "test.my_project.unique_model_missing_desc_id": {
+            "resource_type": "test",
+            "name": "unique_model_missing_desc_id",
+            "test_metadata": {"name": "unique", "kwargs": {"column_name": "id"}},
+            "depends_on": {"nodes": ["model.my_project.model_missing_desc"]}
+        },
+        # model_missing_grain has both
+        "test.my_project.not_null_model_missing_grain_id": {
+            "resource_type": "test",
+            "name": "not_null_model_missing_grain_id",
+            "test_metadata": {"name": "not_null", "kwargs": {"column_name": "id"}},
+            "depends_on": {"nodes": ["model.my_project.model_missing_grain"]}
+        },
+        "test.my_project.unique_model_missing_grain_id": {
+            "resource_type": "test",
+            "name": "unique_model_missing_grain_id",
+            "test_metadata": {"name": "unique", "kwargs": {"column_name": "id"}},
+            "depends_on": {"nodes": ["model.my_project.model_missing_grain"]}
+        },
+        # model_missing_not_null only has unique
+        "test.my_project.unique_model_missing_not_null_id": {
+            "resource_type": "test",
+            "name": "unique_model_missing_not_null_id",
+            "test_metadata": {"name": "unique", "kwargs": {"column_name": "id"}},
+            "depends_on": {"nodes": ["model.my_project.model_missing_not_null"]}
+        },
+        # model_missing_unique only has not_null
+        "test.my_project.not_null_model_missing_unique_id": {
+            "resource_type": "test",
+            "name": "not_null_model_missing_unique_id",
+            "test_metadata": {"name": "not_null", "kwargs": {"column_name": "id"}},
+            "depends_on": {"nodes": ["model.my_project.model_missing_unique"]}
+        }
+    }
+
+    manifest_data = {
+        "nodes": {**models_data, **test_nodes},
+        "sources": {},
+        "metadata": {
+            "adapter_type": "duckdb"
+        }
+    }
+    manifest_file.write_text(json.dumps(manifest_data), encoding="utf-8")
+
+    # Write dummy SQL files for path resolution
+    for key, value in models_data.items():
+        rel_path = value["original_file_path"]
+        sql_file = tmp_path / rel_path
+        sql_file.parent.mkdir(parents=True, exist_ok=True)
+        sql_file.write_text("select 1", encoding="utf-8")
+
+    # Load fitness config with all metadata rules enabled
+    config = FitnessFunctionsConfig()
+    config.rules.metadata.enabled = True
+    config.rules.metadata.owner = True
+    config.rules.metadata.description = True
+    config.rules.metadata.grain = True
+    config.rules.metadata.not_null = True
+    config.rules.metadata.unique_values = True
+
+    findings, models_checked, selected = run_all_checks(
+        project_root=tmp_path,
+        config=config,
+    )
+
+    # We checked 7 models
+    assert models_checked == 7
+
+    # Group findings by model name for easy assertion
+    findings_by_model: dict[str, list[str]] = {}
+    for f in findings:
+        if f.model not in findings_by_model:
+            findings_by_model[f.model] = []
+        findings_by_model[f.model].append(f.check)
+
+    # Assert model_ok and model_config_meta have no findings
+    assert "model_ok" not in findings_by_model
+    assert "model_config_meta" not in findings_by_model
+
+    # Assert specific rule violations
+    assert findings_by_model["model_missing_owner"] == ["nomissingowner"]
+    assert findings_by_model["model_missing_desc"] == ["nomissingdescription"]
+    assert findings_by_model["model_missing_grain"] == ["nomissinggrain"]
+    assert findings_by_model["model_missing_not_null"] == ["nomissingnotnull"]
+    assert findings_by_model["model_missing_unique"] == ["nomissinguniquevalues"]
+
+

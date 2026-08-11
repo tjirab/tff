@@ -41,10 +41,16 @@ The `tff` dbt linter reads `target/manifest.json` relative to your project root.
 * **Sources and External Tables** are mapped as external models (skipped for code styling rules but included in dependency graph analysis).
 * **Ephemeral Models** are mapped as symbolic models.
 
-### 2. Schema Test to Audit Mapping
+### 2. Metadata Mapping
+TFF maps dbt model metadata to generic rules from either the node-level `meta` or model-level `config.meta` configurations. This enables metadata rules (`nomissingowner`, `nomissingdescription`, and `nomissinggrain`) to work on dbt projects:
+* **`owner`**: Mapped from `meta.owner` or `config.meta.owner`.
+* **`description`**: Mapped from the standard dbt `description` field.
+* **`grain`**: Mapped from `meta.grain`, `meta.grains`, `config.meta.grain`, or `config.meta.grains`.
+
+### 3. Schema Test to Audit Mapping
 dbt represents tests as independent nodes in the DAG. TFF parses these test nodes (like `not_null`, `unique`, or `accepted_values`) and maps them back to the target model's `audits` list. This enables rules like `nomissinguniquevalues` and `nomissingnotnull` to evaluate model schemas correctly.
 
-### 3. Layer and Domain Mapping
+### 4. Layer and Domain Mapping
 TFF infers the layer of a model from its folder path relative to the `models/` directory:
 * `models/staging/stg_users.sql` $\rightarrow$ layer: `staging`
 * `models/marts/marketing/all_users.sql` $\rightarrow$ layer: `marts`, domain: `marketing`
