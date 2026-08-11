@@ -9,10 +9,16 @@ def get_layer_from_path(path: str, layer_order: list[str] | None = None) -> str 
     parts = Path(path).parts
     try:
         models_index = parts.index("models")
-        layer = parts[models_index + 1]
-        if layer_order and layer not in layer_order:
-            return layer
-        return layer
+        if layer_order is None:
+            from tff.core.context import get_ff_config
+            layer_order = get_ff_config().layers.order
+
+        if layer_order:
+            for part in parts[models_index + 1:]:
+                if part in layer_order:
+                    return part
+
+        return parts[models_index + 1]
     except (ValueError, IndexError):
         return None
 
@@ -21,10 +27,19 @@ def get_marts_domain_from_path(path: str, layer_name: str = "marts") -> str | No
     parts = Path(path).parts
     try:
         models_index = parts.index("models")
-        layer = parts[models_index + 1]
-        if layer != layer_name:
+        layer_index = None
+        for i, part in enumerate(parts[models_index + 1:], start=models_index + 1):
+            if part == layer_name:
+                layer_index = i
+                break
+
+        if layer_index is None:
             return None
-        return parts[models_index + 2]
+
+        if layer_index == models_index + 1:
+            return parts[models_index + 2]
+        else:
+            return parts[models_index + 1]
     except (ValueError, IndexError):
         return None
 
@@ -33,13 +48,33 @@ def get_layer_and_domain(path: str) -> tuple[str | None, str | None]:
     parts = Path(path).parts
     try:
         models_index = parts.index("models")
-        layer = parts[models_index + 1]
-        if len(parts) > models_index + 2:
-            domain = parts[models_index + 2]
-            if domain.endswith(".sql"):
-                domain = domain[:-4]
+        from tff.core.context import get_ff_config
+        layer_order = get_ff_config().layers.order
+
+        layer = None
+        layer_index = None
+        if layer_order:
+            for i, part in enumerate(parts[models_index + 1:], start=models_index + 1):
+                if part in layer_order:
+                    layer = part
+                    layer_index = i
+                    break
+
+        if layer is None:
+            layer = parts[models_index + 1]
+            layer_index = models_index + 1
+
+        if layer_index == models_index + 1:
+            if len(parts) > models_index + 2:
+                domain = parts[models_index + 2]
+            else:
+                domain = None
         else:
-            domain = None
+            domain = parts[models_index + 1]
+
+        if domain and domain.endswith(".sql"):
+            domain = domain[:-4]
+
         return layer, domain
     except (ValueError, IndexError):
         return None, None
