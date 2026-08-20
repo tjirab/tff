@@ -28,7 +28,7 @@ jobs:
       id-token: write  # Mandatory for Trusted Publishing
       contents: read
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Set up uv
         uses: astral-sh/setup-uv@v7
         with:
