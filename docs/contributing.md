@@ -49,8 +49,6 @@ graph TD
 ├── release-please-config.json  # Release Please configurations
 ├── packages/
 │   ├── tff-core/               # Unified codebase (core, dbt, sqlmesh)
-│   ├── tff-dbt/                # Backward compatibility wrapper for tff-core[dbt]
-│   ├── tff-sqlmesh/            # Backward compatibility wrapper for tff-core[sqlmesh]
 │   └── sqlmesh-ff/             # Deprecated backward compatibility wrapper
 ```
 
