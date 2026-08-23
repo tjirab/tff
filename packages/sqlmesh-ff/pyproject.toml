@@ -1,7 +1,7 @@
 [project]
 name = "sqlmesh-ff"
 version = "0.2.0"
-description = "Configurable fitness functions plugin for SQLMesh projects (RENAME NOTICE: Use tff-sqlmesh instead)"
+description = "Configurable fitness functions plugin for SQLMesh projects (DEPRECATED: Use tff-core[sqlmesh] instead)"
 readme = "README.md"
 requires-python = ">=3.12"
 license = { text = "MIT" }
