@@ -9,6 +9,6 @@ Whenever you pick up any new development, feature implementation, or bug-fixing 
 4. **Add Tests**: Write tests and ensure they cover new changes (with 100% diff coverage per `.githooks/pre-push`).
 5. **Documentation Update**: Update `README.md`, API doc, and comments as needed.
 6. **Self-Review**: Run the self-review checklist.
-7. **Final Commit & PR**: Stage, commit with the appropriate ticket pattern, push, and open a Pull Request.
+7. **Final Commit & PR**: Stage, commit with the appropriate ticket pattern, push, and open a Pull Request. **Ensure the Pull Request title and description are always fully filled in according to the template in `.github/pull_request_template.md` (do not leave them blank or rely on --fill if it produces an empty/incomplete description).**
 
 Do not skip any steps.

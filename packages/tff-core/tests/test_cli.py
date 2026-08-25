@@ -7,8 +7,6 @@ import pytest
 from tff.core.cli import _detect_provider, _get_runner, main
 
 
-
-
 def test_detect_provider_dbt(tmp_path: Path):
     (tmp_path / "dbt_project.yml").touch()
     assert _detect_provider(tmp_path) == "dbt"
@@ -80,7 +78,9 @@ def test_get_runner_import_error_sqlmesh():
         "importlib.import_module",
         side_effect=ImportError("No module named 'tff.sqlmesh.runner'"),
     ):
-        with pytest.raises(ImportError, match="tff is not installed with sqlmesh support"):
+        with pytest.raises(
+            ImportError, match="tff is not installed with sqlmesh support"
+        ):
             _get_runner("sqlmesh")
 
 
@@ -341,14 +341,35 @@ def test_invalid_command_error_hint(capsys):
     assert "For help, try 'tff --help'" in captured.err
 
 
-def test_missing_command_error_hint(capsys):
-    # Test tff (no command)
-    with pytest.raises(SystemExit) as excinfo:
-        main([])
-    assert excinfo.value.code == 2
+def test_missing_command_defaults_to_help(capsys):
+    # Test tff (no command) defaults to showing help and exiting 0
+    assert main([]) == 0
     captured = capsys.readouterr()
-    assert "the following arguments are required: command" in captured.err
-    assert "For help, try 'tff --help'" in captured.err
+    assert "Run Transformation Fitness Function (tff) checks" in captured.out
+    assert "tff" in captured.out
+
+
+def test_version_flag_long(capsys):
+    with pytest.raises(SystemExit) as excinfo:
+        main(["--version"])
+    assert excinfo.value.code == 0
+    captured = capsys.readouterr()
+    assert "tff" in captured.out
+
+
+def test_version_flag_short(capsys):
+    with pytest.raises(SystemExit) as excinfo:
+        main(["-v"])
+    assert excinfo.value.code == 0
+    captured = capsys.readouterr()
+    assert "tff" in captured.out
+
+
+def test_main_no_argv_defaults_to_help(capsys):
+    with patch("sys.argv", ["tff"]):
+        assert main() == 0
+        captured = capsys.readouterr()
+        assert "Run Transformation Fitness Function (tff) checks" in captured.out
 
 
 def test_subcommand_invalid_argument_error_hint(capsys):
@@ -516,6 +537,7 @@ def test_main_lint_json(
 
     captured = capsys.readouterr()
     import json
+
     data = json.loads(captured.out)
     assert data["command"] == "lint"
     assert data["models_checked"] == 5
@@ -564,6 +586,7 @@ def test_main_health_normal_and_json(
 
     captured = capsys.readouterr()
     import json
+
     data = json.loads(captured.out)
     assert data["command"] == "health"
     assert data["models_checked"] == 8
@@ -589,6 +612,7 @@ def test_main_stats(tmp_path: Path, capsys):
     health_dir = tmp_path / ".tff_logs" / "health"
     health_dir.mkdir(parents=True)
     import json
+
     # Write a health log
     with open(health_dir / "h1.log", "w", encoding="utf-8") as f:
         json.dump({"timestamp": "2026-07-03T12:00:00+02:00", "overall_score": 92.5}, f)
@@ -623,14 +647,17 @@ def test_main_stats_variations(tmp_path: Path, capsys):
     lint_dir = tmp_path / ".tff_logs" / "lint"
     lint_dir.mkdir(parents=True)
     import json
-    
+
     # Write a lint log (with errors and warnings)
     with open(lint_dir / "l1.log", "w", encoding="utf-8") as f:
-        json.dump({
-            "timestamp": "2026-07-03T12:00:00+02:00",
-            "errors_count": 2,
-            "warnings_count": 3
-        }, f)
+        json.dump(
+            {
+                "timestamp": "2026-07-03T12:00:00+02:00",
+                "errors_count": 2,
+                "warnings_count": 3,
+            },
+            f,
+        )
 
     # 1. Run stats command (ASCII output)
     # This covers:
@@ -647,16 +674,32 @@ def test_main_stats_variations(tmp_path: Path, capsys):
     # 2. Test invalid date parsing exception handling in summary table formatting
     # Mock collect_stats to return history containing an invalid date
     with patch("tff.core.logs.collect_stats") as mock_collect:
-        mock_collect.return_value = [{
-            "date": "invalid-date-format",
-            "health_score": 90.0,
-            "errors_count": 0,
-            "warnings_count": 0
-        }]
+        mock_collect.return_value = [
+            {
+                "date": "invalid-date-format",
+                "health_score": 90.0,
+                "errors_count": 0,
+                "warnings_count": 0,
+            }
+        ]
         exit_code_mock = main(["stats", "--project", project_str])
         assert exit_code_mock == 0
         captured_mock = capsys.readouterr()
         assert "invalid-date-format" in captured_mock.out
 
 
+def test_cli_version_fallback():
+    with patch(
+        "importlib.metadata.version", side_effect=Exception("Package not found")
+    ):
+        import importlib
+        import tff.core.cli
 
+        importlib.reload(tff.core.cli)
+        assert tff.core.cli.__version__ == "0.7.0"
+
+    # Restore original by reloading again without patch
+    import importlib
+    import tff.core.cli
+
+    importlib.reload(tff.core.cli)
