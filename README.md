@@ -63,7 +63,7 @@ pip install "tff-core[dbt]"
 
 ## CLI Usage Guide
 
-Once installed, use the unified `tff` CLI to run linting and health checks.
+Once installed, use the unified `tff` CLI to run linting and health checks. Running `tff` with no arguments will display the help menu by default.
 
 ```bash
 tff [command] [options]
