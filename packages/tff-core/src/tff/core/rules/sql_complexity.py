@@ -62,7 +62,11 @@ def has_nested_subquery_in_final_select(expression: exp.Expression) -> bool:
     return False
 
 
-def analyze_sql(sql: str, dialect: str) -> dict[str, int | bool]:
+def analyze_sql(
+    sql: str,
+    dialect: str,
+    parsed: exp.Expression | None = None,
+) -> dict[str, int | bool]:
     stripped = strip_model_block(sql)
     line_count = len([line for line in stripped.splitlines() if line.strip()])
     metrics: dict[str, int | bool] = {
@@ -72,13 +76,13 @@ def analyze_sql(sql: str, dialect: str) -> dict[str, int | bool]:
         "join_count": 0,
         "nested_subquery_in_final_select": False,
     }
-    if not stripped:
-        return metrics
-
-    try:
-        parsed = parse_one(stripped, read=dialect)
-    except Exception:
-        return metrics
+    if parsed is None:
+        if not stripped:
+            return metrics
+        try:
+            parsed = parse_one(stripped, read=dialect)
+        except Exception:
+            return metrics
 
     metrics["decision_points"] = count_decision_points(parsed)
     metrics["cte_count"] = count_ctes(parsed)
@@ -136,9 +140,12 @@ class SqlComplexity(Rule):
             path = Path(model.path)
             if path.suffix != ".sql" or not path.exists():
                 return None
-            sql = path.read_text(encoding="utf-8")
+            try:
+                sql = path.read_text(encoding="utf-8")
+            except Exception:
+                return None
 
-        metrics = analyze_sql(sql, dialect=model.dialect)
+        metrics = analyze_sql(sql, dialect=model.dialect, parsed=model.ast)
         violations = format_violations(
             metrics, str(model.name), rule_config.thresholds
         )

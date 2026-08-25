@@ -105,6 +105,14 @@ def load_dbt_models(
         audits = model_tests.get(unique_id, [])
         query = node.get("compiled_code") or node.get("raw_code")
 
+        expression = None
+        if query:
+            try:
+                import sqlglot
+                expression = sqlglot.parse_one(query, read=dialect)
+            except Exception:
+                pass
+
         mapped_models[unique_id] = ModelRepresentation(
             name=name,
             path=abs_path,
@@ -119,6 +127,7 @@ def load_dbt_models(
             audits=audits,
             query=query,
             materialized=materialized,
+            expression=expression,
         )
 
 

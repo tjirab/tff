@@ -3,11 +3,8 @@
 from __future__ import annotations
 
 import hashlib
-import re
 from collections import defaultdict
-from pathlib import Path
 
-import sqlglot
 import sqlglot.expressions as exp
 
 from tff.core.model import ModelRepresentation
@@ -48,21 +45,8 @@ def collect_duplicate_cte_findings(
         if not rule_config.should_run(layer):
             continue
 
-        sql = model.query
-        if sql is None:
-            path = Path(model.path)
-            if path.suffix != ".sql" or not path.exists():
-                continue
-            try:
-                sql = path.read_text(encoding="utf-8")
-            except Exception:
-                continue
-
-        try:
-            # Strip SQLMesh MODEL block if present
-            sql = re.sub(r"^MODEL\s*\(.*?\)\s*;", "", sql, flags=re.DOTALL | re.IGNORECASE).strip()
-            parsed = sqlglot.parse_one(sql, read=model.dialect)
-        except Exception:
+        parsed = model.ast
+        if parsed is None:
             continue
 
         for cte in parsed.find_all(exp.CTE):
