@@ -28,19 +28,8 @@ class NoPositionalGroupByOrOrderBy(Rule):
         if not rule_config.should_run(layer):
             return None
 
-        sql = model.query
-        if sql is None:
-            path = Path(model.path)
-            if not path.exists():
-                return None
-            sql = path.read_text(encoding="utf-8")
-
-        try:
-            # Strip SQLMesh MODEL block if present
-            import re
-            sql = re.sub(r"^MODEL\s*\(.*?\)\s*;", "", sql, flags=re.DOTALL | re.IGNORECASE).strip()
-            parsed = sqlglot.parse_one(sql, read=model.dialect)
-        except Exception:
+        parsed = model.ast
+        if parsed is None:
             return None
 
         violations = []

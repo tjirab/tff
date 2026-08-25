@@ -57,6 +57,7 @@ def map_sqlmesh_model(model: SqlMeshModel) -> ModelRepresentation:
         audits=audits,
         materialized="view" if model.kind.is_view else "table",
         query=query_sql,
+        expression=query_obj,
     )
 
 
