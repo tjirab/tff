@@ -1,20 +1,37 @@
 #!/bin/bash
-# Pre-push hook to enforce tests and 100% diff coverage on modified code.
+# Pre-push hook to enforce lint checks, security audits, tests, and 100% diff coverage.
 
 echo "============================================="
-echo "Running pre-push tests and coverage checks..."
+echo "Running pre-push validation checks..."
 echo "============================================="
 
-# 1. Run tests with coverage XML generation
-uv run python -m pytest --cov=packages --cov-report=xml
+# 1. Run lint check
+echo "Running Ruff linter..."
+uv run ruff check .
+if [ $? -ne 0 ]; then
+    echo "❌ Error: Lint checks failed. Push aborted."
+    exit 1
+fi
+
+# 2. Run dependency audit
+echo "Running dependency audit..."
+uv run python scripts/audit.py --min-severity HIGH
+if [ $? -ne 0 ]; then
+    echo "❌ Error: Dependency audit failed. Push aborted."
+    exit 1
+fi
+
+# 3. Run tests with coverage XML generation
+echo "Running unit tests with coverage..."
+uv run pytest --cov=packages --cov-report=xml
 if [ $? -ne 0 ]; then
     echo "❌ Error: Unit tests failed. Push aborted."
     exit 1
 fi
 
-# 2. Run diff-cover against main branch
-# (Check that 100% of newly added or modified lines are covered by tests)
-uv run python -m diff_cover.diff_cover_tool coverage.xml --compare-branch=origin/main --fail-under=100
+# 4. Run diff-cover against origin/main
+echo "Checking diff coverage..."
+uv run diff-cover coverage.xml --compare-branch=origin/main --fail-under=100
 if [ $? -ne 0 ]; then
     echo "❌ Error: Diff coverage is below 100%. Push aborted."
     echo "Please add test cases covering your modified/new lines of code."
@@ -23,3 +40,4 @@ fi
 
 echo "✅ All checks passed! Proceeding with push."
 exit 0
+
