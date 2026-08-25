@@ -95,8 +95,8 @@ def test_wrapped_rule_execution() -> None:
     mock_model.audits = []
 
     from unittest.mock import patch
-    with patch("tff.core.rules.ban_select_star.Path.exists", return_value=True), \
-         patch("tff.core.rules.ban_select_star.Path.read_text", return_value="SELECT * FROM table"):
+    with patch("pathlib.Path.exists", return_value=True), \
+         patch("pathlib.Path.read_text", return_value="SELECT * FROM table"):
         violation = rule_instance.check_model(mock_model)
         assert violation is not None
         assert "SELECT * is prohibited" in str(violation)

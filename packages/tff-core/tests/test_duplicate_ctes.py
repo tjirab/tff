@@ -206,7 +206,7 @@ def test_duplicate_ctes_file_fallbacks(tmp_path: Path):
     )
 
     from unittest.mock import patch
-    with patch("tff.core.checks.duplicate_ctes.Path.read_text", side_effect=IOError("Read error")):
+    with patch("pathlib.Path.read_text", side_effect=IOError("Read error")):
         assert collect_duplicate_cte_findings({"m": model_read_err}, config) == []
 
 

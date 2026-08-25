@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from pathlib import Path
-import sqlglot
 import sqlglot.expressions as exp
 
 from tff.core.model import ModelRepresentation

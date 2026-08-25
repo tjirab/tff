@@ -3,11 +3,8 @@
 from __future__ import annotations
 
 import hashlib
-import re
 from collections import defaultdict
-from pathlib import Path
 
-import sqlglot
 import sqlglot.expressions as exp
 
 from tff.core.model import ModelRepresentation

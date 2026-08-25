@@ -1,7 +1,6 @@
 from pathlib import Path
 import json
 from unittest.mock import MagicMock
-import pytest
 import sqlglot
 import sqlglot.expressions as exp
 from sqlmesh.core.model import Model as SqlMeshModel
