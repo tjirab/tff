@@ -58,6 +58,8 @@ def map_sqlmesh_model(model: SqlMeshModel) -> ModelRepresentation:
         materialized="view" if model.kind.is_view else "table",
         query=query_sql,
         expression=query_obj,
+        tags=getattr(model, "tags", []) or [],
+        meta=getattr(model, "meta", {}) or {},
     )
 
 

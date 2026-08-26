@@ -50,9 +50,34 @@ class DuplicateCtesCheckConfig(LayerFilterConfig):
     min_ast_nodes: int = 12
 
 
+class CustomExclusionRule(BaseModel):
+    source_layer: str | None = None
+    source_domain: str | None = None
+    source_tag: str | None = None
+    source_tags: list[str] | None = None
+    source_meta: dict[str, Any] | None = None
+    target_layer: str | None = None
+    target_domain: str | None = None
+    target_tag: str | None = None
+    target_tags: list[str] | None = None
+    target_meta: dict[str, Any] | None = None
+
+
+class AllowedExceptionRule(BaseModel):
+    model: str
+    dependency: str
+
+
+class CustomExclusionsCheckConfig(LayerFilterConfig):
+    exclusions: list[CustomExclusionRule] = Field(default_factory=list)
+    allowed_exceptions: list[AllowedExceptionRule] = Field(default_factory=list)
+
+
 class ChecksConfig(BaseModel):
     layer_integrity: CheckEnabled = Field(default_factory=CheckEnabled)
-    custom_exclusions: CheckEnabled = Field(default_factory=CheckEnabled)
+    custom_exclusions: CustomExclusionsCheckConfig = Field(
+        default_factory=CustomExclusionsCheckConfig
+    )
     schema_contracts: CheckEnabled = Field(default_factory=CheckEnabled)
     dependency_graph: DependencyGraphCheckConfig = Field(
         default_factory=DependencyGraphCheckConfig
