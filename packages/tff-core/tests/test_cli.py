@@ -118,6 +118,7 @@ def test_main_lint_dbt(
         config=mock_load_config.return_value,
         checks=None,
         dialect="duckdb",
+        dirty=False,
     )
     mock_render.assert_called_once_with(
         [],

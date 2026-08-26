@@ -73,14 +73,15 @@ def run_all_checks(
     config: FitnessFunctionsConfig | None = None,
     checks: list[str] | None = None,
     dialect: str | None = None,
+    dirty: bool = False,
 ) -> tuple[list[LintFinding], int, list[str]]:
     project_root = project_root or Path.cwd()
     if config is None:
         config = load_fitness_config(project_root)
     set_ff_config(config)
 
-    # Parse and load manifest.json
-    models = load_dbt_models(project_root, dialect=dialect)
+    # Parse and load manifest.json (or fallback/overlay in dirty mode)
+    models = load_dbt_models(project_root, dialect=dialect, dirty=dirty)
 
     if checks is None:
         selected = ["rules"] + [
@@ -101,8 +102,19 @@ def run_all_checks(
             continue
         findings.extend(collector(models, config))
 
-    models_checked = sum(
-        1 for m in models.values() if not m.is_external and not m.is_symbolic
-    )
+    if dirty:
+        from tff.dbt.manifest import get_dirty_files, get_dirty_model_names
+        dirty_files = get_dirty_files(project_root)
+        dirty_model_names = get_dirty_model_names(dirty_files, project_root)
+
+        findings = [f for f in findings if f.model in dirty_model_names]
+        models_checked = sum(
+            1 for m in models.values()
+            if not m.is_external and not m.is_symbolic and m.name in dirty_model_names
+        )
+    else:
+        models_checked = sum(
+            1 for m in models.values() if not m.is_external and not m.is_symbolic
+        )
 
     return findings, models_checked, selected

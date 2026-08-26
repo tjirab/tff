@@ -424,3 +424,201 @@ def test_dbt_metadata_checks_coverage(tmp_path: Path):
     assert findings_by_model["model_missing_unique"] == ["nomissinguniquevalues"]
 
 
+def test_load_dbt_models_fallback(tmp_path: Path):
+    # Create dbt_project.yml
+    dbt_project_yml = tmp_path / "dbt_project.yml"
+    dbt_project_yml.write_text(
+        "name: 'my_test_project'\nversion: '1.0.0'\nmodel-paths: ['models']\nseed-paths: ['seeds']\n",
+        encoding="utf-8"
+    )
+
+    models_dir = tmp_path / "models"
+    models_dir.mkdir(parents=True, exist_ok=True)
+
+    # 1. SQL model with config and source ref
+    stg_users_sql = models_dir / "stg_users.sql"
+    stg_users_sql.write_text(
+        "{{ config(materialized='incremental', owner='data-team', grain=['id']) }}\n"
+        "select * from {{ source('raw_sources', 'users') }}\n",
+        encoding="utf-8"
+    )
+
+    # 2. SQL model with config and model ref
+    fct_orders_sql = models_dir / "fct_orders.sql"
+    fct_orders_sql.write_text(
+        "{{ config(materialized='table', tags=['orders']) }}\n"
+        "select * from {{ ref('stg_users') }}\n",
+        encoding="utf-8"
+    )
+
+    # 3. schema.yml with metadata and tests
+    schema_yml = models_dir / "schema.yml"
+    schema_yml.write_text(
+        "version: 2\n"
+        "models:\n"
+        "  - name: stg_users\n"
+        "    description: 'Staging users'\n"
+        "    columns:\n"
+        "      - name: id\n"
+        "        data_type: integer\n"
+        "        tests:\n"
+        "          - unique\n"
+        "          - not_null\n"
+        "sources:\n"
+        "  - name: raw_sources\n"
+        "    tables:\n"
+        "      - name: users\n"
+        "        description: 'Raw users data'\n",
+        encoding="utf-8"
+    )
+
+    from tff.dbt.manifest import load_dbt_models_fallback
+
+    models = load_dbt_models_fallback(tmp_path, dialect="duckdb")
+
+    # Assertions
+    assert "model.my_test_project.stg_users" in models
+    assert "model.my_test_project.fct_orders" in models
+    assert "source.my_test_project.raw_sources.users" in models
+
+    stg_users = models["model.my_test_project.stg_users"]
+    assert stg_users.name == "stg_users"
+    assert stg_users.materialized == "incremental"
+    assert stg_users.owner == "data-team"
+    assert stg_users.grains == ["id"]
+    assert stg_users.description == "Staging users"
+    assert stg_users.columns_to_types == {"id": "integer"}
+    
+    audits = {name for name, _ in stg_users.audits}
+    assert "unique_values" in audits
+    assert "not_null" in audits
+
+    assert stg_users.depends_on == {"source.my_test_project.raw_sources.users"}
+
+    fct_orders = models["model.my_test_project.fct_orders"]
+    assert fct_orders.name == "fct_orders"
+    assert fct_orders.materialized == "table"
+    assert fct_orders.tags == ["orders"]
+    assert fct_orders.depends_on == {"model.my_test_project.stg_users"}
+
+
+def test_dbt_dirty_mode_with_git(tmp_path: Path):
+    import subprocess
+    
+    # Initialize a git repo in tmp_path
+    try:
+        subprocess.run(["git", "init"], cwd=tmp_path, check=True, capture_output=True)
+        # Configure dummy user
+        subprocess.run(["git", "config", "user.name", "Test"], cwd=tmp_path, check=True)
+        subprocess.run(["git", "config", "user.email", "test@example.com"], cwd=tmp_path, check=True)
+    except Exception:
+        import pytest
+        pytest.skip("Git CLI not available for test")
+
+    # Create dbt_project.yml
+    dbt_project_yml = tmp_path / "dbt_project.yml"
+    dbt_project_yml.write_text(
+        "name: 'git_test'\nversion: '1.0.0'\nmodel-paths: ['models']\n",
+        encoding="utf-8"
+    )
+
+    models_dir = tmp_path / "models"
+    models_dir.mkdir(parents=True, exist_ok=True)
+
+    # stg_users is clean (committed)
+    stg_users_sql = models_dir / "stg_users.sql"
+    stg_users_sql.write_text(
+        "{{ config(materialized='view') }}\nselect * from some_table",
+        encoding="utf-8"
+    )
+    subprocess.run(["git", "add", "."], cwd=tmp_path, check=True)
+    subprocess.run(["git", "commit", "-m", "initial commit"], cwd=tmp_path, check=True)
+
+    # fct_orders.sql is dirty (untracked)
+    fct_orders_sql = models_dir / "fct_orders.sql"
+    fct_orders_sql.write_text(
+        "{{ config(materialized='table', owner='orders-team') }}\n"
+        "select * from {{ ref('stg_users') }}",
+        encoding="utf-8"
+    )
+
+    from tff.dbt.manifest import get_dirty_files, get_dirty_model_names, load_dbt_models
+    from tff.dbt.runner import run_all_checks
+
+    dirty_files = get_dirty_files(tmp_path)
+    assert len(dirty_files) == 1
+    assert dirty_files[0].name == "fct_orders.sql"
+
+    dirty_names = get_dirty_model_names(dirty_files, tmp_path)
+    assert dirty_names == {"fct_orders"}
+
+    # Mock a target/manifest.json that only has stg_users
+    target_dir = tmp_path / "target"
+    target_dir.mkdir(exist_ok=True)
+    manifest_data = {
+        "nodes": {
+            "model.git_test.stg_users": {
+                "resource_type": "model",
+                "name": "stg_users",
+                "original_file_path": "models/stg_users.sql",
+                "columns": {},
+                "config": {"materialized": "view"},
+                "meta": {},
+                "depends_on": {"nodes": []}
+            }
+        },
+        "sources": {},
+        "metadata": {"adapter_type": "duckdb"}
+    }
+    (target_dir / "manifest.json").write_text(json.dumps(manifest_data), encoding="utf-8")
+
+    # Run load_dbt_models in dirty mode - it should load stg_users from manifest and fct_orders from fallback!
+    models = load_dbt_models(tmp_path, dirty=True, dialect="duckdb")
+    assert "model.git_test.stg_users" in models
+    assert "model.git_test.fct_orders" in models
+
+    fct_orders = models["model.git_test.fct_orders"]
+    assert fct_orders.owner == "orders-team"
+    assert fct_orders.depends_on == {"model.git_test.stg_users"}
+
+    # Run run_all_checks in dirty mode
+    config = FitnessFunctionsConfig()
+    config.rules.metadata.enabled = True
+    config.rules.metadata.owner = True
+    config.rules.metadata.description = False
+    config.rules.metadata.grain = False
+    config.rules.metadata.not_null = False
+    config.rules.metadata.unique_values = False
+
+    # Should only run checks and report findings on fct_orders (the dirty model)
+    findings, models_checked, selected = run_all_checks(
+        project_root=tmp_path,
+        config=config,
+        dialect="duckdb",
+        dirty=True,
+    )
+    # Only fct_orders was dirty and checked
+    assert models_checked == 1
+    # owner is set, so 0 findings
+    assert len(findings) == 0
+
+    # Let's make stg_users dirty by adding owner violation
+    stg_users_sql.write_text(
+        "{{ config(materialized='view') }}\nselect * from some_table -- modified",
+        encoding="utf-8"
+    )
+    findings, models_checked, selected = run_all_checks(
+        project_root=tmp_path,
+        config=config,
+        dialect="duckdb",
+        dirty=True,
+    )
+    # Both stg_users and fct_orders are now dirty
+    assert models_checked == 2
+    # stg_users is missing owner -> 1 finding
+    assert len(findings) == 1
+    assert findings[0].model == "stg_users"
+    assert findings[0].check == "nomissingowner"
+
+
+

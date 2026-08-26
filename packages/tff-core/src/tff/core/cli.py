@@ -172,6 +172,12 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="Output results in JSON format to stdout",
     )
+    lint_parser.add_argument(
+        "--dirty",
+        "-d",
+        action="store_true",
+        help="Only validate modified and untracked files compared to git HEAD",
+    )
 
     health_parser = subparsers.add_parser(
         "health", help="Show project health report and scores"
@@ -661,12 +667,18 @@ def main(argv: list[str] | None = None) -> int:
                         config=config,
                         checks=checks,
                         dialect=args.dialect,
+                        dirty=getattr(args, "dirty", False),
                     )
                 )
             else:
                 if args.dialect is not None:
                     print(
                         "Warning: --dialect is ignored for SQLMesh projects (dialects are defined directly on models).",
+                        file=sys.stderr,
+                    )
+                if getattr(args, "dirty", False):
+                    print(
+                        "Warning: --dirty is ignored for SQLMesh projects.",
                         file=sys.stderr,
                     )
                 findings, models_checked, executed_checks = (

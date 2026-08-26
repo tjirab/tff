@@ -88,6 +88,7 @@ For detailed option explanations, run `tff help <command>` or `tff <command> --h
 * `--fail-level {error,warning}`: Exit non-zero when findings at or above this severity exist (default: `error`).
 * `--group-by {connascence,model}`: How to group violations in the report (default: `model`).
 * `--dialect DIALECT`: SQL dialect of models (dbt only; auto-inferred by default).
+* `--dirty, -d`: Only validate modified and untracked files compared to git HEAD (dbt only; works pre-compile by parsing files directly).
 * `--json`: Output results in JSON format to stdout.
 
 #### `tff health`
