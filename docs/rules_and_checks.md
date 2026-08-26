@@ -85,6 +85,31 @@ Architectural checks evaluate the structure, dependencies, and layout of your en
   * **Layer**: Set a tag matching one of the layers in the `layers.order` list, or define a `layer` key in model metadata.
   * **Domain**: Prefix a tag with `domain:`, e.g., `domain:finance`, or define a `domain` key in model metadata.
 
+  **Example (Functional Theme Layout)**:
+  Assume a model is located at `models/finance/payments_cleared.sql`. Since `finance` is not in your configured `layers.order`, TFF's directory parser cannot determine the layer automatically. You can explicitly tag/annotate it:
+  
+  * **dbt (`schema.yml`)**:
+    ```yaml
+    models:
+      - name: payments_cleared
+        config:
+          tags: ["marts"]       # Layer: resolves to marts layer
+          meta:
+            domain: billing     # Domain: sets domain to billing
+    ```
+  
+  * **SQLMesh (`payments_cleared.sql`)**:
+    ```sql
+    MODEL (
+      name finance.payments_cleared,
+      kind VIEW,
+      tags (marts),             -- Resolves the model layer to marts
+      meta (
+        domain billing          -- Resolves the model domain to billing
+      )
+    );
+    ```
+
   #### YAML-based Configuration
   Instead of or in addition to a JSON file, custom exclusion rules and exceptions can also be defined directly in `fitness_functions.yaml` under `checks.custom_exclusions` using tags and metadata selectors:
   ```yaml
