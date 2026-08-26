@@ -232,6 +232,35 @@ def test_main_lint_sqlmesh_dialect_warning(
 
 @patch("tff.core.cli._get_runner")
 @patch("tff.core.cli.load_fitness_config")
+@patch("tff.core.cli.render_lint_report")
+def test_main_lint_sqlmesh_dirty_warning(
+    mock_render, mock_load_config, mock_get_runner, tmp_path: Path
+):
+    mock_runner = MagicMock()
+    mock_runner.run_all_checks.return_value = ([], 0, [])
+    mock_get_runner.return_value = mock_runner
+    mock_render.return_value = True
+
+    project_str = str(tmp_path)
+    with patch("sys.stderr", new_callable=MagicMock) as mock_stderr:
+        exit_code = main(
+            [
+                "lint",
+                "--project",
+                project_str,
+                "--provider",
+                "sqlmesh",
+                "--dirty",
+            ]
+        )
+        assert exit_code == 0
+        # Check that warning was printed
+        written = "".join(call.args[0] for call in mock_stderr.write.call_args_list)
+        assert "Warning: --dirty is ignored" in written
+
+
+@patch("tff.core.cli._get_runner")
+@patch("tff.core.cli.load_fitness_config")
 def test_main_lint_run_checks_error(mock_load_config, mock_get_runner, tmp_path: Path):
     mock_runner = MagicMock()
     mock_runner.run_all_checks.side_effect = Exception("Check execution failed")
