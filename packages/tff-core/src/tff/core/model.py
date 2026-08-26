@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     import sqlglot.expressions
@@ -24,6 +24,8 @@ class ModelRepresentation:
     query: str | None = None
     materialized: str | None = None
     expression: sqlglot.expressions.Expression | None = field(default=None, repr=False, compare=False)
+    tags: list[str] = field(default_factory=list)
+    meta: dict[str, Any] = field(default_factory=dict)
 
     @property
     def ast(self) -> sqlglot.expressions.Expression | None:

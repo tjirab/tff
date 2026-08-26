@@ -128,6 +128,8 @@ def load_dbt_models(
             query=query,
             materialized=materialized,
             expression=expression,
+            tags=node.get("tags") or [],
+            meta={**config_meta, **meta},
         )
 
 
@@ -150,6 +152,8 @@ def load_dbt_models(
             grains=[],
             audits=[],
             materialized="table",
+            tags=source.get("tags") or [],
+            meta=source.get("meta") or {},
         )
 
 

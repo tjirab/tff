@@ -90,3 +90,48 @@ def model_path_relative(model) -> str | None:
         return str(Path(*parts[idx:]))
     except ValueError:
         return str(path)
+
+
+def resolve_layer_and_domain(
+    model, layer_order: list[str] | None = None, marts_layer: str = "marts"
+) -> tuple[str | None, str | None]:
+    if layer_order is None:
+        from tff.core.context import get_ff_config
+        layer_order = get_ff_config().layers.order
+
+    # 1. Try path first
+    layer = None
+    domain = None
+    path = getattr(model, "path", getattr(model, "_path", None))
+    if path:
+        layer, domain = get_layer_and_domain(path)
+
+    # Check if the resolved layer is actually a valid layer in layer_order
+    if not layer or (layer_order and layer not in layer_order):
+        layer = None
+        domain = None
+
+    # 2. Fall back to meta/tags for layer
+    meta = getattr(model, "meta", {}) or {}
+    tags = getattr(model, "tags", []) or []
+
+    if not layer:
+        if "layer" in meta:
+            layer = str(meta["layer"])
+        if not layer and tags:
+            for tag in tags:
+                if layer_order and tag in layer_order:
+                    layer = tag
+                    break
+
+    # 3. Fall back to meta/tags for domain
+    if not domain:
+        if "domain" in meta:
+            domain = str(meta["domain"])
+        if not domain and tags:
+            for tag in tags:
+                if tag.startswith("domain:"):
+                    domain = tag.split(":", 1)[1]
+                    break
+
+    return layer, domain

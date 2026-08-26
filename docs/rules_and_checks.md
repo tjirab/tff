@@ -80,6 +80,35 @@ Architectural checks evaluate the structure, dependencies, and layout of your en
   * **`exclusions`**: A list of blocked dependencies. If a model in the `target_layer`/`target_domain` depends on a model in the `source_layer`/`source_domain` (which is the source of the dependency relation), a violation is raised. Omitting domain fields matches all domains in that layer.
   * **`allowed_exceptions`**: Specific `model` $\rightarrow$ `dependency` pairs to allow even if they match an exclusion rule.
 
+  #### Metadata/Tag-driven Fallback
+  If models are organized by functional theme rather than layer directories, `layer_integrity` and `custom_exclusions` will automatically fall back to using tags and metadata:
+  * **Layer**: Set a tag matching one of the layers in the `layers.order` list, or define a `layer` key in model metadata.
+  * **Domain**: Prefix a tag with `domain:`, e.g., `domain:finance`, or define a `domain` key in model metadata.
+
+  #### YAML-based Configuration
+  Instead of or in addition to a JSON file, custom exclusion rules and exceptions can also be defined directly in `fitness_functions.yaml` under `checks.custom_exclusions` using tags and metadata selectors:
+  ```yaml
+  checks:
+    custom_exclusions:
+      enabled: true
+      exclusions:
+        # Exclude public models from depending on pii models via tags
+        - source_tag: "pii"
+          target_tag: "public"
+        # Exclude based on metadata key-value pairs
+        - source_meta:
+            team: "marketing"
+          target_meta:
+            team: "finance"
+        # Combine layer/domain with tag/meta selectors
+        - source_layer: "core"
+          source_tag: "confidential"
+          target_layer: "marts"
+      allowed_exceptions:
+        - model: "marts.public_model"
+          dependency: "core.confidential_model"
+  ```
+
 ---
 
 ### Schema Contracts (`schema_contracts`)

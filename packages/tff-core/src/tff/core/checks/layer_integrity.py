@@ -6,9 +6,8 @@ from tff.core.model import ModelRepresentation
 from tff.core.config import FitnessFunctionsConfig
 from tff.core.report import LintFinding, normalize_model_name
 from tff.core.utils.paths import (
-    get_layer_from_path,
-    get_marts_domain_from_path,
     model_path_relative,
+    resolve_layer_and_domain,
 )
 
 
@@ -34,20 +33,17 @@ def collect_layer_integrity_findings(
         if model.is_external or model.is_symbolic:
             continue
 
-        model_layer = get_layer_from_path(model.path, layer_order)
+        model_layer, model_marts_domain = resolve_layer_and_domain(model, layer_order, marts_layer)
         model_layer_index = _layer_index(model_layer, "EXTERNAL" if model.is_external else "STANDARD", layer_order)
-        model_marts_domain = (
-            get_marts_domain_from_path(model.path, marts_layer)
-            if model_layer == marts_layer
-            else None
-        )
 
         for dependency in model.depends_on:
             dependency_model = models.get(dependency)
             if not dependency_model:
                 continue
 
-            dependency_layer = get_layer_from_path(dependency_model.path, layer_order)
+            dependency_layer, dependency_marts_domain = resolve_layer_and_domain(
+                dependency_model, layer_order, marts_layer
+            )
             dependency_layer_index = _layer_index(
                 dependency_layer,
                 "EXTERNAL" if dependency_model.is_external else "STANDARD",
@@ -73,9 +69,6 @@ def collect_layer_integrity_findings(
                 )
 
             if model_layer == marts_layer and dependency_layer == marts_layer:
-                dependency_marts_domain = get_marts_domain_from_path(
-                    dependency_model.path, marts_layer
-                )
                 if (
                     model_marts_domain
                     and dependency_marts_domain
