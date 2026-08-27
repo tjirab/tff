@@ -267,6 +267,53 @@ Architectural checks evaluate the structure, dependencies, and layout of your en
 
 ---
 
+### Connascence of Value (`connascence_of_value`)
+
+* **What it checks**:
+  * Identifies "Connascence of Value" by flagging literal values (strings, numbers) duplicated across multiple models.
+  * Only string and numeric literals are checked (excluding boolean literals, NULL, and literals located inside `LIMIT` or `OFFSET` clauses).
+  * Grouping is case-insensitive for strings, but the original casing is preserved in the findings messages.
+* **How to configure**:
+  Defined under `checks.connascence_of_value` in `fitness_functions.yaml`.
+  ```yaml
+  checks:
+    connascence_of_value:
+      enabled: true
+      severity: warning               # Severity of finding: 'warning' or 'error'
+      min_occurrences: 2             # Minimum number of unique models sharing a literal to trigger (default: 2)
+      ignored_values: ["0", "1", ""]  # List of literals to ignore (default: ['0', '1', ''])
+      skip_layers: [staging]
+  ```
+
+* **Why it matters (The "Why")**:
+  Connascence of Value occurs when two or more components must share a specific value (literal/constant) to function correctly. If that value changes in the source data or business rules (e.g. `'premium_tier'` becomes `'premium_membership'`), all models containing it must be updated simultaneously. If any are missed, it silently introduces data discrepancies between your models (e.g. marketing counts new users but finance continues to filter on the old tier name).
+
+* **Example of Duplication**:
+  ```sql
+  -- premium_users.sql
+  SELECT * FROM {{ ref('dim_users') }} WHERE status = 'premium_tier'
+
+  -- premium_revenue.sql
+  SELECT * FROM {{ ref('finance_revenue') }} WHERE status = 'premium_tier'
+  ```
+
+* **How to Resolve**:
+  1. **Upstream Classification (Recommended)**: Evaluate and rename/classify the status once in a staging layer, exposing it downstream as a simple boolean flag:
+     ```sql
+     -- stg_users.sql
+     SELECT user_id, (status = 'premium_tier') AS is_premium FROM raw_users
+     
+     -- Downstream models
+     SELECT * FROM {{ ref('stg_users') }} WHERE is_premium
+     ```
+  2. **Project-Level Variables**: Define the value as a project variable in `dbt_project.yml` and reference it via Jinja:
+     ```sql
+     SELECT * FROM {{ ref('stg_users') }} WHERE status = '{{ var("premium_tier_name") }}'
+     ```
+  3. **Mapping Tables (Seeds)**: For larger sets of constants (e.g., list of VIP email domains), load them via a seed CSV and perform a `JOIN` or `WHERE IN (SELECT ... FROM {{ ref('seed') }})`.
+
+---
+
 ## 2. Linter Rules
 
 Linter rules inspect individual model files to enforce code style, conventions, and database-independent references.
