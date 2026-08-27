@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.8.0](https://github.com/tjirab/tff/compare/tff-core-v0.7.0...tff-core-v0.8.0) (2026-08-27)
+
+
+### Features
+
+* **checks:** add connascence of value (CoV) check ([#134](https://github.com/tjirab/tff/issues/134)) ([6766224](https://github.com/tjirab/tff/commit/6766224e856f110a0b38026d518332f1e6e55325))
+* **cli:** default to help command and show tff version ([#118](https://github.com/tjirab/tff/issues/118)) ([246937c](https://github.com/tjirab/tff/commit/246937cf796a349d3d46190a699d9e5f183acc59))
+* metadata and tag-driven layer boundaries and exclusions ([#121](https://github.com/tjirab/tff/issues/121)) ([#131](https://github.com/tjirab/tff/issues/131)) ([aa30958](https://github.com/tjirab/tff/commit/aa30958248ff85d71e43084b64a298547c5eb061))
+* **perf:** implement AST caching on ModelRepresentation ([#120](https://github.com/tjirab/tff/issues/120)) ([#128](https://github.com/tjirab/tff/issues/128)) ([63ad787](https://github.com/tjirab/tff/commit/63ad7870b2078de8c611fa213ccf66e6f562e3cb))
+
+
+### Bug Fixes
+
+* **robustness:** improve fallback Jinja parsing in local SQLGlot checks ([#123](https://github.com/tjirab/tff/issues/123)) ([#130](https://github.com/tjirab/tff/issues/130)) ([f422623](https://github.com/tjirab/tff/commit/f4226235964654e16d650ff3dc817097b6e9fa54))
+
 ## [0.7.0](https://github.com/tjirab/tff/compare/tff-core-v0.6.0...tff-core-v0.7.0) (2026-08-11)
 
 
