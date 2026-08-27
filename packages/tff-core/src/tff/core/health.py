@@ -42,6 +42,12 @@ CATEGORIES = {
     "Connascence of Meaning (CoM)": [
         "classificationmacros",
     ],
+    "Connascence of Algorithm (CoA)": [
+        "duplicate_ctes",
+    ],
+    "Connascence of Value (CoV)": [
+        "connascence_of_value",
+    ],
     "Dynamic Coupling & DAG Structure": [
         "layer_integrity",
         "custom_exclusions",
@@ -72,6 +78,10 @@ def is_check_enabled(config: FitnessFunctionsConfig, check_name: str, provider: 
         return config.checks.dependency_graph.enabled
     if check_name == "materialization_depth":
         return config.checks.materialization_depth.enabled
+    if check_name == "duplicate_ctes":
+        return config.checks.duplicate_ctes.enabled
+    if check_name == "connascence_of_value":
+        return config.checks.connascence_of_value.enabled
     if check_name == "classificationmacros":
         return config.rules.classification_macros.enabled
     if check_name == "sqlcomplexity":

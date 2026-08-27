@@ -59,6 +59,8 @@ def test_calculate_health_scores() -> None:
             "schema_contracts": {"enabled": False},
             "dependency_graph": {"enabled": False},
             "materialization_depth": {"enabled": False},
+            "duplicate_ctes": {"enabled": False},
+            "connascence_of_value": {"enabled": False},
         },
         "rules": {
             "ban_select_star": {"enabled": True},
@@ -177,6 +179,10 @@ def test_cli_health_command(tmp_path, monkeypatch) -> None:
     config_file.write_text("""
 checks:
   layer_integrity:
+    enabled: false
+  duplicate_ctes:
+    enabled: false
+  connascence_of_value:
     enabled: false
 rules:
   ban_select_star:
@@ -554,6 +560,8 @@ def test_cli_health_scope(tmp_path, monkeypatch) -> None:
         "  schema_contracts:\n    enabled: false\n"
         "  dependency_graph:\n    enabled: false\n"
         "  materialization_depth:\n    enabled: false\n"
+        "  duplicate_ctes:\n    enabled: false\n"
+        "  connascence_of_value:\n    enabled: false\n"
         "rules:\n"
         "  ban_select_star:\n    enabled: true\n"
         "  filename_equals_modelname:\n    enabled: false\n"

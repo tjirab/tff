@@ -50,6 +50,12 @@ class DuplicateCtesCheckConfig(LayerFilterConfig):
     min_ast_nodes: int = 12
 
 
+class ConnascenceOfValueCheckConfig(LayerFilterConfig):
+    severity: str = "warning"
+    min_occurrences: int = 2
+    ignored_values: list[str] = Field(default_factory=lambda: ["0", "1", ""])
+
+
 class CustomExclusionRule(BaseModel):
     source_layer: str | None = None
     source_domain: str | None = None
@@ -88,6 +94,10 @@ class ChecksConfig(BaseModel):
     duplicate_ctes: DuplicateCtesCheckConfig = Field(
         default_factory=DuplicateCtesCheckConfig
     )
+    connascence_of_value: ConnascenceOfValueCheckConfig = Field(
+        default_factory=ConnascenceOfValueCheckConfig
+    )
+
 
 
 
