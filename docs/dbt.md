@@ -30,6 +30,16 @@ pip install "tff-core[dbt]"
    tff lint
    ```
 
+### Fast Pre-Compile Validation (Dirty Mode)
+
+To validate only modified and untracked files compared to git HEAD without running `dbt compile` beforehand, you can run the linter in **dirty** mode:
+
+```bash
+tff lint --dirty --dialect <your_dialect>
+```
+
+This detects changed `.sql` and `.yml` files using `git` and evaluates them directly using an on-the-fly parsing fallback. Note that because dialect cannot be inferred from the manifest when it is missing, you should provide the `--dialect` flag (e.g. `duckdb`, `snowflake`, `postgres`).
+
 ---
 
 ## How It Works

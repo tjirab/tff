@@ -23,18 +23,27 @@ from tff.dbt.manifest import load_dbt_models
 logger = logging.getLogger(__name__)
 
 CHECK_COLLECTORS = {
-    "layer_integrity": lambda models, cfg: collect_layer_integrity_findings(models, cfg),
-    "custom_exclusions": lambda models, cfg: collect_custom_exclusion_findings(models, cfg),
+    "layer_integrity": lambda models, cfg: collect_layer_integrity_findings(
+        models, cfg
+    ),
+    "custom_exclusions": lambda models, cfg: collect_custom_exclusion_findings(
+        models, cfg
+    ),
     "schema_contracts": lambda _models, cfg: collect_schema_contract_findings(cfg),
-    "dependency_graph": lambda models, cfg: collect_dependency_graph_findings(models, cfg),
-    "materialization_depth": lambda models, cfg: collect_materialization_depth_findings(models, cfg),
+    "dependency_graph": lambda models, cfg: collect_dependency_graph_findings(
+        models, cfg
+    ),
+    "materialization_depth": lambda models, cfg: collect_materialization_depth_findings(
+        models, cfg
+    ),
     "duplicate_ctes": lambda models, cfg: collect_duplicate_cte_findings(models, cfg),
     "connascence_of_value": lambda models, cfg: collect_connascence_of_value_findings(models, cfg),
 }
 
 
-
-def collect_dbt_rules_findings(models: dict[str, ModelRepresentation]) -> list[LintFinding]:
+def collect_dbt_rules_findings(
+    models: dict[str, ModelRepresentation],
+) -> list[LintFinding]:
     findings = []
     rules = [rule_cls() for rule_cls in ALL_RULES]
 
@@ -75,20 +84,19 @@ def run_all_checks(
     config: FitnessFunctionsConfig | None = None,
     checks: list[str] | None = None,
     dialect: str | None = None,
+    dirty: bool = False,
 ) -> tuple[list[LintFinding], int, list[str]]:
     project_root = project_root or Path.cwd()
     if config is None:
         config = load_fitness_config(project_root)
     set_ff_config(config)
 
-    # Parse and load manifest.json
-    models = load_dbt_models(project_root, dialect=dialect)
+    # Parse and load manifest.json (or fallback/overlay in dirty mode)
+    models = load_dbt_models(project_root, dialect=dialect, dirty=dirty)
 
     if checks is None:
         selected = ["rules"] + [
-            name
-            for name in CHECK_COLLECTORS
-            if _check_enabled(config, name)
+            name for name in CHECK_COLLECTORS if _check_enabled(config, name)
         ]
     else:
         selected = checks
@@ -103,8 +111,21 @@ def run_all_checks(
             continue
         findings.extend(collector(models, config))
 
-    models_checked = sum(
-        1 for m in models.values() if not m.is_external and not m.is_symbolic
-    )
+    if dirty:
+        from tff.dbt.manifest import get_dirty_files, get_dirty_model_names
+
+        dirty_files = get_dirty_files(project_root)
+        dirty_model_names = get_dirty_model_names(dirty_files, project_root)
+
+        findings = [f for f in findings if f.model in dirty_model_names]
+        models_checked = sum(
+            1
+            for m in models.values()
+            if not m.is_external and not m.is_symbolic and m.name in dirty_model_names
+        )
+    else:
+        models_checked = sum(
+            1 for m in models.values() if not m.is_external and not m.is_symbolic
+        )
 
     return findings, models_checked, selected
