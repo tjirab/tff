@@ -11,3 +11,4 @@ coverage.xml
 .aider*
 examples/minimal-sqlmesh-project/.tff_logs/
 .tff_logs/
+scripts/reset-test-projects.py

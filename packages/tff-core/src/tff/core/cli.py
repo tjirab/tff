@@ -172,6 +172,11 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="Output results in JSON format to stdout",
     )
+    lint_parser.add_argument(
+        "--fix",
+        action="store_true",
+        help="Automatically fix simple linting violations if possible",
+    )
 
     health_parser = subparsers.add_parser(
         "health", help="Show project health report and scores"
@@ -679,6 +684,57 @@ def main(argv: list[str] | None = None) -> int:
         except Exception as e:
             print(f"Error executing checks: {e}", file=sys.stderr)
             return 1
+
+        # Apply auto-fixes if --fix is set
+        if args.command == "lint" and getattr(args, "fix", False) and findings:
+            models = {}
+            try:
+                if provider == "dbt":
+                    from tff.dbt.manifest import load_dbt_models
+                    models = load_dbt_models(project_root, dialect=args.dialect)
+                else:
+                    from sqlmesh.core.context import Context
+                    from tff.sqlmesh.loader import FitnessLoader
+                    from tff.sqlmesh.runner import map_sqlmesh_context_models
+                    context = Context(
+                        paths=[str(project_root)],
+                        loader=FitnessLoader,
+                    )
+                    models = map_sqlmesh_context_models(context)
+            except Exception as e:
+                print(f"Warning: Could not load models for autofix: {e}", file=sys.stderr)
+
+            if models:
+                from tff.core.autofix import apply_autofixes
+                fix_logs = apply_autofixes(project_root, provider, findings, models)
+                if fix_logs:
+                    if not args.json:
+                        from rich.console import Console
+                        console = Console(stderr=True)
+                        for log in fix_logs:
+                            console.print(f"[green]✓[/green] {log}")
+                    # Re-run checks to get the final state of the files
+                    try:
+                        if provider == "dbt":
+                            findings, models_checked, executed_checks = (
+                                runner_module.run_all_checks(
+                                    project_root=project_root,
+                                    config=config,
+                                    checks=checks,
+                                    dialect=args.dialect,
+                                )
+                            )
+                        else:
+                            findings, models_checked, executed_checks = (
+                                runner_module.run_all_checks(
+                                    project_root=project_root,
+                                    config=config,
+                                    checks=checks,
+                                )
+                            )
+                    except Exception as e:
+                        print(f"Error executing checks after autofix: {e}", file=sys.stderr)
+                        return 1
 
         if args.command == "lint":
             # 5. Render report
