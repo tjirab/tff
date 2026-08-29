@@ -89,6 +89,7 @@ For detailed option explanations, run `tff help <command>` or `tff <command> --h
 * `--group-by {connascence,model}`: How to group violations in the report (default: `model`).
 * `--dialect DIALECT`: SQL dialect of models (dbt only; auto-inferred by default).
 * `--json`: Output results in JSON format to stdout.
+* `--fix`: Automatically fix simple linting violations if possible (e.g. rewriting positional `GROUP BY`/`ORDER BY` and auto-scaffolding missing metadata).
 
 #### `tff health`
 * `--project PATH`, `--config PATH`, `--provider {auto,dbt,sqlmesh}`, `--dialect DIALECT`: (Same as above)
@@ -107,6 +108,11 @@ For detailed option explanations, run `tff help <command>` or `tff <command> --h
 Run linting on the current project:
 ```bash
 tff lint
+```
+
+Automatically fix simple linting violations (positional GROUP BY/ORDER BY, missing owner/description metadata):
+```bash
+tff lint --fix
 ```
 
 Show project health report and require a score of at least 80% to pass:

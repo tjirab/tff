@@ -703,3 +703,193 @@ def test_cli_version_fallback():
     import tff.core.cli
 
     importlib.reload(tff.core.cli)
+
+
+def test_cli_main_lint_with_fix(tmp_path: Path):
+    from tff.core.report import LintFinding
+    from tff.core.model import ModelRepresentation
+    # Create dbt_project.yml to auto-detect provider
+    (tmp_path / "dbt_project.yml").touch()
+
+    # Create a sql file containing positional GROUP BY
+    sql_file = tmp_path / "models/marts/my_model.sql"
+    sql_file.parent.mkdir(parents=True, exist_ok=True)
+    sql_file.write_text("SELECT a FROM t GROUP BY 1", encoding="utf-8")
+
+    # Mock runner run_all_checks to return initial findings
+    mock_runner = MagicMock()
+    # 1st call returns finding, 2nd call (re-run) returns empty findings
+    mock_runner.run_all_checks.side_effect = [
+        (
+            [
+                LintFinding(
+                    check="nopositionalgroupbyororderby",
+                    severity="error",
+                    model="my_model",
+                    path="models/marts/my_model.sql",
+                    message="Use column name instead."
+                )
+            ],
+            1,
+            ["rules"]
+        ),
+        (
+            [],
+            1,
+            ["rules"]
+        )
+    ]
+
+    with patch("tff.core.cli._get_runner", return_value=mock_runner), \
+         patch("tff.core.cli.load_fitness_config") as mock_load_config, \
+         patch("tff.core.cli.render_lint_report", return_value=True):
+        
+        mock_load_config.return_value = MagicMock()
+        
+        # We need to mock load_dbt_models to return ModelRepresentation
+        with patch("tff.dbt.manifest.load_dbt_models") as mock_load_dbt_models:
+            mock_load_dbt_models.return_value = {
+                "my_model": ModelRepresentation(
+                    name="my_model",
+                    path=str(sql_file),
+                    dialect="ansi"
+                )
+            }
+            
+            exit_code = main(["lint", "--project", str(tmp_path), "--fix"])
+            
+            assert exit_code == 0
+            # Verify file was updated
+            assert sql_file.read_text(encoding="utf-8") == "SELECT a FROM t GROUP BY a"
+            assert mock_runner.run_all_checks.call_count == 2
+
+
+def test_cli_main_lint_with_fix_sqlmesh(tmp_path: Path):
+    from tff.core.report import LintFinding
+    from tff.core.model import ModelRepresentation
+    
+    # Create config.py to auto-detect provider as SQLMesh
+    (tmp_path / "config.py").touch()
+    
+    # Create a SQL file
+    sql_file = tmp_path / "models/my_model.sql"
+    sql_file.parent.mkdir(parents=True, exist_ok=True)
+    sql_file.write_text("SELECT a FROM t GROUP BY 1", encoding="utf-8")
+    
+    # Mock runner
+    mock_runner = MagicMock()
+    mock_runner.run_all_checks.side_effect = [
+        (
+            [
+                LintFinding(
+                    check="nopositionalgroupbyororderby",
+                    severity="error",
+                    model="my_model",
+                    path="models/my_model.sql",
+                    message="Use column name instead."
+                )
+            ],
+            1,
+            ["sqlmesh"]
+        ),
+        (
+            [],
+            1,
+            ["sqlmesh"]
+        )
+    ]
+    
+    with patch("tff.core.cli._get_runner", return_value=mock_runner), \
+         patch("tff.core.cli.load_fitness_config") as mock_load_config, \
+         patch("tff.core.cli.render_lint_report", return_value=True), \
+         patch("sqlmesh.core.context.Context"), \
+         patch("tff.sqlmesh.runner.map_sqlmesh_context_models") as mock_map_models:
+        
+        mock_load_config.return_value = MagicMock()
+        mock_map_models.return_value = {
+            "my_model": ModelRepresentation(
+                name="my_model",
+                path=str(sql_file),
+                dialect="ansi"
+            )
+        }
+        
+        exit_code = main(["lint", "--project", str(tmp_path), "--fix"])
+        assert exit_code == 0
+        assert sql_file.read_text(encoding="utf-8") == "SELECT a FROM t GROUP BY a"
+        assert mock_runner.run_all_checks.call_count == 2
+
+
+def test_cli_main_lint_with_fix_load_models_exception(tmp_path: Path):
+    from tff.core.report import LintFinding
+    (tmp_path / "dbt_project.yml").touch()
+    
+    mock_runner = MagicMock()
+    mock_runner.run_all_checks.return_value = (
+        [
+            LintFinding(
+                check="nopositionalgroupbyororderby",
+                severity="error",
+                model="my_model",
+                path="models/my_model.sql",
+                message="Use column name instead."
+            )
+        ],
+        1,
+        ["rules"]
+    )
+    
+    with patch("tff.core.cli._get_runner", return_value=mock_runner), \
+         patch("tff.core.cli.load_fitness_config") as mock_load_config, \
+         patch("tff.core.cli.render_lint_report", return_value=False), \
+         patch("tff.dbt.manifest.load_dbt_models", side_effect=Exception("Load failed")):
+        
+        mock_load_config.return_value = MagicMock()
+        exit_code = main(["lint", "--project", str(tmp_path), "--fix"])
+        assert exit_code == 1  # Should fail since it wasn't fixed and returned a finding
+        assert mock_runner.run_all_checks.call_count == 1  # No re-run
+
+
+def test_cli_main_lint_with_fix_rerun_exception(tmp_path: Path):
+    from tff.core.report import LintFinding
+    from tff.core.model import ModelRepresentation
+    (tmp_path / "dbt_project.yml").touch()
+    
+    sql_file = tmp_path / "models/my_model.sql"
+    sql_file.parent.mkdir(parents=True, exist_ok=True)
+    sql_file.write_text("SELECT a FROM t GROUP BY 1", encoding="utf-8")
+    
+    mock_runner = MagicMock()
+    mock_runner.run_all_checks.side_effect = [
+        (
+            [
+                LintFinding(
+                    check="nopositionalgroupbyororderby",
+                    severity="error",
+                    model="my_model",
+                    path="models/my_model.sql",
+                    message="Use column name instead."
+                )
+            ],
+            1,
+            ["rules"]
+        ),
+        Exception("Re-run failed")
+    ]
+    
+    with patch("tff.core.cli._get_runner", return_value=mock_runner), \
+         patch("tff.core.cli.load_fitness_config") as mock_load_config, \
+         patch("tff.dbt.manifest.load_dbt_models") as mock_load_dbt_models:
+        
+        mock_load_config.return_value = MagicMock()
+        mock_load_dbt_models.return_value = {
+            "my_model": ModelRepresentation(
+                name="my_model",
+                path=str(sql_file),
+                dialect="ansi"
+            )
+        }
+        
+        exit_code = main(["lint", "--project", str(tmp_path), "--fix"])
+        assert exit_code == 1
+        assert mock_runner.run_all_checks.call_count == 2
