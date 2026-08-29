@@ -4,6 +4,17 @@ TFF runs two categories of quality guardrails: **Architectural Checks** and **Li
 
 ---
 
+## 🛠️ Auto-Fixer (`--fix`)
+
+TFF includes a built-in auto-fixer that can automatically resolve simple violations. By running `tff lint --fix`, TFF will modify your source files to fix the following issues:
+
+*   **[No Positional GROUP BY/ORDER BY](#no-positional-group-byorder-by-no_positional_group_by_or_order_by)** (`nopositionalgroupbyororderby`): Rewrites integer positional references in `GROUP BY` and `ORDER BY` clauses to explicit column names or select aliases using AST modification.
+*   **Metadata (`nomissingowner`, `nomissingdescription`)**:
+    *   **dbt**: Automatically appends or scaffolds `schema.yml` metadata configs with `"TODO: Add owner"` and `"TODO: Add description"` templates.
+    *   **SQLMesh**: Inline-updates the `MODEL` block in the model `.sql` file to add `owner` and `description` headers.
+
+---
+
 ## Shared Layer Filtering Configuration
 
 Most checks and rules inherit a common layer filtering schema. This allows you to apply guardrails selectively based on the pipeline layer a model belongs to:
@@ -339,7 +350,7 @@ For SQLMesh projects, these rules run dynamically inside SQLMesh (e.g., `sqlmesh
 
 ---
 
-### No Positional GROUP BY/ORDER BY (`no_positional_group_by_or_order_by`)
+### No Positional GROUP BY/ORDER BY (`no_positional_group_by_or_order_by`) [Auto-fixable]
 
 * **What it checks**:
   * Prevents using ordinal integers (e.g., `GROUP BY 1, 2` or `ORDER BY 1 DESC`) instead of explicit column name references.
@@ -489,12 +500,12 @@ For SQLMesh projects, these rules run dynamically inside SQLMesh (e.g., `sqlmesh
 
 ---
 
-### Metadata (`metadata`)
+### Metadata (`metadata`) [Partially Auto-fixable]
 
 * **What it checks**:
   * Enforces model metadata documentation and testing:
-    * **`owner`**: Validates that the model config has a specified owner.
-    * **`description`**: Validates that the model description is defined and non-empty.
+    * **`owner`** [Auto-fixable]: Validates that the model config has a specified owner.
+    * **`description`** [Auto-fixable]: Validates that the model description is defined and non-empty.
     * **`grain`**: Validates that grains (primary key/grain definition) are specified.
     * **`not_null`**: Validates that the model has a `not_null` audit (SQLMesh) or test (dbt).
     * **`unique_values`**: Validates that the model has a `unique_values` audit (SQLMesh) or `unique` test (dbt).
