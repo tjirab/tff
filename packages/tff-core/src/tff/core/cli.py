@@ -280,11 +280,47 @@ def main(argv: list[str] | None = None) -> int:
         help="Output stats in JSON format to stdout",
     )
 
+    # Docs subcommand
+    docs_parser = subparsers.add_parser(
+        "docs",
+        help="Generate HTML documentation and health dashboard",
+        description="Generate HTML documentation and health dashboard",
+    )
+    docs_parser.add_argument(
+        "--project",
+        type=Path,
+        default=Path.cwd(),
+        help="Project root directory (default: current directory)",
+    )
+    docs_parser.add_argument(
+        "--config",
+        default="fitness_functions.yaml",
+        help="Path to fitness_functions.yaml (relative to project root)",
+    )
+    docs_parser.add_argument(
+        "--provider",
+        choices=["auto", "dbt", "sqlmesh"],
+        default="auto",
+        help="Pipeline engine provider (default: auto-detected)",
+    )
+    docs_parser.add_argument(
+        "--dialect",
+        default=None,
+        help="SQL dialect of models (dbt only; auto-inferred by default)",
+    )
+    docs_parser.add_argument(
+        "--output",
+        "-o",
+        type=Path,
+        default=None,
+        help="Output HTML path (default: project_root / tff_report.html)",
+    )
+
     help_parser = subparsers.add_parser("help", help="Show help details for a command")
     help_parser.add_argument(
         "subcommand",
         nargs="?",
-        choices=["lint", "health", "info", "stats"],
+        choices=["lint", "health", "info", "stats", "docs"],
         help="Specific command to get help for",
     )
 
@@ -299,6 +335,8 @@ def main(argv: list[str] | None = None) -> int:
             info_parser.print_help()
         elif args.subcommand == "stats":
             stats_parser.print_help()
+        elif args.subcommand == "docs":
+            docs_parser.print_help()
         else:
             parser.print_help()
         return 0
@@ -620,6 +658,31 @@ def main(argv: list[str] | None = None) -> int:
         console.print("[bold cyan]● Summary History[/bold cyan]")
         console.print(table)
         return 0
+
+    if args.command == "docs":
+        project_root = args.project.resolve()
+        provider = args.provider
+        if provider == "auto":
+            try:
+                provider = _detect_provider(project_root)
+            except ValueError as e:
+                print(f"Error: {e}", file=sys.stderr)
+                return 1
+
+        from tff.core.docs import generate_docs_dashboard
+        try:
+            output_file = generate_docs_dashboard(
+                project_root=project_root,
+                output_path=args.output,
+                provider=provider,
+                dialect=args.dialect,
+                config_path=args.config,
+            )
+            print(f"Successfully generated HTML dashboard at: {output_file}")
+            return 0
+        except Exception as e:
+            print(f"Error generating dashboard: {e}", file=sys.stderr)
+            return 1
 
     if args.command in ("lint", "health"):
         logging.basicConfig(level=logging.ERROR)

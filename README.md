@@ -73,6 +73,7 @@ tff [command] [options]
 
 * **`lint`**: Run all enabled fitness checks and format lint reports.
 * **`health`**: Calculate and report overall project fitness health scores.
+* **`docs`**: Generate a standalone, interactive HTML documentation and health dashboard containing lineage graphs and historical trends.
 * **`info`**: Show diagnostic information about the project environment, configuration files, and adapter versions.
 * **`help`**: Print help information for the CLI or specific subcommands.
 
@@ -98,6 +99,10 @@ For detailed option explanations, run `tff help <command>` or `tff <command> --h
 * `--group-by {connascence,domain}`: How to group the detailed health breakdown. `connascence` (default) groups by connascence category; `domain` groups by path segment under `models/` (e.g. `models/sources`, `models/marts/marketing`).
 * `--json`: Output results in JSON format to stdout.
 
+#### `tff docs`
+* `--project PATH`, `--config PATH`, `--provider {auto,dbt,sqlmesh}`, `--dialect DIALECT`: (Same as above)
+* `--output PATH`, `-o PATH`: Path where the output HTML dashboard file will be generated (default: `tff_report.html` in the project root).
+
 #### `tff info`
 * `--project PATH`: Path to the project root directory (default: current directory).
 * `--config PATH`: Path to `fitness_functions.yaml` relative to project root (default: `fitness_functions.yaml`).
@@ -118,6 +123,16 @@ tff lint --fix
 Show project health report and require a score of at least 80% to pass:
 ```bash
 tff health --fail-under 80
+```
+
+Generate interactive HTML documentation and health dashboard:
+```bash
+tff docs
+```
+
+Generate HTML documentation with a custom output file:
+```bash
+tff docs --output docs/index.html
 ```
 
 Show health scores only for the `models/marts/marketing` domain:
