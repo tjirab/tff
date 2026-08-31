@@ -19,13 +19,14 @@ core:
 
 dbt:
   - changed-files:
-      - any-glob-to-any-file: "packages/tff-dbt/**"
+      - any-glob-to-any-file:
+          - "packages/tff-core/src/tff/dbt/**"
 
 sqlmesh:
   - changed-files:
       - any-glob-to-any-file:
-          - "packages/tff-sqlmesh/**"
           - "packages/sqlmesh-ff/**"
+          - "packages/tff-core/src/tff/sqlmesh/**"
 
 tests:
   - changed-files:

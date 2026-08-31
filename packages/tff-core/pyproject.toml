@@ -1,6 +1,6 @@
 [project]
 name = "tff-core"
-version = "0.5.0"
+version = "0.8.0"
 description = "Core rules and fitness functions engine for transformation projects"
 readme = "README.md"
 requires-python = ">=3.12"
@@ -9,7 +9,7 @@ authors = [
     { name = "Bart Schuijt", email = "schuijt.bart@gmail.com" }
 ]
 dependencies = [
-    "pydantic>=2.0",
+    "pydantic>=2.13.5",
     "pyyaml>=6.0",
     "rich>=13.0",
     "sqlglot>=23.0",
@@ -22,8 +22,16 @@ classifiers = [
     "Operating System :: OS Independent",
 ]
 
+[project.optional-dependencies]
+sqlmesh = [
+    "sqlmesh>=0.236.1",
+]
+dbt = []
+
 [project.scripts]
 tff = "tff.core.cli:main"
+tff-dbt = "tff.dbt.cli:main"
+tff-sqlmesh = "tff.sqlmesh.cli:main"
 
 [build-system]
 requires = ["hatchling"]

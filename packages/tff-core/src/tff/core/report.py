@@ -37,6 +37,7 @@ CHECK_LABELS: dict[str, str] = {
     "nopositionalgroupbyororderby": "No positional GROUP BY or ORDER BY",
     "environmentagnosticreferences": "Environment-agnostic references",
     "duplicate_ctes": "Duplicate CTEs",
+    "connascence_of_value": "Connascence of Value",
 }
 
 CONNASCENCE_CATEGORIES: dict[str, str] = {
@@ -75,6 +76,7 @@ CONNASCENCE_CATEGORIES: dict[str, str] = {
     "nomissinguniquevalues": "Quality & Metadata (Non-Connascence)",
     "sqlcomplexity": "Quality & Metadata (Non-Connascence)",
     "duplicate_ctes": "Connascence of Algorithm (CoA)",
+    "connascence_of_value": "Connascence of Value (CoV)",
 }
 
 ARCHITECTURAL_CHECKS = frozenset(
@@ -84,6 +86,7 @@ ARCHITECTURAL_CHECKS = frozenset(
         "schema_contracts",
         "dependency_graph",
         "duplicate_ctes",
+        "connascence_of_value",
     }
 )
 
@@ -310,6 +313,7 @@ def render_lint_report(
             "Connascence of Position (CoP)",
             "Connascence of Meaning (CoM)",
             "Connascence of Algorithm (CoA)",
+            "Connascence of Value (CoV)",
             "Dynamic Coupling & DAG Structure",
             "Quality & Metadata (Non-Connascence)",
             "Other Checks",

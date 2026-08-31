@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import importlib
+import importlib.metadata
 import logging
 import sys
 from pathlib import Path
@@ -12,6 +13,11 @@ from typing import Any
 from tff.core.config import load_fitness_config, resolve_project_path
 from tff.core.context import set_ff_config
 from tff.core.report import render_lint_report
+
+try:
+    __version__ = importlib.metadata.version("tff-core")
+except Exception:
+    __version__ = "0.7.0"
 
 
 def _detect_provider(project_root: Path) -> str:
@@ -50,16 +56,16 @@ def _get_runner(provider: str) -> Any:
             return importlib.import_module("tff.dbt.runner")
         except ImportError as e:
             raise ImportError(
-                "dbt project detected, but tff-dbt is not installed in the current environment.\n"
-                "Please install it using: pip install tff-dbt"
+                "dbt project detected, but tff is not installed with dbt support.\n"
+                'Please install it using: pip install "tff-core[dbt]" or uv add "tff-core[dbt]"'
             ) from e
     elif provider == "sqlmesh":
         try:
             return importlib.import_module("tff.sqlmesh.runner")
         except ImportError as e:
             raise ImportError(
-                "SQLMesh project detected, but tff-sqlmesh is not installed in the current environment.\n"
-                "Please install it using: pip install tff-sqlmesh"
+                "SQLMesh project detected, but tff is not installed with sqlmesh support.\n"
+                'Please install it using: pip install "tff-core[sqlmesh]" or uv add "tff-core[sqlmesh]"'
             ) from e
     else:
         raise ValueError(f"Unknown provider: {provider}")
@@ -97,10 +103,24 @@ class TFFArgumentParser(argparse.ArgumentParser):
 
 
 def main(argv: list[str] | None = None) -> int:
-    TFFArgumentParser._current_argv = argv
+    if argv is None:
+        args_list = sys.argv[1:]
+    else:
+        args_list = list(argv)
+
+    if not args_list:
+        args_list = ["help"]
+
+    TFFArgumentParser._current_argv = args_list
     parser = TFFArgumentParser(
         prog="tff",
-        description="Run Transformation Fitness Function (tff) checks",
+        description=f"tff {__version__} - Run Transformation Fitness Function (tff) checks",
+    )
+    parser.add_argument(
+        "--version",
+        "-v",
+        action="version",
+        version=f"tff {__version__}",
     )
     subparsers = parser.add_subparsers(
         dest="command", required=True, parser_class=TFFArgumentParser
@@ -151,6 +171,11 @@ def main(argv: list[str] | None = None) -> int:
         "--json",
         action="store_true",
         help="Output results in JSON format to stdout",
+    )
+    lint_parser.add_argument(
+        "--fix",
+        action="store_true",
+        help="Automatically fix simple linting violations if possible",
     )
 
     health_parser = subparsers.add_parser(
@@ -263,7 +288,7 @@ def main(argv: list[str] | None = None) -> int:
         help="Specific command to get help for",
     )
 
-    args = parser.parse_args(argv)
+    args = parser.parse_args(args_list)
 
     if args.command == "help":
         if args.subcommand == "lint":
@@ -333,20 +358,28 @@ def main(argv: list[str] | None = None) -> int:
         table = Table(show_header=False, box=None, padding=(0, 2, 0, 0))
         table.add_column()
         table.add_column()
-        
+
         table.add_row("  [bold]Project root:[/bold]", str(project_root))
         table.add_row("  [bold]Provider:[/bold]", provider)
-        config_status = "[green]found[/green]" if config_exists else "[red]missing[/red]"
-        table.add_row(
-            "  [bold]Config file:[/bold]", f"{args.config} ({config_status})"
+        config_status = (
+            "[green]found[/green]" if config_exists else "[red]missing[/red]"
         )
+        table.add_row("  [bold]Config file:[/bold]", f"{args.config} ({config_status})")
         if config_exists:
             try:
                 cfg = load_fitness_config(project_root, config_path)
                 contract_path = resolve_project_path(cfg, cfg.contract_groups_path)
                 exclusions_path = resolve_project_path(cfg, cfg.exclusions_path)
-                contract_status = "[green]found[/green]" if contract_path.exists() else "[red]missing[/red]"
-                exclusions_status = "[green]found[/green]" if exclusions_path.exists() else "[red]missing[/red]"
+                contract_status = (
+                    "[green]found[/green]"
+                    if contract_path.exists()
+                    else "[red]missing[/red]"
+                )
+                exclusions_status = (
+                    "[green]found[/green]"
+                    if exclusions_path.exists()
+                    else "[red]missing[/red]"
+                )
                 table.add_row(
                     "  [bold]Contract groups:[/bold]",
                     f"{contract_path} ({contract_status})",
@@ -394,27 +427,44 @@ def main(argv: list[str] | None = None) -> int:
         ver_table = Table(show_header=False, box=None, padding=(0, 2, 0, 0))
         ver_table.add_column()
         ver_table.add_column()
-        
+
         def format_ver(pkg: str) -> str:
             ver = get_version(pkg)
             if ver == "not installed":
                 return "[dim red]not installed[/dim red]"
             return f"[cyan]{ver}[/cyan]"
 
-        ver_table.add_row("  [bold]tff-core[/bold]", format_ver("tff-core"))
-        ver_table.add_row("  [bold]tff-dbt[/bold]", format_ver("tff-dbt"))
-        ver_table.add_row("  [bold]tff-sqlmesh[/bold]", format_ver("tff-sqlmesh"))
+        tff_ver = format_ver("tff-core")
+        ver_table.add_row("  [bold]tff-core[/bold]", tff_ver)
+
+        import importlib.util
+
+        has_sqlmesh = importlib.util.find_spec("sqlmesh") is not None
+
+        sqlmesh_status = (
+            f"{tff_ver} [dim](sqlmesh extra enabled)[/dim]"
+            if has_sqlmesh
+            else "[dim red]not enabled[/dim red] [dim](install using 'tff-core[sqlmesh]')[/dim]"
+        )
+        ver_table.add_row("  [bold]sqlmesh integration[/bold]", sqlmesh_status)
+        ver_table.add_row(
+            "  [bold]dbt integration[/bold]", f"{tff_ver} [dim](core)[/dim]"
+        )
         console.print(ver_table)
 
         prov_table = Table(show_header=False, box=None, padding=(0, 2, 0, 0))
         prov_table.add_column()
         prov_table.add_column()
-        
+
         if provider == "dbt":
             dbt_project = project_root / "dbt_project.yml"
             manifest = project_root / "target" / "manifest.json"
-            dbt_project_status = "[green]found[/green]" if dbt_project.exists() else "[red]missing[/red]"
-            manifest_status = "[green]found[/green]" if manifest.exists() else "[red]missing[/red]"
+            dbt_project_status = (
+                "[green]found[/green]" if dbt_project.exists() else "[red]missing[/red]"
+            )
+            manifest_status = (
+                "[green]found[/green]" if manifest.exists() else "[red]missing[/red]"
+            )
             prov_table.add_row(
                 "  [bold]dbt_project.yml[/bold]",
                 f"{dbt_project} ({dbt_project_status})",
@@ -426,8 +476,14 @@ def main(argv: list[str] | None = None) -> int:
         elif provider == "sqlmesh":
             config_py = project_root / "config.py"
             settings_yaml = project_root / "settings.yaml"
-            config_py_status = "[green]found[/green]" if config_py.exists() else "[red]missing[/red]"
-            settings_yaml_status = "[green]found[/green]" if settings_yaml.exists() else "[red]missing[/red]"
+            config_py_status = (
+                "[green]found[/green]" if config_py.exists() else "[red]missing[/red]"
+            )
+            settings_yaml_status = (
+                "[green]found[/green]"
+                if settings_yaml.exists()
+                else "[red]missing[/red]"
+            )
             prov_table.add_row(
                 "  [bold]config.py[/bold]",
                 f"{config_py} ({config_py_status})",
@@ -450,15 +506,23 @@ def main(argv: list[str] | None = None) -> int:
         history = collect_stats(project_root, args.days)
         if not history:
             print("No TFF run logs found under .tff_logs/.", file=sys.stderr)
-            print("Please run 'tff lint' or 'tff health' to generate reports first.", file=sys.stderr)
+            print(
+                "Please run 'tff lint' or 'tff health' to generate reports first.",
+                file=sys.stderr,
+            )
             return 1
 
         if args.json:
-            print(json.dumps({
-                "project_root": str(project_root),
-                "days": args.days,
-                "history": history
-            }, indent=2))
+            print(
+                json.dumps(
+                    {
+                        "project_root": str(project_root),
+                        "days": args.days,
+                        "history": history,
+                    },
+                    indent=2,
+                )
+            )
             return 0
 
         # Output ASCII trend charts
@@ -469,19 +533,26 @@ def main(argv: list[str] | None = None) -> int:
 
         # 1. Health Score Trend
         from rich.console import Console
+
         console = Console()
         console.print("[bold cyan]● TFF Project Health Score Trend[/bold cyan]")
         has_health_data = any(h is not None for h in health_scores)
         if has_health_data:
-            chart = render_ascii_chart(health_scores, dates, height=6, is_percentage=True)
+            chart = render_ascii_chart(
+                health_scores, dates, height=6, is_percentage=True
+            )
             console.print(chart)
         else:
             console.print("  (No health score data in this timeframe)")
         console.print()
 
         # 2. Lint Violations Trend
-        console.print("[bold cyan]● TFF Lint Violations Trend (Errors & Warnings)[/bold cyan]")
-        has_lint_data = any(e is not None or w is not None for e, w in zip(errors, warnings))
+        console.print(
+            "[bold cyan]● TFF Lint Violations Trend (Errors & Warnings)[/bold cyan]"
+        )
+        has_lint_data = any(
+            e is not None or w is not None for e, w in zip(errors, warnings)
+        )
         if has_lint_data:
             total_violations = []
             for e, w in zip(errors, warnings):
@@ -489,7 +560,9 @@ def main(argv: list[str] | None = None) -> int:
                     total_violations.append(None)
                 else:
                     total_violations.append((e or 0) + (w or 0))
-            chart = render_ascii_chart(total_violations, dates, height=6, is_percentage=False)
+            chart = render_ascii_chart(
+                total_violations, dates, height=6, is_percentage=False
+            )
             console.print(chart)
         else:
             console.print("  (No lint violation data in this timeframe)")
@@ -498,7 +571,13 @@ def main(argv: list[str] | None = None) -> int:
         # 3. Summary Table
         from rich.table import Table
         from rich import box
-        table = Table(box=box.SIMPLE, show_header=True, header_style="bold cyan", padding=(0, 2, 0, 0))
+
+        table = Table(
+            box=box.SIMPLE,
+            show_header=True,
+            header_style="bold cyan",
+            padding=(0, 2, 0, 0),
+        )
         table.add_column("Date", style="bold", no_wrap=True)
         table.add_column("Health Score", justify="right")
         table.add_column("Errors", justify="right")
@@ -511,16 +590,26 @@ def main(argv: list[str] | None = None) -> int:
             except Exception:
                 d_formatted = item["date"]
 
-            h_val = f"{item['health_score']:.1f}%" if item["health_score"] is not None else "·"
-            e_val = str(item["errors_count"]) if item["errors_count"] is not None else "·"
-            w_val = str(item["warnings_count"]) if item["warnings_count"] is not None else "·"
+            h_val = (
+                f"{item['health_score']:.1f}%"
+                if item["health_score"] is not None
+                else "·"
+            )
+            e_val = (
+                str(item["errors_count"]) if item["errors_count"] is not None else "·"
+            )
+            w_val = (
+                str(item["warnings_count"])
+                if item["warnings_count"] is not None
+                else "·"
+            )
 
             # Colorize output
             if item["health_score"] is not None:
                 score = item["health_score"]
                 color = "green" if score >= 90 else "yellow" if score >= 70 else "red"
                 h_val = f"[{color}]{h_val}[/{color}]"
-            
+
             if item["errors_count"] and item["errors_count"] > 0:
                 e_val = f"[red]{e_val}[/red]"
             if item["warnings_count"] and item["warnings_count"] > 0:
@@ -595,6 +684,57 @@ def main(argv: list[str] | None = None) -> int:
         except Exception as e:
             print(f"Error executing checks: {e}", file=sys.stderr)
             return 1
+
+        # Apply auto-fixes if --fix is set
+        if args.command == "lint" and getattr(args, "fix", False) and findings:
+            models = {}
+            try:
+                if provider == "dbt":
+                    from tff.dbt.manifest import load_dbt_models
+                    models = load_dbt_models(project_root, dialect=args.dialect)
+                else:
+                    from sqlmesh.core.context import Context
+                    from tff.sqlmesh.loader import FitnessLoader
+                    from tff.sqlmesh.runner import map_sqlmesh_context_models
+                    context = Context(
+                        paths=[str(project_root)],
+                        loader=FitnessLoader,
+                    )
+                    models = map_sqlmesh_context_models(context)
+            except Exception as e:
+                print(f"Warning: Could not load models for autofix: {e}", file=sys.stderr)
+
+            if models:
+                from tff.core.autofix import apply_autofixes
+                fix_logs = apply_autofixes(project_root, provider, findings, models)
+                if fix_logs:
+                    if not args.json:
+                        from rich.console import Console
+                        console = Console(stderr=True)
+                        for log in fix_logs:
+                            console.print(f"[green]✓[/green] {log}")
+                    # Re-run checks to get the final state of the files
+                    try:
+                        if provider == "dbt":
+                            findings, models_checked, executed_checks = (
+                                runner_module.run_all_checks(
+                                    project_root=project_root,
+                                    config=config,
+                                    checks=checks,
+                                    dialect=args.dialect,
+                                )
+                            )
+                        else:
+                            findings, models_checked, executed_checks = (
+                                runner_module.run_all_checks(
+                                    project_root=project_root,
+                                    config=config,
+                                    checks=checks,
+                                )
+                            )
+                    except Exception as e:
+                        print(f"Error executing checks after autofix: {e}", file=sys.stderr)
+                        return 1
 
         if args.command == "lint":
             # 5. Render report

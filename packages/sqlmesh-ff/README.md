@@ -1,9 +1,9 @@
 # sqlmesh-ff (Deprecated)
 
-This package has been renamed to **tff-sqlmesh** as part of the monorepo migration for TFF (Transformation Fitness Functions).
+This package has been deprecated in favor of **tff-core[sqlmesh]** as part of the monorepo consolidation for TFF (Transformation Fitness Functions).
 
-Please install and import **tff-sqlmesh** instead:
+Please install **tff-core** with the **sqlmesh** extra instead:
 
 ```bash
-pip install tff-sqlmesh
+pip install tff-core[sqlmesh]
 ```

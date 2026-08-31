@@ -1,5 +1,35 @@
 # Changelog
 
+## [0.8.0](https://github.com/tjirab/tff/compare/tff-core-v0.7.0...tff-core-v0.8.0) (2026-08-27)
+
+
+### Features
+
+* **checks:** add connascence of value (CoV) check ([#134](https://github.com/tjirab/tff/issues/134)) ([6766224](https://github.com/tjirab/tff/commit/6766224e856f110a0b38026d518332f1e6e55325))
+* **cli:** default to help command and show tff version ([#118](https://github.com/tjirab/tff/issues/118)) ([246937c](https://github.com/tjirab/tff/commit/246937cf796a349d3d46190a699d9e5f183acc59))
+* metadata and tag-driven layer boundaries and exclusions ([#121](https://github.com/tjirab/tff/issues/121)) ([#131](https://github.com/tjirab/tff/issues/131)) ([aa30958](https://github.com/tjirab/tff/commit/aa30958248ff85d71e43084b64a298547c5eb061))
+* **perf:** implement AST caching on ModelRepresentation ([#120](https://github.com/tjirab/tff/issues/120)) ([#128](https://github.com/tjirab/tff/issues/128)) ([63ad787](https://github.com/tjirab/tff/commit/63ad7870b2078de8c611fa213ccf66e6f562e3cb))
+
+
+### Bug Fixes
+
+* **robustness:** improve fallback Jinja parsing in local SQLGlot checks ([#123](https://github.com/tjirab/tff/issues/123)) ([#130](https://github.com/tjirab/tff/issues/130)) ([f422623](https://github.com/tjirab/tff/commit/f4226235964654e16d650ff3dc817097b6e9fa54))
+
+## [0.7.0](https://github.com/tjirab/tff/compare/tff-core-v0.6.0...tff-core-v0.7.0) (2026-08-11)
+
+
+### Features
+
+* **dbt:** Assert dbt metadata check coverage ([#112](https://github.com/tjirab/tff/issues/112)) ([2f9d4b7](https://github.com/tjirab/tff/commit/2f9d4b75494bb82d96e1068bcbea1ce84bcd40e4))
+* support nested layer and domain resolution ([#108](https://github.com/tjirab/tff/issues/108)) ([#109](https://github.com/tjirab/tff/issues/109)) ([8cdb7be](https://github.com/tjirab/tff/commit/8cdb7be86b0abe58bd092d866d3cf5d3a2112c83))
+
+## [0.6.0](https://github.com/tjirab/tff/compare/tff-core-v0.5.0...tff-core-v0.6.0) (2026-07-27)
+
+
+### Features
+
+* consolidate packages into tff-core with extras ([#98](https://github.com/tjirab/tff/issues/98)) ([1c1cfd9](https://github.com/tjirab/tff/commit/1c1cfd9d0637876518a0ff59c6760ec7ceb909db))
+
 ## [0.5.0](https://github.com/tjirab/tff/compare/tff-core-v0.4.0...tff-core-v0.5.0) (2026-07-04)
 
 

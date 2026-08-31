@@ -38,24 +38,24 @@ Setup and usage details differ depending on your pipeline engine. Refer to the c
 
 ## Quick Installation
 
-Install the adapter matching your pipeline tool:
+Install the package with the adapter matching your pipeline tool:
 
 ### 📐 For SQLMesh projects:
 ```bash
 # With uv:
-uv add tff-sqlmesh
+uv add "tff-core[sqlmesh]"
 
 # Or pip:
-pip install tff-sqlmesh
+pip install "tff-core[sqlmesh]"
 ```
 
 ### ⚡ For dbt projects:
 ```bash
 # With uv:
-uv add tff-dbt
+uv add "tff-core[dbt]"
 
 # Or pip:
-pip install tff-dbt
+pip install "tff-core[dbt]"
 ```
 
 
@@ -63,7 +63,7 @@ pip install tff-dbt
 
 ## CLI Usage Guide
 
-Once installed, use the unified `tff` CLI to run linting and health checks.
+Once installed, use the unified `tff` CLI to run linting and health checks. Running `tff` with no arguments will display the help menu by default.
 
 ```bash
 tff [command] [options]
@@ -89,6 +89,7 @@ For detailed option explanations, run `tff help <command>` or `tff <command> --h
 * `--group-by {connascence,model}`: How to group violations in the report (default: `model`).
 * `--dialect DIALECT`: SQL dialect of models (dbt only; auto-inferred by default).
 * `--json`: Output results in JSON format to stdout.
+* `--fix`: Automatically fix simple linting violations if possible (e.g. rewriting positional `GROUP BY`/`ORDER BY` and auto-scaffolding missing metadata).
 
 #### `tff health`
 * `--project PATH`, `--config PATH`, `--provider {auto,dbt,sqlmesh}`, `--dialect DIALECT`: (Same as above)
@@ -107,6 +108,11 @@ For detailed option explanations, run `tff help <command>` or `tff <command> --h
 Run linting on the current project:
 ```bash
 tff lint
+```
+
+Automatically fix simple linting violations (positional GROUP BY/ORDER BY, missing owner/description metadata):
+```bash
+tff lint --fix
 ```
 
 Show project health report and require a score of at least 80% to pass:

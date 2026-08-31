@@ -3,7 +3,7 @@ from pathlib import Path
 from tff.sqlmesh.cli import main
 from tff.sqlmesh.runner import run_all_checks
 
-FIXTURE_PATH = Path(__file__).parent / "fixtures" / "minimal_project"
+FIXTURE_PATH = Path(__file__).parent / "fixtures" / "sqlmesh_minimal_project"
 
 
 def test_run_all_checks_integration():

@@ -13,17 +13,7 @@ from tff.core.context import get_ff_config
 from tff.core.utils.paths import get_layer_from_path
 
 
-def clean_query_for_parsing(sql: str) -> str:
-    # Remove Jinja comments
-    sql = re.sub(r"\{#.*?#\}", "", sql, flags=re.DOTALL)
-    # Replace Jinja statement blocks with space
-    sql = re.sub(r"\{%.*?%\}", " ", sql, flags=re.DOTALL)
-    # Replace Jinja expression blocks with dummy identifier
-    sql = re.sub(r"\{\{.*?\}\}", " __jinja_var__ ", sql, flags=re.DOTALL)
-    # Replace SQLMesh macros with dummy identifier
-    sql = re.sub(r"@\w+\([^)]*\)", " __sqlmesh_macro__ ", sql)
-    sql = re.sub(r"@\w+", " __sqlmesh_macro__ ", sql)
-    return sql
+from tff.core.utils.jinja import clean_jinja_for_parsing
 
 
 class EnvironmentAgnosticReferences(Rule):
@@ -62,7 +52,7 @@ class EnvironmentAgnosticReferences(Rule):
             # Strip SQLMesh MODEL block if present
             sql = re.sub(r"^MODEL\s*\(.*?\)\s*;", "", sql, flags=re.DOTALL | re.IGNORECASE).strip()
             # Clean Jinja and SQLMesh macro templates
-            sql_clean = clean_query_for_parsing(sql)
+            sql_clean = clean_jinja_for_parsing(sql)
             parsed = sqlglot.parse_one(sql_clean, read=model.dialect)
         except Exception:
             return None

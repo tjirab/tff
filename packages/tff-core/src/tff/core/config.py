@@ -50,9 +50,40 @@ class DuplicateCtesCheckConfig(LayerFilterConfig):
     min_ast_nodes: int = 12
 
 
+class ConnascenceOfValueCheckConfig(LayerFilterConfig):
+    severity: str = "warning"
+    min_occurrences: int = 2
+    ignored_values: list[str] = Field(default_factory=lambda: ["0", "1", ""])
+
+
+class CustomExclusionRule(BaseModel):
+    source_layer: str | None = None
+    source_domain: str | None = None
+    source_tag: str | None = None
+    source_tags: list[str] | None = None
+    source_meta: dict[str, Any] | None = None
+    target_layer: str | None = None
+    target_domain: str | None = None
+    target_tag: str | None = None
+    target_tags: list[str] | None = None
+    target_meta: dict[str, Any] | None = None
+
+
+class AllowedExceptionRule(BaseModel):
+    model: str
+    dependency: str
+
+
+class CustomExclusionsCheckConfig(LayerFilterConfig):
+    exclusions: list[CustomExclusionRule] = Field(default_factory=list)
+    allowed_exceptions: list[AllowedExceptionRule] = Field(default_factory=list)
+
+
 class ChecksConfig(BaseModel):
     layer_integrity: CheckEnabled = Field(default_factory=CheckEnabled)
-    custom_exclusions: CheckEnabled = Field(default_factory=CheckEnabled)
+    custom_exclusions: CustomExclusionsCheckConfig = Field(
+        default_factory=CustomExclusionsCheckConfig
+    )
     schema_contracts: CheckEnabled = Field(default_factory=CheckEnabled)
     dependency_graph: DependencyGraphCheckConfig = Field(
         default_factory=DependencyGraphCheckConfig
@@ -63,6 +94,10 @@ class ChecksConfig(BaseModel):
     duplicate_ctes: DuplicateCtesCheckConfig = Field(
         default_factory=DuplicateCtesCheckConfig
     )
+    connascence_of_value: ConnascenceOfValueCheckConfig = Field(
+        default_factory=ConnascenceOfValueCheckConfig
+    )
+
 
 
 

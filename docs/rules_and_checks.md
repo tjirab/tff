@@ -4,6 +4,17 @@ TFF runs two categories of quality guardrails: **Architectural Checks** and **Li
 
 ---
 
+## 🛠️ Auto-Fixer (`--fix`)
+
+TFF includes a built-in auto-fixer that can automatically resolve simple violations. By running `tff lint --fix`, TFF will modify your source files to fix the following issues:
+
+*   **[No Positional GROUP BY/ORDER BY](#no-positional-group-byorder-by-no_positional_group_by_or_order_by)** (`nopositionalgroupbyororderby`): Rewrites integer positional references in `GROUP BY` and `ORDER BY` clauses to explicit column names or select aliases using AST modification.
+*   **Metadata (`nomissingowner`, `nomissingdescription`)**:
+    *   **dbt**: Automatically appends or scaffolds `schema.yml` metadata configs with `"TODO: Add owner"` and `"TODO: Add description"` templates.
+    *   **SQLMesh**: Inline-updates the `MODEL` block in the model `.sql` file to add `owner` and `description` headers.
+
+---
+
 ## Shared Layer Filtering Configuration
 
 Most checks and rules inherit a common layer filtering schema. This allows you to apply guardrails selectively based on the pipeline layer a model belongs to:
@@ -79,6 +90,60 @@ Architectural checks evaluate the structure, dependencies, and layout of your en
   ```
   * **`exclusions`**: A list of blocked dependencies. If a model in the `target_layer`/`target_domain` depends on a model in the `source_layer`/`source_domain` (which is the source of the dependency relation), a violation is raised. Omitting domain fields matches all domains in that layer.
   * **`allowed_exceptions`**: Specific `model` $\rightarrow$ `dependency` pairs to allow even if they match an exclusion rule.
+
+  #### Metadata/Tag-driven Fallback
+  If models are organized by functional theme rather than layer directories, `layer_integrity` and `custom_exclusions` will automatically fall back to using tags and metadata:
+  * **Layer**: Set a tag matching one of the layers in the `layers.order` list, or define a `layer` key in model metadata.
+  * **Domain**: Prefix a tag with `domain:`, e.g., `domain:finance`, or define a `domain` key in model metadata.
+
+  **Example (Functional Theme Layout)**:
+  Assume a model is located at `models/finance/payments_cleared.sql`. Since `finance` is not in your configured `layers.order`, TFF's directory parser cannot determine the layer automatically. You can explicitly tag/annotate it:
+  
+  * **dbt (`schema.yml`)**:
+    ```yaml
+    models:
+      - name: payments_cleared
+        config:
+          tags: ["marts"]       # Layer: resolves to marts layer
+          meta:
+            domain: billing     # Domain: sets domain to billing
+    ```
+  
+  * **SQLMesh (`payments_cleared.sql`)**:
+    ```sql
+    MODEL (
+      name finance.payments_cleared,
+      kind VIEW,
+      tags (marts),             -- Resolves the model layer to marts
+      meta (
+        domain billing          -- Resolves the model domain to billing
+      )
+    );
+    ```
+
+  #### YAML-based Configuration
+  Instead of or in addition to a JSON file, custom exclusion rules and exceptions can also be defined directly in `fitness_functions.yaml` under `checks.custom_exclusions` using tags and metadata selectors:
+  ```yaml
+  checks:
+    custom_exclusions:
+      enabled: true
+      exclusions:
+        # Exclude public models from depending on pii models via tags
+        - source_tag: "pii"
+          target_tag: "public"
+        # Exclude based on metadata key-value pairs
+        - source_meta:
+            team: "marketing"
+          target_meta:
+            team: "finance"
+        # Combine layer/domain with tag/meta selectors
+        - source_layer: "core"
+          source_tag: "confidential"
+          target_layer: "marts"
+      allowed_exceptions:
+        - model: "marts.public_model"
+          dependency: "core.confidential_model"
+  ```
 
 ---
 
@@ -213,6 +278,53 @@ Architectural checks evaluate the structure, dependencies, and layout of your en
 
 ---
 
+### Connascence of Value (`connascence_of_value`)
+
+* **What it checks**:
+  * Identifies "Connascence of Value" by flagging literal values (strings, numbers) duplicated across multiple models.
+  * Only string and numeric literals are checked (excluding boolean literals, NULL, and literals located inside `LIMIT` or `OFFSET` clauses).
+  * Grouping is case-insensitive for strings, but the original casing is preserved in the findings messages.
+* **How to configure**:
+  Defined under `checks.connascence_of_value` in `fitness_functions.yaml`.
+  ```yaml
+  checks:
+    connascence_of_value:
+      enabled: true
+      severity: warning               # Severity of finding: 'warning' or 'error'
+      min_occurrences: 2             # Minimum number of unique models sharing a literal to trigger (default: 2)
+      ignored_values: ["0", "1", ""]  # List of literals to ignore (default: ['0', '1', ''])
+      skip_layers: [staging]
+  ```
+
+* **Why it matters (The "Why")**:
+  Connascence of Value occurs when two or more components must share a specific value (literal/constant) to function correctly. If that value changes in the source data or business rules (e.g. `'premium_tier'` becomes `'premium_membership'`), all models containing it must be updated simultaneously. If any are missed, it silently introduces data discrepancies between your models (e.g. marketing counts new users but finance continues to filter on the old tier name).
+
+* **Example of Duplication**:
+  ```sql
+  -- premium_users.sql
+  SELECT * FROM {{ ref('dim_users') }} WHERE status = 'premium_tier'
+
+  -- premium_revenue.sql
+  SELECT * FROM {{ ref('finance_revenue') }} WHERE status = 'premium_tier'
+  ```
+
+* **How to Resolve**:
+  1. **Upstream Classification (Recommended)**: Evaluate and rename/classify the status once in a staging layer, exposing it downstream as a simple boolean flag:
+     ```sql
+     -- stg_users.sql
+     SELECT user_id, (status = 'premium_tier') AS is_premium FROM raw_users
+     
+     -- Downstream models
+     SELECT * FROM {{ ref('stg_users') }} WHERE is_premium
+     ```
+  2. **Project-Level Variables**: Define the value as a project variable in `dbt_project.yml` and reference it via Jinja:
+     ```sql
+     SELECT * FROM {{ ref('stg_users') }} WHERE status = '{{ var("premium_tier_name") }}'
+     ```
+  3. **Mapping Tables (Seeds)**: For larger sets of constants (e.g., list of VIP email domains), load them via a seed CSV and perform a `JOIN` or `WHERE IN (SELECT ... FROM {{ ref('seed') }})`.
+
+---
+
 ## 2. Linter Rules
 
 Linter rules inspect individual model files to enforce code style, conventions, and database-independent references.
@@ -238,7 +350,7 @@ For SQLMesh projects, these rules run dynamically inside SQLMesh (e.g., `sqlmesh
 
 ---
 
-### No Positional GROUP BY/ORDER BY (`no_positional_group_by_or_order_by`)
+### No Positional GROUP BY/ORDER BY (`no_positional_group_by_or_order_by`) [Auto-fixable]
 
 * **What it checks**:
   * Prevents using ordinal integers (e.g., `GROUP BY 1, 2` or `ORDER BY 1 DESC`) instead of explicit column name references.
@@ -388,12 +500,12 @@ For SQLMesh projects, these rules run dynamically inside SQLMesh (e.g., `sqlmesh
 
 ---
 
-### Metadata (`metadata`)
+### Metadata (`metadata`) [Partially Auto-fixable]
 
 * **What it checks**:
   * Enforces model metadata documentation and testing:
-    * **`owner`**: Validates that the model config has a specified owner.
-    * **`description`**: Validates that the model description is defined and non-empty.
+    * **`owner`** [Auto-fixable]: Validates that the model config has a specified owner.
+    * **`description`** [Auto-fixable]: Validates that the model description is defined and non-empty.
     * **`grain`**: Validates that grains (primary key/grain definition) are specified.
     * **`not_null`**: Validates that the model has a `not_null` audit (SQLMesh) or test (dbt).
     * **`unique_values`**: Validates that the model has a `unique_values` audit (SQLMesh) or `unique` test (dbt).
