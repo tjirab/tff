@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.9.0](https://github.com/tjirab/tff/compare/tff-core-v0.8.0...tff-core-v0.9.0) (2026-08-31)
+
+
+### Features
+
+* **cli:** add --fix flag to tff lint for auto-fixing simple violations ([#136](https://github.com/tjirab/tff/issues/136)) ([2289885](https://github.com/tjirab/tff/commit/22898858cf5420bb8879fc9ac26694f519ae6281))
+* **governance:** HTML dashboard and history reporting (tff[#125](https://github.com/tjirab/tff/issues/125)) ([#141](https://github.com/tjirab/tff/issues/141)) ([f3c16e2](https://github.com/tjirab/tff/commit/f3c16e28a06914f3a89feb03568ffd14ca2047af))
+
 ## [0.8.0](https://github.com/tjirab/tff/compare/tff-core-v0.7.0...tff-core-v0.8.0) (2026-08-27)
 
 
