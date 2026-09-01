@@ -7,8 +7,6 @@ import pytest
 from tff.core.cli import _detect_provider, _get_runner, main
 
 
-
-
 def test_detect_provider_dbt(tmp_path: Path):
     (tmp_path / "dbt_project.yml").touch()
     assert _detect_provider(tmp_path) == "dbt"
@@ -71,7 +69,7 @@ def test_get_runner_import_error_dbt():
         "importlib.import_module",
         side_effect=ImportError("No module named 'tff.dbt.runner'"),
     ):
-        with pytest.raises(ImportError, match="tff-dbt is not installed"):
+        with pytest.raises(ImportError, match="tff is not installed with dbt support"):
             _get_runner("dbt")
 
 
@@ -80,7 +78,9 @@ def test_get_runner_import_error_sqlmesh():
         "importlib.import_module",
         side_effect=ImportError("No module named 'tff.sqlmesh.runner'"),
     ):
-        with pytest.raises(ImportError, match="tff-sqlmesh is not installed"):
+        with pytest.raises(
+            ImportError, match="tff is not installed with sqlmesh support"
+        ):
             _get_runner("sqlmesh")
 
 
@@ -241,6 +241,41 @@ def test_main_lint_run_checks_error(mock_load_config, mock_get_runner, tmp_path:
     assert exit_code == 1
 
 
+@patch("tff.core.cli._get_runner")
+@patch("tff.core.cli.load_fitness_config")
+@patch("tff.core.cli.render_lint_report")
+def test_main_lint_group_by_connascence(
+    mock_render, mock_load_config, mock_get_runner, tmp_path: Path
+):
+    """Test that --group-by connascence is forwarded to render_lint_report."""
+    mock_runner = MagicMock()
+    mock_runner.run_all_checks.return_value = ([], 5, ["rules"])
+    mock_get_runner.return_value = mock_runner
+    mock_render.return_value = True
+
+    project_str = str(tmp_path)
+    exit_code = main(
+        [
+            "lint",
+            "--project",
+            project_str,
+            "--provider",
+            "dbt",
+            "--group-by",
+            "connascence",
+        ]
+    )
+
+    assert exit_code == 0
+    mock_render.assert_called_once_with(
+        [],
+        models_checked=5,
+        executed_checks=["rules"],
+        fail_level="error",
+        group_by="connascence",
+    )
+
+
 def test_cli_main_block(tmp_path: Path):
     import runpy
 
@@ -306,14 +341,35 @@ def test_invalid_command_error_hint(capsys):
     assert "For help, try 'tff --help'" in captured.err
 
 
-def test_missing_command_error_hint(capsys):
-    # Test tff (no command)
-    with pytest.raises(SystemExit) as excinfo:
-        main([])
-    assert excinfo.value.code == 2
+def test_missing_command_defaults_to_help(capsys):
+    # Test tff (no command) defaults to showing help and exiting 0
+    assert main([]) == 0
     captured = capsys.readouterr()
-    assert "the following arguments are required: command" in captured.err
-    assert "For help, try 'tff --help'" in captured.err
+    assert "Run Transformation Fitness Function (tff) checks" in captured.out
+    assert "tff" in captured.out
+
+
+def test_version_flag_long(capsys):
+    with pytest.raises(SystemExit) as excinfo:
+        main(["--version"])
+    assert excinfo.value.code == 0
+    captured = capsys.readouterr()
+    assert "tff" in captured.out
+
+
+def test_version_flag_short(capsys):
+    with pytest.raises(SystemExit) as excinfo:
+        main(["-v"])
+    assert excinfo.value.code == 0
+    captured = capsys.readouterr()
+    assert "tff" in captured.out
+
+
+def test_main_no_argv_defaults_to_help(capsys):
+    with patch("sys.argv", ["tff"]):
+        assert main() == 0
+        captured = capsys.readouterr()
+        assert "Run Transformation Fitness Function (tff) checks" in captured.out
 
 
 def test_subcommand_invalid_argument_error_hint(capsys):
@@ -371,7 +427,7 @@ def test_info_command_dbt(tmp_path: Path, capsys):
         assert "Exclusions:" in captured.out
         assert "Adapter Versions" in captured.out
         assert "tff-core" in captured.out
-        assert "not installed" in captured.out
+        assert "dbt integration" in captured.out
         assert "Provider Files" in captured.out
         assert "dbt_project.yml" in captured.out
         assert "manifest.json" in captured.out
@@ -438,10 +494,6 @@ def test_info_command_with_virtualenv(tmp_path: Path, capsys):
     tff_core_dist.mkdir()
     (tff_core_dist / "METADATA").write_text("Name: tff-core\nVersion: 1.2.3\n")
 
-    tff_sqlmesh_dist = site_packages / "tff_sqlmesh-4.5.6.dist-info"
-    tff_sqlmesh_dist.mkdir()
-    (tff_sqlmesh_dist / "METADATA").write_text("Name: tff-sqlmesh\nVersion: 4.5.6\n")
-
     # Create Windows-style virtualenv site-packages for coverage
     win_site_packages = tmp_path / ".venv" / "Lib" / "site-packages"
     win_site_packages.mkdir(parents=True)
@@ -456,7 +508,388 @@ def test_info_command_with_virtualenv(tmp_path: Path, capsys):
     # Verify that the versions from the simulated virtualenv are displayed
     assert "tff-core" in captured.out
     assert "1.2.3" in captured.out
-    assert "tff-sqlmesh" in captured.out
-    assert "4.5.6" in captured.out
-    assert "tff-dbt" in captured.out
-    assert "not installed" in captured.out
+    assert "sqlmesh integration" in captured.out
+    assert "dbt integration" in captured.out
+
+
+@patch("tff.core.cli._detect_provider")
+@patch("tff.core.cli._get_runner")
+@patch("tff.core.cli.load_fitness_config")
+@patch("tff.core.cli.render_lint_report")
+def test_main_lint_json(
+    mock_render,
+    mock_load_config,
+    mock_get_runner,
+    mock_detect_provider,
+    tmp_path: Path,
+    capsys,
+):
+    mock_detect_provider.return_value = "dbt"
+    mock_runner = MagicMock()
+    mock_runner.run_all_checks.return_value = ([], 5, ["rules"])
+    mock_get_runner.return_value = mock_runner
+
+    project_str = str(tmp_path)
+    exit_code = main(["lint", "--project", project_str, "--json"])
+
+    assert exit_code == 0
+    mock_render.assert_not_called()
+
+    captured = capsys.readouterr()
+    import json
+
+    data = json.loads(captured.out)
+    assert data["command"] == "lint"
+    assert data["models_checked"] == 5
+    assert data["passed"] is True
+
+    # Verify log file was written
+    log_files = list((tmp_path / ".tff_logs" / "lint").glob("*.log"))
+    assert len(log_files) == 1
+
+
+@patch("tff.core.cli._detect_provider")
+@patch("tff.core.cli._get_runner")
+@patch("tff.core.cli.load_fitness_config")
+@patch("tff.core.health.render_health_report")
+def test_main_health_normal_and_json(
+    mock_render_health,
+    mock_load_config,
+    mock_get_runner,
+    mock_detect_provider,
+    tmp_path: Path,
+    capsys,
+):
+    mock_detect_provider.return_value = "dbt"
+    mock_runner = MagicMock()
+    # health command expects findings, models_checked, executed_checks
+    mock_runner.run_all_checks.return_value = ([], 8, ["rules"])
+    mock_get_runner.return_value = mock_runner
+
+    # 1. Run without --json
+    project_str = str(tmp_path)
+    exit_code = main(["health", "--project", project_str])
+    assert exit_code == 0
+    mock_render_health.assert_called_once()
+    mock_render_health.reset_mock()
+
+    log_files = list((tmp_path / ".tff_logs" / "health").glob("*.log"))
+    assert len(log_files) == 1
+    # Clean up logs for the next run
+    for lf in log_files:
+        lf.unlink()
+
+    # 2. Run with --json
+    exit_code_json = main(["health", "--project", project_str, "--json"])
+    assert exit_code_json == 0
+    mock_render_health.assert_not_called()
+
+    captured = capsys.readouterr()
+    import json
+
+    data = json.loads(captured.out)
+    assert data["command"] == "health"
+    assert data["models_checked"] == 8
+    assert data["overall_score"] == 100.0
+
+    # Verify log file was written again
+    log_files = list((tmp_path / ".tff_logs" / "health").glob("*.log"))
+    assert len(log_files) == 1
+
+
+def test_main_stats_no_logs(tmp_path: Path, capsys):
+    # Running stats when no logs exist should exit 1 and show error
+    project_str = str(tmp_path)
+    exit_code = main(["stats", "--project", project_str])
+    assert exit_code == 1
+    captured = capsys.readouterr()
+    assert "No TFF run logs found" in captured.err
+
+
+def test_main_stats(tmp_path: Path, capsys):
+    project_str = str(tmp_path)
+    # Create mock logs
+    health_dir = tmp_path / ".tff_logs" / "health"
+    health_dir.mkdir(parents=True)
+    import json
+
+    # Write a health log
+    with open(health_dir / "h1.log", "w", encoding="utf-8") as f:
+        json.dump({"timestamp": "2026-07-03T12:00:00+02:00", "overall_score": 92.5}, f)
+
+    # 1. Run stats command (ASCII output)
+    exit_code = main(["stats", "--project", project_str])
+    assert exit_code == 0
+    captured = capsys.readouterr()
+    assert "TFF Project Health Score Trend" in captured.out
+    assert "Summary History" in captured.out
+    assert "92.5%" in captured.out
+
+    # 2. Run stats command with --json flag
+    exit_code_json = main(["stats", "--project", project_str, "--json"])
+    assert exit_code_json == 0
+    captured_json = capsys.readouterr()
+    data = json.loads(captured_json.out)
+    assert data["days"] == 7
+    assert len(data["history"]) == 7
+    assert data["history"][-1]["health_score"] == 92.5
+
+
+def test_help_stats_subcommand(capsys):
+    assert main(["help", "stats"]) == 0
+    captured = capsys.readouterr()
+    assert "Show history and trends of fitness checks" in captured.out
+    assert "--days" in captured.out
+
+
+def test_main_stats_variations(tmp_path: Path, capsys):
+    project_str = str(tmp_path)
+    lint_dir = tmp_path / ".tff_logs" / "lint"
+    lint_dir.mkdir(parents=True)
+    import json
+
+    # Write a lint log (with errors and warnings)
+    with open(lint_dir / "l1.log", "w", encoding="utf-8") as f:
+        json.dump(
+            {
+                "timestamp": "2026-07-03T12:00:00+02:00",
+                "errors_count": 2,
+                "warnings_count": 3,
+            },
+            f,
+        )
+
+    # 1. Run stats command (ASCII output)
+    # This covers:
+    # - No health score data in this timeframe
+    # - Lint violations trend rendering
+    # - non-zero errors and warnings in table rows
+    exit_code = main(["stats", "--project", project_str])
+    assert exit_code == 0
+    captured = capsys.readouterr()
+    assert "No health score data in this timeframe" in captured.out
+    assert "TFF Lint Violations Trend" in captured.out
+    assert "Summary History" in captured.out
+
+    # 2. Test invalid date parsing exception handling in summary table formatting
+    # Mock collect_stats to return history containing an invalid date
+    with patch("tff.core.logs.collect_stats") as mock_collect:
+        mock_collect.return_value = [
+            {
+                "date": "invalid-date-format",
+                "health_score": 90.0,
+                "errors_count": 0,
+                "warnings_count": 0,
+            }
+        ]
+        exit_code_mock = main(["stats", "--project", project_str])
+        assert exit_code_mock == 0
+        captured_mock = capsys.readouterr()
+        assert "invalid-date-format" in captured_mock.out
+
+
+def test_cli_version_fallback():
+    with patch(
+        "importlib.metadata.version", side_effect=Exception("Package not found")
+    ):
+        import importlib
+        import tff.core.cli
+
+        importlib.reload(tff.core.cli)
+        assert tff.core.cli.__version__ == "0.7.0"
+
+    # Restore original by reloading again without patch
+    import importlib
+    import tff.core.cli
+
+    importlib.reload(tff.core.cli)
+
+
+def test_cli_main_lint_with_fix(tmp_path: Path):
+    from tff.core.report import LintFinding
+    from tff.core.model import ModelRepresentation
+    # Create dbt_project.yml to auto-detect provider
+    (tmp_path / "dbt_project.yml").touch()
+
+    # Create a sql file containing positional GROUP BY
+    sql_file = tmp_path / "models/marts/my_model.sql"
+    sql_file.parent.mkdir(parents=True, exist_ok=True)
+    sql_file.write_text("SELECT a FROM t GROUP BY 1", encoding="utf-8")
+
+    # Mock runner run_all_checks to return initial findings
+    mock_runner = MagicMock()
+    # 1st call returns finding, 2nd call (re-run) returns empty findings
+    mock_runner.run_all_checks.side_effect = [
+        (
+            [
+                LintFinding(
+                    check="nopositionalgroupbyororderby",
+                    severity="error",
+                    model="my_model",
+                    path="models/marts/my_model.sql",
+                    message="Use column name instead."
+                )
+            ],
+            1,
+            ["rules"]
+        ),
+        (
+            [],
+            1,
+            ["rules"]
+        )
+    ]
+
+    with patch("tff.core.cli._get_runner", return_value=mock_runner), \
+         patch("tff.core.cli.load_fitness_config") as mock_load_config, \
+         patch("tff.core.cli.render_lint_report", return_value=True):
+        
+        mock_load_config.return_value = MagicMock()
+        
+        # We need to mock load_dbt_models to return ModelRepresentation
+        with patch("tff.dbt.manifest.load_dbt_models") as mock_load_dbt_models:
+            mock_load_dbt_models.return_value = {
+                "my_model": ModelRepresentation(
+                    name="my_model",
+                    path=str(sql_file),
+                    dialect="ansi"
+                )
+            }
+            
+            exit_code = main(["lint", "--project", str(tmp_path), "--fix"])
+            
+            assert exit_code == 0
+            # Verify file was updated
+            assert sql_file.read_text(encoding="utf-8") == "SELECT a FROM t GROUP BY a"
+            assert mock_runner.run_all_checks.call_count == 2
+
+
+def test_cli_main_lint_with_fix_sqlmesh(tmp_path: Path):
+    from tff.core.report import LintFinding
+    from tff.core.model import ModelRepresentation
+    
+    # Create config.py to auto-detect provider as SQLMesh
+    (tmp_path / "config.py").touch()
+    
+    # Create a SQL file
+    sql_file = tmp_path / "models/my_model.sql"
+    sql_file.parent.mkdir(parents=True, exist_ok=True)
+    sql_file.write_text("SELECT a FROM t GROUP BY 1", encoding="utf-8")
+    
+    # Mock runner
+    mock_runner = MagicMock()
+    mock_runner.run_all_checks.side_effect = [
+        (
+            [
+                LintFinding(
+                    check="nopositionalgroupbyororderby",
+                    severity="error",
+                    model="my_model",
+                    path="models/my_model.sql",
+                    message="Use column name instead."
+                )
+            ],
+            1,
+            ["sqlmesh"]
+        ),
+        (
+            [],
+            1,
+            ["sqlmesh"]
+        )
+    ]
+    
+    with patch("tff.core.cli._get_runner", return_value=mock_runner), \
+         patch("tff.core.cli.load_fitness_config") as mock_load_config, \
+         patch("tff.core.cli.render_lint_report", return_value=True), \
+         patch("sqlmesh.core.context.Context"), \
+         patch("tff.sqlmesh.runner.map_sqlmesh_context_models") as mock_map_models:
+        
+        mock_load_config.return_value = MagicMock()
+        mock_map_models.return_value = {
+            "my_model": ModelRepresentation(
+                name="my_model",
+                path=str(sql_file),
+                dialect="ansi"
+            )
+        }
+        
+        exit_code = main(["lint", "--project", str(tmp_path), "--fix"])
+        assert exit_code == 0
+        assert sql_file.read_text(encoding="utf-8") == "SELECT a FROM t GROUP BY a"
+        assert mock_runner.run_all_checks.call_count == 2
+
+
+def test_cli_main_lint_with_fix_load_models_exception(tmp_path: Path):
+    from tff.core.report import LintFinding
+    (tmp_path / "dbt_project.yml").touch()
+    
+    mock_runner = MagicMock()
+    mock_runner.run_all_checks.return_value = (
+        [
+            LintFinding(
+                check="nopositionalgroupbyororderby",
+                severity="error",
+                model="my_model",
+                path="models/my_model.sql",
+                message="Use column name instead."
+            )
+        ],
+        1,
+        ["rules"]
+    )
+    
+    with patch("tff.core.cli._get_runner", return_value=mock_runner), \
+         patch("tff.core.cli.load_fitness_config") as mock_load_config, \
+         patch("tff.core.cli.render_lint_report", return_value=False), \
+         patch("tff.dbt.manifest.load_dbt_models", side_effect=Exception("Load failed")):
+        
+        mock_load_config.return_value = MagicMock()
+        exit_code = main(["lint", "--project", str(tmp_path), "--fix"])
+        assert exit_code == 1  # Should fail since it wasn't fixed and returned a finding
+        assert mock_runner.run_all_checks.call_count == 1  # No re-run
+
+
+def test_cli_main_lint_with_fix_rerun_exception(tmp_path: Path):
+    from tff.core.report import LintFinding
+    from tff.core.model import ModelRepresentation
+    (tmp_path / "dbt_project.yml").touch()
+    
+    sql_file = tmp_path / "models/my_model.sql"
+    sql_file.parent.mkdir(parents=True, exist_ok=True)
+    sql_file.write_text("SELECT a FROM t GROUP BY 1", encoding="utf-8")
+    
+    mock_runner = MagicMock()
+    mock_runner.run_all_checks.side_effect = [
+        (
+            [
+                LintFinding(
+                    check="nopositionalgroupbyororderby",
+                    severity="error",
+                    model="my_model",
+                    path="models/my_model.sql",
+                    message="Use column name instead."
+                )
+            ],
+            1,
+            ["rules"]
+        ),
+        Exception("Re-run failed")
+    ]
+    
+    with patch("tff.core.cli._get_runner", return_value=mock_runner), \
+         patch("tff.core.cli.load_fitness_config") as mock_load_config, \
+         patch("tff.dbt.manifest.load_dbt_models") as mock_load_dbt_models:
+        
+        mock_load_config.return_value = MagicMock()
+        mock_load_dbt_models.return_value = {
+            "my_model": ModelRepresentation(
+                name="my_model",
+                path=str(sql_file),
+                dialect="ansi"
+            )
+        }
+        
+        exit_code = main(["lint", "--project", str(tmp_path), "--fix"])
+        assert exit_code == 1
+        assert mock_runner.run_all_checks.call_count == 2

@@ -59,6 +59,8 @@ def test_calculate_health_scores() -> None:
             "schema_contracts": {"enabled": False},
             "dependency_graph": {"enabled": False},
             "materialization_depth": {"enabled": False},
+            "duplicate_ctes": {"enabled": False},
+            "connascence_of_value": {"enabled": False},
         },
         "rules": {
             "ban_select_star": {"enabled": True},
@@ -177,6 +179,10 @@ def test_cli_health_command(tmp_path, monkeypatch) -> None:
     config_file.write_text("""
 checks:
   layer_integrity:
+    enabled: false
+  duplicate_ctes:
+    enabled: false
+  connascence_of_value:
     enabled: false
 rules:
   ban_select_star:
@@ -314,3 +320,307 @@ def test_health_edge_cases() -> None:
     assert "Other Checks" in output_red
     assert "custom_unknown_check" in output_red
     assert "70.0%" in output_red
+
+
+# ---------------------------------------------------------------------------
+# Scope filtering
+# ---------------------------------------------------------------------------
+
+def test_calculate_health_scores_with_scope() -> None:
+    """Findings outside the scope are excluded; models_checked is re-derived."""
+    config = FitnessFunctionsConfig.model_validate({
+        "rules": {
+            "ban_select_star": {"enabled": True},
+        }
+    })
+
+    findings = [
+        # In scope
+        LintFinding(
+            check="banselectstar", severity="error", message="err",
+            model="model_a", path="models/marts/marketing/model_a.sql",
+        ),
+        LintFinding(
+            check="banselectstar", severity="warning", message="warn",
+            model="model_b", path="models/marts/marketing/model_b.sql",
+        ),
+        # Out of scope
+        LintFinding(
+            check="banselectstar", severity="error", message="err",
+            model="model_c", path="models/sources/model_c.sql",
+        ),
+    ]
+
+    scores = calculate_health_scores(
+        findings, models_checked=10, config=config, provider="dbt",
+        scope=["models/marts/marketing"],
+    )
+
+    # Only the 2 in-scope findings remain; models_checked becomes 2 (unique paths)
+    # E=1, W=1 (warning_models = {model_b} - {model_a} = {model_b}), M=2
+    # score = 100 * (1 - (1 + 0.5*1) / 2) = 100 * (1 - 0.75) = 25.0
+    assert abs(scores["check_scores"]["banselectstar"] - 25.0) < 0.01
+
+
+def test_calculate_health_scores_scope_excludes_all() -> None:
+    """When scope matches nothing, scores default to 100 (no models, no findings)."""
+    config = FitnessFunctionsConfig.model_validate({
+        "rules": {"ban_select_star": {"enabled": True}},
+    })
+    findings = [
+        LintFinding(
+            check="banselectstar", severity="error", message="err",
+            model="model_a", path="models/sources/model_a.sql",
+        ),
+    ]
+    scores = calculate_health_scores(
+        findings, models_checked=5, config=config, provider="dbt",
+        scope=["models/marts"],
+    )
+    # No findings survive the filter → 100%
+    assert scores["check_scores"]["banselectstar"] == 100.0
+
+
+def test_matches_scope_helper() -> None:
+    from tff.core.health import _matches_scope
+
+    assert _matches_scope("models/marts/marketing/foo.sql", ["models/marts/marketing"]) is True
+    assert _matches_scope("models/marts/finance/foo.sql", ["models/marts/marketing"]) is False
+    # Exact prefix match (no trailing slash)
+    assert _matches_scope("models/marts", ["models/marts"]) is True
+    # None path → False
+    assert _matches_scope(None, ["models/marts"]) is False
+    # Multiple prefixes
+    assert _matches_scope("models/sources/foo.sql", ["models/marts", "models/sources"]) is True
+
+
+def test_domain_key_helper() -> None:
+    from tff.core.health import _domain_key
+
+    assert _domain_key("models/marts/marketing/model.sql") == "models/marts/marketing"
+    assert _domain_key("models/sources/model.sql") == "models/sources"
+    assert _domain_key(None) == "Project-level"
+    # Path with no 'models' dir → returned as-is (hits the ValueError branch)
+    assert _domain_key("some/other/path/model.sql") == "some/other/path/model.sql"
+    # Path that is exactly 'models' with nothing after (hits the len guard)
+    assert _domain_key("models") == "models"
+
+
+# ---------------------------------------------------------------------------
+# Domain-grouped health report rendering
+# ---------------------------------------------------------------------------
+
+def test_render_health_report_group_by_domain() -> None:
+    config = FitnessFunctionsConfig.model_validate({
+        "rules": {
+            "ban_select_star": {"enabled": True},
+            "filename_equals_modelname": {"enabled": True},
+        }
+    })
+
+    findings = [
+        LintFinding(
+            check="banselectstar", severity="error", message="err A",
+            model="model_a", path="models/sources/model_a.sql",
+        ),
+        LintFinding(
+            check="banselectstar", severity="warning", message="warn B",
+            model="model_b", path="models/marts/marketing/model_b.sql",
+        ),
+        LintFinding(
+            check="filenameequalsmodelname", severity="error", message="err C",
+            model="model_c", path="models/marts/marketing/model_c.sql",
+        ),
+    ]
+
+    scores = calculate_health_scores(findings, models_checked=10, config=config, provider="dbt")
+
+    console = Console(record=True, width=120)
+    render_health_report(scores, config, provider="dbt", console=console, group_by="domain")
+    output = console.export_text()
+
+    assert "Detailed Breakdown by Domain" in output
+    # Both domain labels should appear
+    assert "models/sources" in output
+    assert "models/marts/marketing" in output
+    # Check names appear inside the domain sections
+    assert "banselectstar" in output
+    assert "filenameequalsmodelname" in output
+
+
+def test_render_health_report_group_by_domain_no_findings() -> None:
+    """With no findings, domain breakdown shows 'No findings' message."""
+    config = FitnessFunctionsConfig.model_validate({
+        "rules": {"ban_select_star": {"enabled": True}},
+    })
+
+    scores = calculate_health_scores([], models_checked=5, config=config, provider="dbt")
+
+    console = Console(record=True, width=120)
+    render_health_report(scores, config, provider="dbt", console=console, group_by="domain")
+    output = console.export_text()
+
+    assert "Detailed Breakdown by Domain" in output
+    assert "No findings" in output
+
+
+def test_render_health_report_group_by_domain_project_level_findings() -> None:
+    """Project-level findings (path=None) fall into a 'Project-level' section
+    and exercise the domain_models_checked==0 branch (line 574)."""
+    config = FitnessFunctionsConfig.model_validate({
+        "checks": {"layer_integrity": {"enabled": True}},
+    })
+
+    findings = [
+        # No path → project-level; domain_models_checked will be 0
+        LintFinding(
+            check="layer_integrity", severity="warning", message="proj warning",
+            model=None, path=None,
+        ),
+    ]
+
+    scores = calculate_health_scores(findings, models_checked=5, config=config, provider="dbt")
+
+    console = Console(record=True, width=120)
+    render_health_report(scores, config, provider="dbt", console=console, group_by="domain")
+    output = console.export_text()
+
+    assert "Detailed Breakdown by Domain" in output
+    assert "Project-level" in output
+    assert "layer_integrity" in output
+
+
+def test_render_health_report_group_by_domain_perfect_domain() -> None:
+    """A project-level finding with 'info' severity keeps check_score at 100%,
+    which exercises the local_score==100.0 green-check branch (lines 577-579)
+    via the domain_models_checked==0 path (line 574).
+    """
+    config = FitnessFunctionsConfig.model_validate({
+        "checks": {"layer_integrity": {"enabled": True}},
+    })
+
+    # 'info' severity is neither 'error' nor 'warning' → score stays at 100.0
+    findings = [
+        LintFinding(
+            check="layer_integrity", severity="info", message="informational",
+            model=None, path=None,
+        ),
+    ]
+
+    scores = calculate_health_scores(findings, models_checked=5, config=config, provider="dbt")
+    # Confirm the check score is 100 (info severity doesn't penalise)
+    assert scores["check_scores"]["layer_integrity"] == 100.0
+
+    console = Console(record=True, width=120)
+    render_health_report(scores, config, provider="dbt", console=console, group_by="domain")
+    output = console.export_text()
+
+    assert "Detailed Breakdown by Domain" in output
+    assert "Project-level" in output
+    assert "layer_integrity" in output
+    assert "100.0%" in output
+
+
+# ---------------------------------------------------------------------------
+# CLI integration: --scope and --group-by domain
+# ---------------------------------------------------------------------------
+
+def test_cli_health_scope(tmp_path, monkeypatch) -> None:
+    """--scope filters findings to in-scope models only."""
+    from unittest.mock import MagicMock
+
+    mock_runner = MagicMock()
+    # Runner returns findings from two domains; --scope should restrict to sources
+    mock_runner.run_all_checks.return_value = (
+        [
+            LintFinding(
+                check="banselectstar", severity="error", message="err",
+                model="model_a", path="models/sources/model_a.sql",
+            ),
+            LintFinding(
+                check="banselectstar", severity="error", message="err",
+                model="model_b", path="models/marts/marketing/model_b.sql",
+            ),
+        ],
+        10,
+        ["rules"],
+    )
+
+    monkeypatch.setattr(
+        "importlib.import_module",
+        lambda name: mock_runner if name == "tff.dbt.runner" else (_ for _ in ()).throw(ImportError()),
+    )
+
+    # Only enable ban_select_star so it dominates the overall score
+    config_file = tmp_path / "fitness_functions.yaml"
+    config_file.write_text(
+        "checks:\n"
+        "  layer_integrity:\n    enabled: false\n"
+        "  custom_exclusions:\n    enabled: false\n"
+        "  schema_contracts:\n    enabled: false\n"
+        "  dependency_graph:\n    enabled: false\n"
+        "  materialization_depth:\n    enabled: false\n"
+        "  duplicate_ctes:\n    enabled: false\n"
+        "  connascence_of_value:\n    enabled: false\n"
+        "rules:\n"
+        "  ban_select_star:\n    enabled: true\n"
+        "  filename_equals_modelname:\n    enabled: false\n"
+        "  column_names:\n    enabled: false\n"
+        "  column_types:\n    enabled: false\n"
+        "  mart_naming:\n    enabled: false\n"
+        "  classification_macros:\n    enabled: false\n"
+        "  sql_complexity:\n    enabled: false\n"
+        "  environment_agnostic_references:\n    enabled: false\n"
+        "  metadata:\n    enabled: false\n"
+        "  no_positional_group_by_or_order_by:\n    enabled: false\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "dbt_project.yml").write_text("", encoding="utf-8")
+
+    # With scope=models/sources only 1 model (model_a) is in scope → score = 0%
+    # (1 error, 1 model → 100*(1-1/1) = 0%), fail-under 50 should fail
+    exit_code = main([
+        "health",
+        "--project", str(tmp_path),
+        "--config", str(config_file),
+        "--scope", "models/sources",
+        "--fail-under", "50.0",
+    ])
+    assert exit_code == 1
+
+
+def test_cli_health_group_by_domain(tmp_path, monkeypatch) -> None:
+    """--group-by domain reaches the domain rendering path without error."""
+    from unittest.mock import MagicMock
+
+    mock_runner = MagicMock()
+    mock_runner.run_all_checks.return_value = (
+        [
+            LintFinding(
+                check="banselectstar", severity="warning", message="warn",
+                model="model_a", path="models/sources/model_a.sql",
+            ),
+        ],
+        5,
+        ["rules"],
+    )
+
+    monkeypatch.setattr(
+        "importlib.import_module",
+        lambda name: mock_runner if name == "tff.dbt.runner" else (_ for _ in ()).throw(ImportError()),
+    )
+
+    config_file = tmp_path / "fitness_functions.yaml"
+    config_file.write_text(
+        "rules:\n  ban_select_star:\n    enabled: true\n", encoding="utf-8"
+    )
+    (tmp_path / "dbt_project.yml").write_text("", encoding="utf-8")
+
+    exit_code = main([
+        "health",
+        "--project", str(tmp_path),
+        "--config", str(config_file),
+        "--group-by", "domain",
+    ])
+    assert exit_code == 0
+

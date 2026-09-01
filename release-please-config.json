@@ -12,41 +12,6 @@
           "jsonpath": "$.project.version"
         }
       ]
-    },
-    "packages/tff-sqlmesh": {
-      "package-name": "tff-sqlmesh",
-      "release-type": "python",
-      "bump-minor-pre-major": true,
-      "extra-files": [
-        {
-          "type": "toml",
-          "path": "pyproject.toml",
-          "jsonpath": "$.project.version"
-        }
-      ]
-    },
-    "packages/tff-dbt": {
-      "package-name": "tff-dbt",
-      "release-type": "python",
-      "bump-minor-pre-major": true,
-      "extra-files": [
-        {
-          "type": "toml",
-          "path": "pyproject.toml",
-          "jsonpath": "$.project.version"
-        }
-      ]
     }
-  },
-  "plugins": [
-    {
-      "type": "linked-versions",
-      "groupName": "tff",
-      "packages": [
-        "packages/tff-core",
-        "packages/tff-sqlmesh",
-        "packages/tff-dbt"
-      ]
-    }
-  ]
+  }
 }

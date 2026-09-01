@@ -95,8 +95,8 @@ def test_wrapped_rule_execution() -> None:
     mock_model.audits = []
 
     from unittest.mock import patch
-    with patch("tff.core.rules.ban_select_star.Path.exists", return_value=True), \
-         patch("tff.core.rules.ban_select_star.Path.read_text", return_value="SELECT * FROM table"):
+    with patch("pathlib.Path.exists", return_value=True), \
+         patch("pathlib.Path.read_text", return_value="SELECT * FROM table"):
         violation = rule_instance.check_model(mock_model)
         assert violation is not None
         assert "SELECT * is prohibited" in str(violation)
@@ -105,7 +105,7 @@ def test_wrapped_rule_execution() -> None:
 def test_fitness_loader_integration() -> None:
     from sqlmesh.core.context import Context
 
-    fixture_path = Path(__file__).parent / "fixtures" / "minimal_project"
+    fixture_path = Path(__file__).parent / "fixtures" / "sqlmesh_minimal_project"
     context = Context(paths=[str(fixture_path)], loader=FitnessLoader)
 
     # Verify that the FitnessLoader configured fitness settings
@@ -119,3 +119,28 @@ def test_fitness_loader_integration() -> None:
     assert "sqlcomplexity" in rule_names
     # Verify local custom dummy rule was loaded
     assert "customdummyrule" in rule_names
+
+
+def test_map_sqlmesh_model_query_exception() -> None:
+    mock_model = MagicMock(spec=SqlMeshModel)
+    mock_model.name = "my_model"
+    mock_model._path = Path("models/my_model.sql")
+    mock_model.dialect = "duckdb"
+    mock_model.kind = MagicMock()
+    mock_model.kind.is_symbolic = False
+    mock_model.kind.name = "FULL"
+    mock_model.columns_to_types = {}
+    mock_model.depends_on = set()
+    mock_model.description = None
+    mock_model.owner = None
+    mock_model.grains = []
+    mock_model.audits = []
+    mock_model.kind.is_view = False
+
+    mock_query = MagicMock()
+    mock_query.sql.side_effect = Exception("Rendering failed")
+    mock_model.query = mock_query
+
+    model_rep = map_sqlmesh_model(mock_model)
+    assert model_rep.query is None
+

@@ -17,12 +17,15 @@ class NoMissingOwner(Rule):
         if not rule_config.owner:
             return None
 
+        if model.is_external or model.is_symbolic:
+            return None
+
         layer = get_layer_from_path(model.path)
         if not rule_config.should_run(layer):
             return None
 
         return (
-            self.violation() if not model.owner and not model.is_symbolic else None
+            self.violation() if not model.owner else None
         )
 
 
@@ -35,13 +38,16 @@ class NoMissingDescription(Rule):
         if not rule_config.description:
             return None
 
+        if model.is_external or model.is_symbolic:
+            return None
+
         layer = get_layer_from_path(model.path)
         if not rule_config.should_run(layer):
             return None
 
         return (
             self.violation()
-            if not model.description and not model.is_symbolic
+            if not model.description
             else None
         )
 
@@ -55,13 +61,16 @@ class NoMissingGrain(Rule):
         if not rule_config.grain:
             return None
 
+        if model.is_external or model.is_symbolic:
+            return None
+
         layer = get_layer_from_path(model.path)
         if not rule_config.should_run(layer):
             return None
 
         return (
             self.violation()
-            if not model.grains and not model.is_symbolic
+            if not model.grains
             else None
         )
 
