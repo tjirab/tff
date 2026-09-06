@@ -6,17 +6,15 @@ TFF provides first-class support for [Google Cloud Dataform](https://cloud.googl
 
 ## Installation
 
-Dataform support is included directly in `tff-core` without requiring additional heavy adapter dependencies:
+Install using the `dataform` extra (or bare `tff-core`, since Dataform support has no additional heavy Python dependencies):
 
 ```bash
 # With uv:
-uv add tff-core
+uv add "tff-core[dataform]"
 
 # Or pip:
-pip install tff-core
+pip install "tff-core[dataform]"
 ```
-
-*(Optional extra `tff-core[dataform]` is also available as an alias).*
 
 ---
 

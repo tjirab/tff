@@ -62,10 +62,11 @@ pip install "tff-core[dbt]"
 ### ☁️ For Dataform projects:
 ```bash
 # With uv:
-uv add tff-core
+uv add "tff-core[dataform]"
+# (or simply: uv add tff-core)
 
 # Or pip:
-pip install tff-core
+pip install "tff-core[dataform]"
 ```
 
 
