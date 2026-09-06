@@ -336,7 +336,7 @@ For SQLMesh projects, these rules run dynamically inside SQLMesh (e.g., `sqlmesh
 ### Ban SELECT * (`ban_select_star`)
 
 * **What it checks**:
-  * Disallows the use of wildcard `SELECT *` statements. Requires explicit column naming to reduce model coupling.
+  * Disallows the use of wildcard `SELECT *` statements. Requires explicit column naming to reduce model coupling. Aggregate count expressions (e.g., `COUNT(*)`, `COUNT(DISTINCT *)`) are permitted.
 * **How to configure**:
   Defined under `rules.ban_select_star` in `fitness_functions.yaml`.
   ```yaml
@@ -470,7 +470,7 @@ For SQLMesh projects, these rules run dynamically inside SQLMesh (e.g., `sqlmesh
         cust_id: customer_id
   ```
   * **SQLMesh Rule Name**: `columnnames`
-  * `replacements`: A dictionary mapping search regex patterns (deprecated names) to target replacement suggestions.
+  * `replacements`: A dictionary mapping search regex patterns (deprecated names) to target replacement suggestions (applied via `re.sub`).
 
 ---
 

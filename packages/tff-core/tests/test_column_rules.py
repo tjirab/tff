@@ -36,6 +36,37 @@ def test_column_names_multiple_replacements():
     assert "Try changing 'user_dt' to 'user_date'." in violations_msgs
 
 
+def test_column_names_regex_replacement():
+    config = FitnessFunctionsConfig()
+    config.rules.column_names.enabled = True
+    config.rules.column_names.replacements = {
+        r"^cust_": "customer_",
+        r"_num$": "_count",
+    }
+    set_ff_config(config)
+
+    model = ModelRepresentation(
+        name="test_regex_model",
+        path="models/marts/test_regex_model.sql",
+        dialect="bigquery",
+        columns_to_types={
+            "cust_id": "varchar",
+            "order_num": "int",
+            "other_col": "int",
+        },
+        is_symbolic=False,
+    )
+
+    rule = ColumnNames()
+    violation = rule.check_model(model)
+
+    assert violation is not None
+    violations_msgs = violation.violation_msg
+    assert len(violations_msgs) == 2
+    assert "Try changing 'cust_id' to 'customer_id'." in violations_msgs
+    assert "Try changing 'order_num' to 'order_count'." in violations_msgs
+
+
 def test_column_types_multiple_rules():
     config = FitnessFunctionsConfig()
     config.rules.column_types.enabled = True

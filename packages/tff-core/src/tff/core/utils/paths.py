@@ -91,7 +91,12 @@ def get_layer_and_domain(path: str) -> tuple[str | None, str | None]:
 
 
 def model_path_relative(model) -> str | None:
-    path = getattr(model, "path", getattr(model, "_path", None))
+    if isinstance(model, dict):
+        path = model.get("path") or model.get("_path")
+    elif isinstance(model, (str, Path)):
+        path = str(model)
+    else:
+        path = getattr(model, "path", getattr(model, "_path", None))
     if not path:
         return None
     try:

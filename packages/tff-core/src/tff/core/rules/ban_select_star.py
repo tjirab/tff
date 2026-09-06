@@ -32,6 +32,8 @@ class BanSelectStar(Rule):
 
         violations = []
         for star in parsed.find_all(exp.Star):
+            if isinstance(star.parent, (exp.Count, exp.Distinct)) and star.find_ancestor(exp.Count) is not None:
+                continue
             violations.append(
                 "SELECT * is prohibited. Explicitly name your columns to reduce coupling."
             )

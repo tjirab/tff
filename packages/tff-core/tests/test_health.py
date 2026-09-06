@@ -362,6 +362,36 @@ def test_calculate_health_scores_with_scope() -> None:
     assert abs(scores["check_scores"]["banselectstar"] - 25.0) < 0.01
 
 
+def test_calculate_health_scores_with_scoped_models_count() -> None:
+    """When scoped_models_count is explicitly passed, it is used as denominator."""
+    config = FitnessFunctionsConfig.model_validate({
+        "rules": {
+            "ban_select_star": {"enabled": True},
+        }
+    })
+
+    findings = [
+        LintFinding(
+            check="banselectstar", severity="error", message="err",
+            model="model_a", path="models/marts/marketing/model_a.sql",
+        ),
+    ]
+
+    scores = calculate_health_scores(
+        findings,
+        models_checked=50,
+        config=config,
+        provider="dbt",
+        scope=["models/marts/marketing"],
+        scoped_models_count=10,
+    )
+
+    # 1 error among 10 models in scope: score = 100 * (1 - 1/10) = 90.0
+    assert abs(scores["check_scores"]["banselectstar"] - 90.0) < 0.01
+    expected_overall = sum(scores["check_scores"].values()) / len(scores["enabled_checks"])
+    assert abs(scores["overall_score"] - expected_overall) < 0.01
+
+
 def test_calculate_health_scores_scope_excludes_all() -> None:
     """When scope matches nothing, scores default to 100 (no models, no findings)."""
     config = FitnessFunctionsConfig.model_validate({
