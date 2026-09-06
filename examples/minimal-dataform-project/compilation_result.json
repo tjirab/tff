@@ -1,0 +1,143 @@
+{
+  "projectConfig": {
+    "warehouse": "bigquery",
+    "defaultSchema": "dataform",
+    "defaultDatabase": "my-gcp-project",
+    "defaultLocation": "US"
+  },
+  "declarations": [
+    {
+      "target": {
+        "database": "my-gcp-project",
+        "schema": "raw_data",
+        "name": "raw_users"
+      },
+      "type": "declaration",
+      "fileName": "definitions/sources/declarations.js",
+      "actionDescriptor": {
+        "description": "Raw users source table from production database"
+      }
+    }
+  ],
+  "tables": [
+    {
+      "target": {
+        "database": "my-gcp-project",
+        "schema": "staging",
+        "name": "stg_users"
+      },
+      "type": "view",
+      "fileName": "definitions/staging/stg_users.sqlx",
+      "dependencyTargets": [
+        {
+          "database": "my-gcp-project",
+          "schema": "raw_data",
+          "name": "raw_users"
+        }
+      ],
+      "query": "SELECT id AS user_id, LOWER(email) AS email, signup_date FROM `my-gcp-project.raw_data.raw_users`",
+      "actionDescriptor": {
+        "description": "Cleaned and standardized users",
+        "columns": [
+          {"path": ["user_id"], "description": "Primary key for user"},
+          {"path": ["email"], "description": "User email address"},
+          {"path": ["signup_date"], "description": "Registration date"}
+        ],
+        "bigqueryLabels": {
+          "owner": "data-engineering"
+        }
+      },
+      "uniqueKey": ["user_id"]
+    },
+    {
+      "target": {
+        "database": "my-gcp-project",
+        "schema": "marts_marketing",
+        "name": "marketing_customers"
+      },
+      "type": "table",
+      "fileName": "definitions/marts/marketing/marketing_customers.sqlx",
+      "dependencyTargets": [
+        {
+          "database": "my-gcp-project",
+          "schema": "staging",
+          "name": "stg_users"
+        }
+      ],
+      "query": "SELECT user_id, email FROM `my-gcp-project.staging.stg_users`",
+      "actionDescriptor": {
+        "description": "Marketing customer dimension",
+        "columns": [
+          {"path": ["user_id"], "description": "Primary key"},
+          {"path": ["email"], "description": "User email"}
+        ],
+        "bigqueryLabels": {
+          "owner": "growth-team"
+        }
+      },
+      "uniqueKey": ["user_id"]
+    }
+  ],
+  "assertions": [
+    {
+      "target": {
+        "database": "my-gcp-project",
+        "schema": "staging",
+        "name": "stg_users_assertions_uniqueKey_0"
+      },
+      "parentAction": {
+        "database": "my-gcp-project",
+        "schema": "staging",
+        "name": "stg_users"
+      },
+      "actionDescriptor": {
+        "description": "uniqueKey"
+      }
+    },
+    {
+      "target": {
+        "database": "my-gcp-project",
+        "schema": "staging",
+        "name": "stg_users_assertions_nonNull_0"
+      },
+      "parentAction": {
+        "database": "my-gcp-project",
+        "schema": "staging",
+        "name": "stg_users"
+      },
+      "actionDescriptor": {
+        "description": "nonNull"
+      }
+    },
+    {
+      "target": {
+        "database": "my-gcp-project",
+        "schema": "marts_marketing",
+        "name": "marketing_customers_assertions_uniqueKey_0"
+      },
+      "parentAction": {
+        "database": "my-gcp-project",
+        "schema": "marts_marketing",
+        "name": "marketing_customers"
+      },
+      "actionDescriptor": {
+        "description": "uniqueKey"
+      }
+    },
+    {
+      "target": {
+        "database": "my-gcp-project",
+        "schema": "marts_marketing",
+        "name": "marketing_customers_assertions_nonNull_0"
+      },
+      "parentAction": {
+        "database": "my-gcp-project",
+        "schema": "marts_marketing",
+        "name": "marketing_customers"
+      },
+      "actionDescriptor": {
+        "description": "nonNull"
+      }
+    }
+  ]
+}

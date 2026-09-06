@@ -392,3 +392,24 @@ def test_apply_autofixes_untracked_paths_and_exceptions(tmp_path: Path):
     assert len(logs) == 1
     assert "Failed to fix positional references" in logs[0]
 
+
+def test_fix_positional_clauses_dataform_edge_cases():
+    # 1. Escaped quote inside string in config block (line 87)
+    sql_with_escaped_quote = """config {
+  type: "table",
+  description: "Test \\"escaped quote\\" here"
+}
+SELECT a FROM t GROUP BY 1"""
+    fixed = fix_positional_clauses(sql_with_escaped_quote, "bigquery")
+    assert "GROUP BY a" in fixed
+    assert 'description: "Test \\"escaped quote\\" here"' in fixed
+
+    # 2. Unclosed brace in config block (lines 103-104)
+    sql_unclosed = """config {
+  type: "table"
+SELECT a FROM t GROUP BY 1"""
+    fixed_unclosed = fix_positional_clauses(sql_unclosed, "bigquery")
+    assert fixed_unclosed == sql_unclosed
+
+
+

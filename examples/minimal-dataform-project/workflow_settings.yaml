@@ -1,0 +1,4 @@
+defaultProject: my-gcp-project
+defaultLocation: US
+defaultDataset: dataform
+dataformCoreVersion: 3.0.0

@@ -1,0 +1,13 @@
+version: 1
+project_name: minimal-dataform-project
+
+layers:
+  order: [sources, staging, marts]
+
+rules:
+  nomissingdescription:
+    enabled: true
+  nomissingowner:
+    enabled: true
+  nopositionalgroupbyororderby:
+    enabled: true

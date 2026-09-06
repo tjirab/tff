@@ -69,11 +69,39 @@ def fix_positional_clauses(sql: str, dialect: str) -> str:
         except ValueError:
             pass
 
-    # 1. Extract the SQLMesh MODEL block if present
+    # 1. Extract the SQLMesh MODEL or Dataform config block if present
     model_block_match = re.match(r"^\s*(MODEL\s*\(.*?\)\s*;)", sql, flags=re.DOTALL | re.IGNORECASE)
+    config_match = re.search(r"^\s*config\s*\{", sql, flags=re.MULTILINE | re.IGNORECASE)
     if model_block_match:
         model_block = model_block_match.group(1)
         query_part = sql[model_block_match.end():]
+    elif config_match:
+        brace_start = config_match.end() - 1
+        depth = 0
+        in_quote = None
+        end = -1
+        for i in range(brace_start, len(sql)):
+            ch = sql[i]
+            if in_quote:
+                if ch == "\\" and i + 1 < len(sql):
+                    continue
+                if ch == in_quote:
+                    in_quote = None
+            elif ch in ('"', "'", "`"):
+                in_quote = ch
+            elif ch == "{":
+                depth += 1
+            elif ch == "}":
+                depth -= 1
+                if depth == 0:
+                    end = i + 1
+                    break
+        if end != -1:
+            model_block = sql[:end].strip()
+            query_part = sql[end:]
+        else:
+            model_block = ""
+            query_part = sql
     else:
         model_block = ""
         query_part = sql
@@ -85,6 +113,7 @@ def fix_positional_clauses(sql: str, dialect: str) -> str:
         r"\{%.*?%\}",
         r"@\w+\([^)]*\)",
         r"@\w+",
+        r"\$\{.*?\}",
     ]
     combined_pattern = re.compile("|".join(patterns), re.DOTALL)
     placeholders = {}
@@ -293,7 +322,7 @@ def apply_autofixes(
             
         # 1. Fix positional group by / order by
         pos_findings = [f for f in file_findings if f.check == "nopositionalgroupbyororderby"]
-        if pos_findings and abs_path.suffix == ".sql":
+        if pos_findings and abs_path.suffix in (".sql", ".sqlx"):
             # Lookup dialect from models dictionary
             dialect = "ansi"
             for model in models.values():

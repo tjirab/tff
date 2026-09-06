@@ -1,0 +1,27 @@
+config {
+  type: "view",
+  schema: "staging",
+  name: "stg_users",
+  description: "Cleaned and standardized users",
+  bigquery: {
+    labels: {
+      owner: "data-engineering"
+    }
+  },
+  columns: {
+    user_id: "Primary key for user",
+    email: "User email address",
+    signup_date: "Registration date"
+  },
+  assertions: {
+    uniqueKey: ["user_id"],
+    nonNull: ["user_id"]
+  }
+}
+
+SELECT
+  id AS user_id,
+  LOWER(email) AS email,
+  signup_date
+FROM
+  ${ref("raw_users")}

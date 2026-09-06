@@ -5,10 +5,17 @@ from __future__ import annotations
 from pathlib import Path
 
 
+def _find_base_index(parts: tuple[str, ...]) -> int:
+    for base in ("models", "definitions"):
+        if base in parts:
+            return parts.index(base)
+    raise ValueError("Neither 'models' nor 'definitions' found in path")
+
+
 def get_layer_from_path(path: str, layer_order: list[str] | None = None) -> str | None:
     parts = Path(path).parts
     try:
-        models_index = parts.index("models")
+        models_index = _find_base_index(parts)
         if layer_order is None:
             from tff.core.context import get_ff_config
             layer_order = get_ff_config().layers.order
@@ -26,7 +33,7 @@ def get_layer_from_path(path: str, layer_order: list[str] | None = None) -> str 
 def get_marts_domain_from_path(path: str, layer_name: str = "marts") -> str | None:
     parts = Path(path).parts
     try:
-        models_index = parts.index("models")
+        models_index = _find_base_index(parts)
         layer_index = None
         for i, part in enumerate(parts[models_index + 1:], start=models_index + 1):
             if part == layer_name:
@@ -47,7 +54,7 @@ def get_marts_domain_from_path(path: str, layer_name: str = "marts") -> str | No
 def get_layer_and_domain(path: str) -> tuple[str | None, str | None]:
     parts = Path(path).parts
     try:
-        models_index = parts.index("models")
+        models_index = _find_base_index(parts)
         from tff.core.context import get_ff_config
         layer_order = get_ff_config().layers.order
 
@@ -72,8 +79,11 @@ def get_layer_and_domain(path: str) -> tuple[str | None, str | None]:
         else:
             domain = parts[models_index + 1]
 
-        if domain and domain.endswith(".sql"):
-            domain = domain[:-4]
+        if domain:
+            for ext in (".sql", ".sqlx"):
+                if domain.endswith(ext):
+                    domain = domain[:-len(ext)]
+                    break
 
         return layer, domain
     except (ValueError, IndexError):
@@ -86,7 +96,7 @@ def model_path_relative(model) -> str | None:
         return None
     try:
         parts = Path(path).parts
-        idx = parts.index("models")
+        idx = _find_base_index(parts)
         return str(Path(*parts[idx:]))
     except ValueError:
         return str(path)

@@ -44,12 +44,13 @@ class ModelRepresentation:
             except Exception:
                 return None
 
-        # Clean/strip SQLMesh MODEL block if present
+        # Clean/strip SQLMesh MODEL block and Dataform/Jinja blocks if present
         import re
         import sqlglot
-        from tff.core.utils.jinja import clean_jinja_for_parsing
+        from tff.core.utils.jinja import clean_dataform_for_parsing, clean_jinja_for_parsing
 
         cleaned_sql = re.sub(r"^MODEL\s*\(.*?\)\s*;", "", sql, flags=re.DOTALL | re.IGNORECASE).strip()
+        cleaned_sql = clean_dataform_for_parsing(cleaned_sql)
         cleaned_sql = clean_jinja_for_parsing(cleaned_sql)
         try:
             self.expression = sqlglot.parse_one(cleaned_sql, read=self.dialect)
