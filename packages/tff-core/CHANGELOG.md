@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.10.0](https://github.com/tjirab/tff/compare/tff-core-v0.9.0...tff-core-v0.10.0) (2026-09-06)
+
+
+### Features
+
+* **dataform:** support Google Cloud Dataform projects (tff[#137](https://github.com/tjirab/tff/issues/137)) ([#142](https://github.com/tjirab/tff/issues/142)) ([b73428f](https://github.com/tjirab/tff/commit/b73428fcb19e16a300bb7de1194fa1332fd93e66))
+
 ## [0.9.0](https://github.com/tjirab/tff/compare/tff-core-v0.8.0...tff-core-v0.9.0) (2026-08-31)
 
 
