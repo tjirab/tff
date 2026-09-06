@@ -597,6 +597,48 @@ def test_main_health_normal_and_json(
     assert len(log_files) == 1
 
 
+@patch("tff.core.cli._detect_provider")
+@patch("tff.core.cli._get_runner")
+@patch("tff.core.cli.load_fitness_config")
+@patch("tff.core.health.render_health_report")
+def test_main_health_with_scope(
+    mock_render_health,
+    mock_load_config,
+    mock_get_runner,
+    mock_detect_provider,
+    tmp_path: Path,
+    capsys,
+):
+    mock_detect_provider.return_value = "dbt"
+    mock_runner = MagicMock()
+    mock_runner.run_all_checks.return_value = ([], 8, ["rules"])
+    mock_get_runner.return_value = mock_runner
+
+    # Create dummy scoped files
+    marts_dir = tmp_path / "models" / "marts"
+    marts_dir.mkdir(parents=True)
+    (marts_dir / "m1.sql").write_text("SELECT 1")
+    (marts_dir / "m2.sql").write_text("SELECT 2")
+
+    project_str = str(tmp_path)
+    exit_code = main(["health", "--project", project_str, "--scope", "models/marts", "--json"])
+    assert exit_code == 0
+
+    import json
+    captured = capsys.readouterr()
+    data = json.loads(captured.out)
+    assert data["command"] == "health"
+    assert data["models_checked"] == 2
+    assert data["overall_score"] == 100.0
+
+    # Test file-specific scope
+    exit_code_file = main(["health", "--project", project_str, "--scope", "models/marts/m1.sql", "--json"])
+    assert exit_code_file == 0
+    captured_file = capsys.readouterr()
+    data_file = json.loads(captured_file.out)
+    assert data_file["models_checked"] == 1
+
+
 def test_main_stats_no_logs(tmp_path: Path, capsys):
     # Running stats when no logs exist should exit 1 and show error
     project_str = str(tmp_path)

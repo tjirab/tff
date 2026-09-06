@@ -139,25 +139,30 @@ def calculate_health_scores(
     provider: str,
     *,
     scope: list[str] | None = None,
+    scoped_models_count: int | None = None,
 ) -> dict[str, Any]:
     """Calculate health scores based on findings and enabled checks.
 
     When *scope* is given (a list of path prefixes such as
     ``["models/sources"]`` or ``["models/marts/marketing"]``), only findings
-    whose ``path`` starts with one of those prefixes are considered and
-    ``models_checked`` is re-derived from the paths that appear in the
+    whose ``path`` starts with one of those prefixes are considered. If
+    *scoped_models_count* is provided, it is used as the denominator;
+    otherwise, ``models_checked`` is re-derived from the paths that appear in the
     filtered findings (so the denominator reflects the scoped subset).
     Project-level checks (which have no path) are always excluded when a
     scope is active.
     """
     if scope:
         findings = [f for f in findings if _matches_scope(f.path, scope)]
-        # Re-derive models_checked from the scoped findings' unique model paths
-        scoped_model_paths: set[str] = set()
-        for f in findings:
-            if f.path:
-                scoped_model_paths.add(f.path)
-        models_checked = len(scoped_model_paths)
+        if scoped_models_count is not None:
+            models_checked = scoped_models_count
+        else:
+            # Re-derive models_checked from the scoped findings' unique model paths
+            scoped_model_paths: set[str] = set()
+            for f in findings:
+                if f.path:
+                    scoped_model_paths.add(f.path)
+            models_checked = len(scoped_model_paths)
     enabled_checks = set()
     all_known_checks = set()
     for cat_checks in CATEGORIES.values():

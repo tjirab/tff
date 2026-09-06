@@ -88,6 +88,7 @@ def test_duplicate_ctes_with_duplicates():
     assert finding_models == {"model1", "model2"}
     assert all(f.check == "duplicate_ctes" for f in findings)
     assert all(f.severity == "warning" for f in findings)
+    assert all(f.path is not None and "models/marts" in f.path for f in findings)
     assert "has duplicate transformation logic" in findings[0].message
 
 

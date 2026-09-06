@@ -30,7 +30,7 @@ class ColumnNames(Rule):
         for bad_pattern, good_pattern in rule_config.replacements.items():
             for column_name in model.columns_to_types:
                 if re.search(bad_pattern, column_name):
-                    suggestion = column_name.replace(bad_pattern, good_pattern)
+                    suggestion = re.sub(bad_pattern, good_pattern, column_name)
                     violations.append(
                         f"Try changing '{column_name}' to '{suggestion}'."
                     )

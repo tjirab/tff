@@ -928,11 +928,31 @@ def main(argv: list[str] | None = None) -> int:
             scope: list[str] | None = getattr(args, "scope", None)
             group_by: str = getattr(args, "group_by", "connascence")
 
+            scoped_models_count = None
+            if scope:
+                scoped_files: set[Path] = set()
+                for sc in scope:
+                    sc_path = (project_root / sc).resolve()
+                    if sc_path.is_file():
+                        scoped_files.add(sc_path)
+                    elif sc_path.is_dir():
+                        for p in sc_path.rglob("*"):
+                            if p.is_file() and p.suffix in (".sql", ".sqlx"):
+                                scoped_files.add(p.resolve())
+                if scoped_files:
+                    scoped_models_count = len(scoped_files)
+
             scores = calculate_health_scores(
-                findings, models_checked, config, provider, scope=scope
+                findings,
+                models_checked,
+                config,
+                provider,
+                scope=scope,
+                scoped_models_count=scoped_models_count,
             )
 
-            json_data = get_health_json_data(scores, models_checked)
+            effective_models_checked = scoped_models_count if scoped_models_count is not None else models_checked
+            json_data = get_health_json_data(scores, effective_models_checked)
             save_log(project_root, "health", json_data)
 
             if args.json:

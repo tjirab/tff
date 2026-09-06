@@ -61,3 +61,27 @@ def test_get_layer_and_domain_no_domain():
 def test_get_layer_and_domain_only_layer():
     path = "models/1.staging"
     assert get_layer_and_domain(path) == ("1.staging", None)
+
+
+def test_model_path_relative():
+    from pathlib import Path
+    from tff.core.utils.paths import model_path_relative
+    from tff.core.model import ModelRepresentation
+
+    # Dict with path
+    assert model_path_relative({"path": "models/marts/marketing/model.sql"}) == "models/marts/marketing/model.sql"
+    assert model_path_relative({"_path": "/root/definitions/staging/stg.sqlx"}) == "definitions/staging/stg.sqlx"
+
+    # String path
+    assert model_path_relative("/root/workspace/models/core/dim_user.sql") == "models/core/dim_user.sql"
+
+    # Path object
+    assert model_path_relative(Path("/root/workspace/definitions/staging/stg.sqlx")) == "definitions/staging/stg.sqlx"
+
+    # ModelRepresentation
+    model = ModelRepresentation(name="dim_user", path="/root/models/core/dim_user.sql", dialect="postgres")
+    assert model_path_relative(model) == "models/core/dim_user.sql"
+
+    # Empty / None
+    assert model_path_relative(None) is None
+    assert model_path_relative({}) is None
