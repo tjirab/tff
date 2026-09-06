@@ -1,0 +1,25 @@
+config {
+  type: "table",
+  schema: "marts_marketing",
+  name: "marketing_customers",
+  description: "Marketing customer dimension",
+  bigquery: {
+    labels: {
+      owner: "growth-team"
+    }
+  },
+  columns: {
+    user_id: "Primary key",
+    email: "User email"
+  },
+  assertions: {
+    uniqueKey: ["user_id"],
+    nonNull: ["user_id"]
+  }
+}
+
+SELECT
+  user_id,
+  email
+FROM
+  ${ref("stg_users")}

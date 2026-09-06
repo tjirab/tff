@@ -27,11 +27,13 @@ sqlmesh = [
     "sqlmesh>=0.236.1",
 ]
 dbt = []
+dataform = []
 
 [project.scripts]
 tff = "tff.core.cli:main"
 tff-dbt = "tff.dbt.cli:main"
 tff-sqlmesh = "tff.sqlmesh.cli:main"
+tff-dataform = "tff.dataform.cli:main"
 
 [build-system]
 requires = ["hatchling"]

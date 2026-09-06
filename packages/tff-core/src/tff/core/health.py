@@ -485,19 +485,24 @@ def _domain_key(path: str | None) -> str:
     if path is None:
         return "Project-level"
     parts = Path(path).parts
-    try:
-        models_index = parts.index("models")
-    except ValueError:
+    base_folder = None
+    models_index = None
+    for base in ("models", "definitions"):
+        if base in parts:
+            base_folder = base
+            models_index = parts.index(base)
+            break
+    if models_index is None:
         return path
     if len(parts) <= models_index + 1:
         return path
     layer = parts[models_index + 1]
-    # Check whether the third component is a subdirectory (domain) or a .sql file
+    # Check whether the third component is a subdirectory (domain) or a model file
     if len(parts) > models_index + 2:
         third = parts[models_index + 2]
-        if not third.endswith(".sql"):
-            return f"models/{layer}/{third}"
-    return f"models/{layer}"
+        if not third.endswith((".sql", ".sqlx")):
+            return f"{base_folder}/{layer}/{third}"
+    return f"{base_folder}/{layer}"
 
 
 

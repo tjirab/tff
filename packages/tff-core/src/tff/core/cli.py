@@ -21,7 +21,7 @@ except Exception:
 
 
 def _detect_provider(project_root: Path) -> str:
-    """Detect whether a project is dbt or SQLMesh."""
+    """Detect whether a project is dbt, SQLMesh, or Dataform."""
     # Check for dbt signature file
     is_dbt = (project_root / "dbt_project.yml").exists()
 
@@ -33,18 +33,34 @@ def _detect_provider(project_root: Path) -> str:
         or (project_root / "config.yml").exists()
     )
 
-    if is_dbt and is_sqlmesh:
+    # Check for Dataform signature files
+    is_dataform = (
+        (project_root / "workflow_settings.yaml").exists()
+        or (project_root / "dataform.json").exists()
+    )
+
+    detected = [p for p, found in [("dbt", is_dbt), ("sqlmesh", is_sqlmesh), ("dataform", is_dataform)] if found]
+
+    if is_dbt and is_sqlmesh and not is_dataform:
         raise ValueError(
             "Both dbt and SQLMesh configuration files were detected in the project root.\n"
             "Please specify the provider explicitly using the --provider option (e.g. '--provider dbt' or '--provider sqlmesh')."
+        )
+    if len(detected) > 1:
+        names = ", ".join(detected)
+        raise ValueError(
+            f"Multiple pipeline configuration files were detected in the project root ({names}).\n"
+            "Please specify the provider explicitly using the --provider option (e.g. '--provider dbt', '--provider sqlmesh', or '--provider dataform')."
         )
     if is_dbt:
         return "dbt"
     if is_sqlmesh:
         return "sqlmesh"
+    if is_dataform:
+        return "dataform"
 
     raise ValueError(
-        "Could not detect project type (neither dbt_project.yml nor SQLMesh config was found).\n"
+        "Could not detect project type (neither dbt_project.yml, SQLMesh config, nor Dataform config was found).\n"
         "Please run this command from your project root, or specify the provider explicitly using the --provider option."
     )
 
@@ -66,6 +82,14 @@ def _get_runner(provider: str) -> Any:
             raise ImportError(
                 "SQLMesh project detected, but tff is not installed with sqlmesh support.\n"
                 'Please install it using: pip install "tff-core[sqlmesh]" or uv add "tff-core[sqlmesh]"'
+            ) from e
+    elif provider == "dataform":
+        try:
+            return importlib.import_module("tff.dataform.runner")
+        except ImportError as e:
+            raise ImportError(
+                "Dataform project detected, but tff is not installed with dataform support.\n"
+                'Please install it using: pip install "tff-core[dataform]" or uv add "tff-core[dataform]"'
             ) from e
     else:
         raise ValueError(f"Unknown provider: {provider}")
@@ -158,14 +182,20 @@ def main(argv: list[str] | None = None) -> int:
     )
     lint_parser.add_argument(
         "--provider",
-        choices=["auto", "dbt", "sqlmesh"],
+        choices=["auto", "dbt", "sqlmesh", "dataform"],
         default="auto",
         help="Pipeline engine provider (default: auto-detected)",
     )
     lint_parser.add_argument(
         "--dialect",
         default=None,
-        help="SQL dialect of models (dbt only; auto-inferred by default)",
+        help="SQL dialect of models (dbt and Dataform; auto-inferred by default)",
+    )
+    lint_parser.add_argument(
+        "--manifest",
+        type=Path,
+        default=None,
+        help="Path to precompiled Dataform compilation_result.json or manifest",
     )
     lint_parser.add_argument(
         "--json",
@@ -194,14 +224,20 @@ def main(argv: list[str] | None = None) -> int:
     )
     health_parser.add_argument(
         "--provider",
-        choices=["auto", "dbt", "sqlmesh"],
+        choices=["auto", "dbt", "sqlmesh", "dataform"],
         default="auto",
         help="Pipeline engine provider (default: auto-detected)",
     )
     health_parser.add_argument(
         "--dialect",
         default=None,
-        help="SQL dialect of models (dbt only; auto-inferred by default)",
+        help="SQL dialect of models (dbt and Dataform; auto-inferred by default)",
+    )
+    health_parser.add_argument(
+        "--manifest",
+        type=Path,
+        default=None,
+        help="Path to precompiled Dataform compilation_result.json or manifest",
     )
     health_parser.add_argument(
         "--fail-under",
@@ -251,7 +287,7 @@ def main(argv: list[str] | None = None) -> int:
     )
     info_parser.add_argument(
         "--provider",
-        choices=["auto", "dbt", "sqlmesh"],
+        choices=["auto", "dbt", "sqlmesh", "dataform"],
         default="auto",
         help="Pipeline engine provider (default: auto-detected)",
     )
@@ -299,14 +335,20 @@ def main(argv: list[str] | None = None) -> int:
     )
     docs_parser.add_argument(
         "--provider",
-        choices=["auto", "dbt", "sqlmesh"],
+        choices=["auto", "dbt", "sqlmesh", "dataform"],
         default="auto",
         help="Pipeline engine provider (default: auto-detected)",
     )
     docs_parser.add_argument(
         "--dialect",
         default=None,
-        help="SQL dialect of models (dbt only; auto-inferred by default)",
+        help="SQL dialect of models (dbt and Dataform; auto-inferred by default)",
+    )
+    docs_parser.add_argument(
+        "--manifest",
+        type=Path,
+        default=None,
+        help="Path to precompiled Dataform compilation_result.json or manifest",
     )
     docs_parser.add_argument(
         "--output",
@@ -488,6 +530,9 @@ def main(argv: list[str] | None = None) -> int:
         ver_table.add_row(
             "  [bold]dbt integration[/bold]", f"{tff_ver} [dim](core)[/dim]"
         )
+        ver_table.add_row(
+            "  [bold]dataform integration[/bold]", f"{tff_ver} [dim](core)[/dim]"
+        )
         console.print(ver_table)
 
         prov_table = Table(show_header=False, box=None, padding=(0, 2, 0, 0))
@@ -530,6 +575,34 @@ def main(argv: list[str] | None = None) -> int:
                 "  [bold]settings.yaml[/bold]",
                 f"{settings_yaml} ({settings_yaml_status})",
             )
+        elif provider == "dataform":
+            ws_yaml = project_root / "workflow_settings.yaml"
+            df_json = project_root / "dataform.json"
+            if ws_yaml.exists():
+                prov_table.add_row(
+                    "  [bold]workflow_settings.yaml[/bold]",
+                    f"{ws_yaml} ([green]found[/green])",
+                )
+            elif df_json.exists():
+                prov_table.add_row(
+                    "  [bold]dataform.json[/bold]",
+                    f"{df_json} ([green]found[/green])",
+                )
+            else:
+                prov_table.add_row(
+                    "  [bold]workflow_settings.yaml[/bold]",
+                    "[red]missing[/red]",
+                )
+
+            from tff.dataform.manifest import _find_manifest_file
+
+            found_manifest = _find_manifest_file(project_root)
+            m_status = (
+                f"[green]{found_manifest.name}[/green]"
+                if found_manifest
+                else "[dim]not found (will compile via CLI or parse .sqlx)[/dim]"
+            )
+            prov_table.add_row("  [bold]compilation manifest[/bold]", m_status)
         if prov_table.row_count > 0:
             console.print("\n[bold cyan]● Provider Files[/bold cyan]")
             console.print(prov_table)
@@ -670,14 +743,17 @@ def main(argv: list[str] | None = None) -> int:
                 return 1
 
         from tff.core.docs import generate_docs_dashboard
+        docs_kwargs: dict[str, Any] = {
+            "project_root": project_root,
+            "output_path": args.output,
+            "provider": provider,
+            "dialect": args.dialect,
+            "config_path": args.config,
+        }
+        if getattr(args, "manifest", None) is not None:
+            docs_kwargs["manifest_path"] = args.manifest
         try:
-            output_file = generate_docs_dashboard(
-                project_root=project_root,
-                output_path=args.output,
-                provider=provider,
-                dialect=args.dialect,
-                config_path=args.config,
-            )
+            output_file = generate_docs_dashboard(**docs_kwargs)
             print(f"Successfully generated HTML dashboard at: {output_file}")
             return 0
         except Exception as e:
@@ -721,6 +797,7 @@ def main(argv: list[str] | None = None) -> int:
             checks = None  # Always run all checks for health report
 
         # 4. Run checks
+        manifest_path = getattr(args, "manifest", None)
         try:
             if provider == "dbt":
                 findings, models_checked, executed_checks = (
@@ -729,6 +806,16 @@ def main(argv: list[str] | None = None) -> int:
                         config=config,
                         checks=checks,
                         dialect=args.dialect,
+                    )
+                )
+            elif provider == "dataform":
+                findings, models_checked, executed_checks = (
+                    runner_module.run_all_checks(
+                        project_root=project_root,
+                        config=config,
+                        checks=checks,
+                        dialect=args.dialect,
+                        manifest_path=manifest_path,
                     )
                 )
             else:
@@ -755,6 +842,9 @@ def main(argv: list[str] | None = None) -> int:
                 if provider == "dbt":
                     from tff.dbt.manifest import load_dbt_models
                     models = load_dbt_models(project_root, dialect=args.dialect)
+                elif provider == "dataform":
+                    from tff.dataform.manifest import load_dataform_models
+                    models = load_dataform_models(project_root, manifest_path=manifest_path, dialect=args.dialect)
                 else:
                     from sqlmesh.core.context import Context
                     from tff.sqlmesh.loader import FitnessLoader
@@ -785,6 +875,16 @@ def main(argv: list[str] | None = None) -> int:
                                     config=config,
                                     checks=checks,
                                     dialect=args.dialect,
+                                )
+                            )
+                        elif provider == "dataform":
+                            findings, models_checked, executed_checks = (
+                                runner_module.run_all_checks(
+                                    project_root=project_root,
+                                    config=config,
+                                    checks=checks,
+                                    dialect=args.dialect,
+                                    manifest_path=manifest_path,
                                 )
                             )
                         else:

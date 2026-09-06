@@ -20,6 +20,7 @@ def generate_docs_dashboard(
     provider: str = "auto",
     dialect: str | None = None,
     config_path: str = "fitness_functions.yaml",
+    manifest_path: str | Path | None = None,
 ) -> Path:
     """Run checks, compile, and output a standalone interactive HTML dashboard."""
     # 1. Load config
@@ -35,6 +36,9 @@ def generate_docs_dashboard(
     if provider == "dbt":
         from tff.dbt.manifest import load_dbt_models
         models = load_dbt_models(project_root, dialect=dialect)
+    elif provider == "dataform":
+        from tff.dataform.manifest import load_dataform_models
+        models = load_dataform_models(project_root, manifest_path=manifest_path, dialect=dialect)
     else:
         from sqlmesh.core.context import Context
         from tff.sqlmesh.loader import FitnessLoader
@@ -51,6 +55,13 @@ def generate_docs_dashboard(
             project_root=project_root,
             config=config,
             dialect=dialect,
+        )
+    elif provider == "dataform":
+        findings, models_checked, executed_checks = runner_module.run_all_checks(
+            project_root=project_root,
+            config=config,
+            dialect=dialect,
+            manifest_path=manifest_path,
         )
     else:
         findings, models_checked, executed_checks = runner_module.run_all_checks(

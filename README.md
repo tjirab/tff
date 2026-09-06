@@ -5,7 +5,7 @@
 
 Configurable fitness functions engine and linter for transformation projects. 
 
-TFF allows you to enforce architectural layout boundaries, layer structure policies, schema contracts, and code formatting rules across data pipelines. It ships with dedicated plugins for **SQLMesh** and **dbt** and outputs clean, color-coded lint reports to the terminal.
+TFF allows you to enforce architectural layout boundaries, layer structure policies, schema contracts, and code formatting rules across data pipelines. It ships with dedicated plugins for **SQLMesh**, **dbt**, and **Google Cloud Dataform**, outputting clean, color-coded lint reports to the terminal.
 
 <img width="1280" height="708" alt="20260629_tff-health" src="https://github.com/user-attachments/assets/2302a3dc-595f-4726-94ba-6c2aaf838bd4" />
 
@@ -31,6 +31,7 @@ Setup and usage details differ depending on your pipeline engine. Refer to the c
 
 * 📐 **SQLMesh Integration**: See [docs/sqlmesh.md](docs/sqlmesh.md)
 * ⚡ **dbt Integration**: See [docs/dbt.md](docs/dbt.md)
+* ☁️ **Dataform Integration**: See [docs/dataform.md](docs/dataform.md)
 * 🔍 **Rules & Checks Reference**: See [docs/rules_and_checks.md](docs/rules_and_checks.md)
 * 🏗️ **Architecture & Contributor Guide**: See [docs/contributing.md](docs/contributing.md)
 
@@ -56,6 +57,16 @@ uv add "tff-core[dbt]"
 
 # Or pip:
 pip install "tff-core[dbt]"
+```
+
+### ☁️ For Dataform projects:
+```bash
+# With uv:
+uv add "tff-core[dataform]"
+# (or simply: uv add tff-core)
+
+# Or pip:
+pip install "tff-core[dataform]"
 ```
 
 
@@ -84,29 +95,30 @@ For detailed option explanations, run `tff help <command>` or `tff <command> --h
 #### `tff lint`
 * `--project PATH`: Path to the project root directory (default: current directory).
 * `--config PATH`: Path to `fitness_functions.yaml` relative to project root (default: `fitness_functions.yaml`).
-* `--provider {auto,dbt,sqlmesh}`: Pipeline engine provider (default: auto-detected).
+* `--provider {auto,dbt,sqlmesh,dataform}`: Pipeline engine provider (default: auto-detected).
+* `--manifest PATH`: Path to precompiled manifest or compilation result (dbt or Dataform).
 * `--checks CHECKS`: Comma-separated list of specific checks to run (default: all enabled).
 * `--fail-level {error,warning}`: Exit non-zero when findings at or above this severity exist (default: `error`).
 * `--group-by {connascence,model}`: How to group violations in the report (default: `model`).
-* `--dialect DIALECT`: SQL dialect of models (dbt only; auto-inferred by default).
+* `--dialect DIALECT`: SQL dialect of models (dbt and Dataform; auto-inferred by default).
 * `--json`: Output results in JSON format to stdout.
 * `--fix`: Automatically fix simple linting violations if possible (e.g. rewriting positional `GROUP BY`/`ORDER BY` and auto-scaffolding missing metadata).
 
 #### `tff health`
-* `--project PATH`, `--config PATH`, `--provider {auto,dbt,sqlmesh}`, `--dialect DIALECT`: (Same as above)
+* `--project PATH`, `--config PATH`, `--provider {auto,dbt,sqlmesh,dataform}`, `--dialect DIALECT`, `--manifest PATH`: (Same as above)
 * `--fail-under SCORE`: Exit non-zero when overall health score (0.0 - 100.0) is below this threshold (default: `0.0`).
-* `--scope PATH_PREFIX [...]`: Restrict the health report to models whose path starts with one of the given prefixes (e.g. `models/sources` or `models/marts/marketing`). Multiple prefixes can be provided.
-* `--group-by {connascence,domain}`: How to group the detailed health breakdown. `connascence` (default) groups by connascence category; `domain` groups by path segment under `models/` (e.g. `models/sources`, `models/marts/marketing`).
+* `--scope PATH_PREFIX [...]`: Restrict the health report to models whose path starts with one of the given prefixes (e.g. `models/sources`, `definitions/staging`, or `models/marts/marketing`). Multiple prefixes can be provided.
+* `--group-by {connascence,domain}`: How to group the detailed health breakdown. `connascence` (default) groups by connascence category; `domain` groups by path segment under model directory (`models/` or `definitions/`).
 * `--json`: Output results in JSON format to stdout.
 
 #### `tff docs`
-* `--project PATH`, `--config PATH`, `--provider {auto,dbt,sqlmesh}`, `--dialect DIALECT`: (Same as above)
+* `--project PATH`, `--config PATH`, `--provider {auto,dbt,sqlmesh,dataform}`, `--dialect DIALECT`, `--manifest PATH`: (Same as above)
 * `--output PATH`, `-o PATH`: Path where the output HTML dashboard file will be generated (default: `tff_report.html` in the project root).
 
 #### `tff info`
 * `--project PATH`: Path to the project root directory (default: current directory).
 * `--config PATH`: Path to `fitness_functions.yaml` relative to project root (default: `fitness_functions.yaml`).
-* `--provider {auto,dbt,sqlmesh}`: Pipeline engine provider (default: auto-detected).
+* `--provider {auto,dbt,sqlmesh,dataform}`: Pipeline engine provider (default: auto-detected).
 
 ### Quick Start Examples
 
