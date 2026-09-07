@@ -1,6 +1,7 @@
 """Tests for CheckRegistry, CheckDefinition, and granular rule execution."""
 
 from pathlib import Path
+from unittest.mock import MagicMock
 import pytest
 
 from tff.core.config import FitnessFunctionsConfig
@@ -429,7 +430,8 @@ def test_dataform_runner_granular_execution(tmp_path: Path) -> None:
 
 
 def test_sqlmesh_runner_granular_execution() -> None:
-    fixture_path = Path(__file__).parent / "fixtures" / "sqlmesh_minimal_project"
+    from sqlmesh.core.linter.definition import AnnotatedRuleViolation
+
     cfg = FitnessFunctionsConfig()
     set_ff_config(cfg)
 
@@ -437,9 +439,60 @@ def test_sqlmesh_runner_granular_execution() -> None:
     assert sqlmesh_runner._check_enabled(cfg, "layer_integrity") is True
     assert sqlmesh_runner._check_enabled(cfg, "nonexistent") is False
 
-    # Granular check: DAG check only (layer_integrity) with automatic context initialization
+    # Create mock context and models for deterministic, process-pool-free testing
+    mock_context = MagicMock()
+    mock_model_1 = MagicMock()
+    mock_model_1.name = "sqlmesh_example.src_model"
+    mock_model_1.project = "default"
+    mock_model_1.kind = MagicMock(is_symbolic=False)
+    mock_model_1._path = Path("models/src_model.sql")
+
+    mock_model_2 = MagicMock()
+    mock_model_2.name = "sqlmesh_example.violating_model"
+    mock_model_2.project = "default"
+    mock_model_2.kind = MagicMock(is_symbolic=False)
+    mock_model_2._path = Path("models/violating_model.sql")
+
+    mock_context.models = {
+        "sqlmesh_example.src_model": mock_model_1,
+        "sqlmesh_example.violating_model": mock_model_2,
+    }
+
+    mock_rule = MagicMock()
+    mock_rule.name = "banselectstar"
+    violation = AnnotatedRuleViolation(
+        mock_rule, "sqlmesh_example.src_model: SELECT * is prohibited", mock_model_1, "error"
+    )
+
+    mock_linter = MagicMock()
+    mock_linter.enabled = True
+
+    def mock_lint(model, *args, **kwargs):
+        if model.name == "sqlmesh_example.src_model":
+            return (None, [violation])
+        return (None, [])
+
+    mock_linter.lint_model.side_effect = mock_lint
+    mock_context._linters = {"default": mock_linter}
+
+    mapped_models = {
+        "sqlmesh_example.src_model": ModelRepresentation(
+            name="sqlmesh_example.src_model",
+            path="models/sources/src_model.sql",
+            dialect="duckdb",
+            depends_on={"sqlmesh_example.violating_model"},
+        ),
+        "sqlmesh_example.violating_model": ModelRepresentation(
+            name="sqlmesh_example.violating_model",
+            path="models/derived/violating_model.sql",
+            dialect="duckdb",
+        ),
+    }
+
+    # Granular check: DAG check only (layer_integrity)
     findings, count, selected = sqlmesh_runner.run_all_checks(
-        project_root=fixture_path,
+        context=mock_context,
+        models=mapped_models,
         checks=["layer_integrity"],
     )
     assert count == 2
@@ -447,46 +500,53 @@ def test_sqlmesh_runner_granular_execution() -> None:
     assert all(f.check == "layer_integrity" for f in findings)
     assert len(findings) == 1
 
-    from sqlmesh.core.context import Context
-    from tff.sqlmesh.loader import FitnessLoader
-
-    context = Context(paths=[str(fixture_path)], loader=FitnessLoader)
-
     # Granular check: "sqlmesh" container
     findings_sqlmesh, count_s, selected_s = sqlmesh_runner.run_all_checks(
-        context=context,
+        context=mock_context,
+        models=mapped_models,
         checks=["sqlmesh"],
     )
     assert count_s == 2
     assert selected_s == ["sqlmesh"]
+    assert len(findings_sqlmesh) == 1
+    assert findings_sqlmesh[0].check == "banselectstar"
 
     # Granular check: "rules" container
     findings_rules, count_r, selected_r = sqlmesh_runner.run_all_checks(
-        context=context,
+        context=mock_context,
+        models=mapped_models,
         checks=["rules"],
     )
     assert selected_r == ["rules"]
+    assert len(findings_rules) == 1
+    assert findings_rules[0].check == "banselectstar"
 
     # Granular check: model rule + DAG check together
     findings_combo, count_c, selected_c = sqlmesh_runner.run_all_checks(
-        context=context,
+        context=mock_context,
+        models=mapped_models,
         checks=["ban_select_star", "layer_integrity"],
     )
     assert selected_c == ["ban_select_star", "layer_integrity"]
+    assert len(findings_combo) == 2
     assert any(f.check == "layer_integrity" for f in findings_combo)
+    assert any(f.check == "banselectstar" for f in findings_combo)
 
     # Granular check: single model rule
     findings_ban, _, selected_ban = sqlmesh_runner.run_all_checks(
-        context=context,
+        context=mock_context,
+        models=mapped_models,
         checks=["ban_select_star"],
     )
     assert selected_ban == ["ban_select_star"]
-    assert all(f.check == "banselectstar" for f in findings_ban)
+    assert len(findings_ban) == 1
+    assert findings_ban[0].check == "banselectstar"
 
     # Unknown check raises ValueError
     with pytest.raises(ValueError, match="Unknown check or rule: 'invalid_rule'"):
         sqlmesh_runner.run_all_checks(
-            context=context,
+            context=mock_context,
+            models=mapped_models,
             checks=["invalid_rule"],
         )
 
@@ -512,3 +572,22 @@ def test_sqlmesh_runner_fallback_without_context(tmp_path: Path) -> None:
     assert selected == ["ban_select_star"]
     assert len(findings) == 1
     assert findings[0].check == "banselectstar"
+
+
+def test_sqlmesh_runner_initializes_context_when_missing(tmp_path: Path) -> None:
+    from unittest.mock import patch
+
+    cfg = FitnessFunctionsConfig()
+    set_ff_config(cfg)
+
+    mock_context = MagicMock()
+    mock_context.models = {}
+    mock_context._linters = {}
+
+    with patch("tff.sqlmesh.runner.Context", return_value=mock_context) as mock_ctx_cls:
+        findings, count, selected = sqlmesh_runner.run_all_checks(
+            project_root=tmp_path,
+            checks=["sqlmesh"],
+        )
+        assert mock_ctx_cls.called
+        assert selected == ["sqlmesh"]
