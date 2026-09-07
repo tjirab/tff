@@ -27,47 +27,26 @@ def generate_docs_dashboard(
     config = load_fitness_config(project_root, config_path=config_path)
     set_ff_config(config)
 
-    # 2. Get runner
-    from tff.core.cli import _get_runner
-    runner_module = _get_runner(provider)
+    # 2. Get adapter
+    from tff.core.cli import _get_adapter
+
+    adapter = _get_adapter(provider)
 
     # 3. Load models mapping
-    models = {}
-    if provider == "dbt":
-        from tff.dbt.manifest import load_dbt_models
-        models = load_dbt_models(project_root, dialect=dialect)
-    elif provider == "dataform":
-        from tff.dataform.manifest import load_dataform_models
-        models = load_dataform_models(project_root, manifest_path=manifest_path, dialect=dialect)
-    else:
-        from sqlmesh.core.context import Context
-        from tff.sqlmesh.loader import FitnessLoader
-        from tff.sqlmesh.runner import map_sqlmesh_context_models
-        context = Context(
-            paths=[str(project_root)],
-            loader=FitnessLoader,
-        )
-        models = map_sqlmesh_context_models(context)
+    models = adapter.load_models(
+        project_root=project_root,
+        dialect=dialect,
+        manifest_path=manifest_path,
+    )
 
-    # 4. Run all checks
-    if provider == "dbt":
-        findings, models_checked, executed_checks = runner_module.run_all_checks(
-            project_root=project_root,
-            config=config,
-            dialect=dialect,
-        )
-    elif provider == "dataform":
-        findings, models_checked, executed_checks = runner_module.run_all_checks(
-            project_root=project_root,
-            config=config,
-            dialect=dialect,
-            manifest_path=manifest_path,
-        )
-    else:
-        findings, models_checked, executed_checks = runner_module.run_all_checks(
-            project_root=project_root,
-            config=config,
-        )
+    # 4. Run all checks reusing preloaded models
+    findings, models_checked, executed_checks = adapter.run_checks(
+        project_root=project_root,
+        config=config,
+        dialect=dialect,
+        manifest_path=manifest_path,
+        models=models,
+    )
 
     # 5. Calculate scores and save health log
     scores = calculate_health_scores(findings, models_checked, config, provider)
@@ -77,15 +56,19 @@ def generate_docs_dashboard(
     # 6. Collect history (60 days)
     history = collect_stats(project_root, days=60)
     if not history:
-        history = [{
-            "date": date.today().isoformat(),
-            "health_score": scores["overall_score"],
-            "errors_count": len([f for f in findings if f.severity == "error"]),
-            "warnings_count": len([f for f in findings if f.severity == "warning"]),
-        }]
+        history = [
+            {
+                "date": date.today().isoformat(),
+                "health_score": scores["overall_score"],
+                "errors_count": len([f for f in findings if f.severity == "error"]),
+                "warnings_count": len([f for f in findings if f.severity == "warning"]),
+            }
+        ]
 
     # 7. Prep data for the HTML template
-    rel_to_model_id = {model_path_relative(m): m_id for m_id, m in models.items() if m.path}
+    rel_to_model_id = {
+        model_path_relative(m): m_id for m_id, m in models.items() if m.path
+    }
     name_to_model_id = {m.name: m_id for m_id, m in models.items()}
 
     model_findings_serialized: dict[str, list[dict[str, Any]]] = {}
@@ -150,7 +133,9 @@ def generate_docs_dashboard(
     }
 
     embedded_json = json.dumps(data_to_embed, indent=2)
-    html_content = HTML_TEMPLATE.replace("<!-- INSERT_TFF_DATA_HERE -->", f"const TFF_DATA = {embedded_json};")
+    html_content = HTML_TEMPLATE.replace(
+        "<!-- INSERT_TFF_DATA_HERE -->", f"const TFF_DATA = {embedded_json};"
+    )
 
     if output_path is None:
         output_path = project_root / "tff_report.html"
