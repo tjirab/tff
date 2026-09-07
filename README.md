@@ -127,6 +127,11 @@ Run linting on the current project:
 tff lint
 ```
 
+Run specific fitness checks or rules:
+```bash
+tff lint --checks no_missing_owner,ban_select_star
+```
+
 Automatically fix simple linting violations (positional GROUP BY/ORDER BY, missing owner/description metadata):
 ```bash
 tff lint --fix

@@ -5,80 +5,34 @@ from __future__ import annotations
 import logging
 from pathlib import Path
 
-from tff.core.checks.custom_exclusions import collect_custom_exclusion_findings
-from tff.core.checks.dependency_graph import collect_dependency_graph_findings
-from tff.core.checks.layer_integrity import collect_layer_integrity_findings
-from tff.core.checks.schema_contracts import collect_schema_contract_findings
-from tff.core.checks.materialization_depth import collect_materialization_depth_findings
-from tff.core.checks.duplicate_ctes import collect_duplicate_cte_findings
-from tff.core.checks.connascence_of_value import collect_connascence_of_value_findings
 from tff.core.config import FitnessFunctionsConfig, load_fitness_config
 from tff.core.context import set_ff_config
-from tff.core.report import LintFinding
-from tff.core.rules import ALL_RULES
-from tff.core.utils.paths import model_path_relative
 from tff.core.model import ModelRepresentation
+from tff.core.registry import registry
+from tff.core.report import LintFinding
 from tff.dbt.manifest import load_dbt_models
 
 logger = logging.getLogger(__name__)
 
 CHECK_COLLECTORS = {
-    "layer_integrity": lambda models, cfg: collect_layer_integrity_findings(
-        models, cfg
-    ),
-    "custom_exclusions": lambda models, cfg: collect_custom_exclusion_findings(
-        models, cfg
-    ),
-    "schema_contracts": lambda _models, cfg: collect_schema_contract_findings(cfg),
-    "dependency_graph": lambda models, cfg: collect_dependency_graph_findings(
-        models, cfg
-    ),
-    "materialization_depth": lambda models, cfg: collect_materialization_depth_findings(
-        models, cfg
-    ),
-    "duplicate_ctes": lambda models, cfg: collect_duplicate_cte_findings(models, cfg),
-    "connascence_of_value": lambda models, cfg: collect_connascence_of_value_findings(
-        models, cfg
-    ),
+    c.finding_id: c.get_collector_fn()
+    for c in registry.dag_checks()
+    if c.get_collector_fn() is not None
 }
 
 
 def collect_dbt_rules_findings(
     models: dict[str, ModelRepresentation],
 ) -> list[LintFinding]:
-    findings = []
-    rules = [rule_cls() for rule_cls in ALL_RULES]
-
-    for model in models.values():
-        if model.is_external or model.is_symbolic:
-            continue
-
-        for rule in rules:
-            violation = rule.check_model(model)
-            if violation:
-                msgs = violation.violation_msg
-                if isinstance(msgs, str):
-                    msgs = [msgs]
-                for msg in msgs:
-                    # Strip model name prefix from message if the rule prepended it
-                    model_label = f"{model.name}: "
-                    clean_msg = msg.removeprefix(model_label)
-
-                    findings.append(
-                        LintFinding(
-                            check=rule.name,
-                            severity="error",
-                            model=model.name,
-                            path=model_path_relative(model),
-                            message=clean_msg,
-                        )
-                    )
+    """Collect findings for all registered model-level rules."""
+    findings: list[LintFinding] = []
+    for rule_def in registry.model_rules():
+        findings.extend(rule_def.run(models, config=None))
     return findings
 
 
 def _check_enabled(config: FitnessFunctionsConfig, check_name: str) -> bool:
-    check = getattr(config.checks, check_name, None)
-    return bool(getattr(check, "enabled", False))
+    return registry.is_check_enabled(config, check_name, provider="dbt")
 
 
 def run_all_checks(
@@ -97,22 +51,12 @@ def run_all_checks(
     if models is None:
         models = load_dbt_models(project_root, dialect=dialect)
 
-    if checks is None:
-        selected = ["rules"] + [
-            name for name in CHECK_COLLECTORS if _check_enabled(config, name)
-        ]
-    else:
-        selected = checks
-
-    findings: list[LintFinding] = []
-
-    if "rules" in selected:
-        findings.extend(collect_dbt_rules_findings(models))
-
-    for check_name, collector in CHECK_COLLECTORS.items():
-        if check_name not in selected:
-            continue
-        findings.extend(collector(models, config))
+    findings, selected = registry.run_checks(
+        models=models,
+        config=config,
+        checks=checks,
+        provider="dbt",
+    )
 
     models_checked = sum(
         1 for m in models.values() if not m.is_external and not m.is_symbolic
