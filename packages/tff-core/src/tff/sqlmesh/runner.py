@@ -25,15 +25,24 @@ from tff.sqlmesh.loader import FitnessLoader, map_sqlmesh_model
 logger = logging.getLogger(__name__)
 
 CHECK_COLLECTORS = {
-    "layer_integrity": lambda models, cfg: collect_layer_integrity_findings(models, cfg),
-    "custom_exclusions": lambda models, cfg: collect_custom_exclusion_findings(models, cfg),
+    "layer_integrity": lambda models, cfg: collect_layer_integrity_findings(
+        models, cfg
+    ),
+    "custom_exclusions": lambda models, cfg: collect_custom_exclusion_findings(
+        models, cfg
+    ),
     "schema_contracts": lambda _models, cfg: collect_schema_contract_findings(cfg),
-    "dependency_graph": lambda models, cfg: collect_dependency_graph_findings(models, cfg),
-    "materialization_depth": lambda models, cfg: collect_materialization_depth_findings(models, cfg),
+    "dependency_graph": lambda models, cfg: collect_dependency_graph_findings(
+        models, cfg
+    ),
+    "materialization_depth": lambda models, cfg: collect_materialization_depth_findings(
+        models, cfg
+    ),
     "duplicate_ctes": lambda models, cfg: collect_duplicate_cte_findings(models, cfg),
-    "connascence_of_value": lambda models, cfg: collect_connascence_of_value_findings(models, cfg),
+    "connascence_of_value": lambda models, cfg: collect_connascence_of_value_findings(
+        models, cfg
+    ),
 }
-
 
 
 class _SilentLinterConsole:
@@ -84,9 +93,7 @@ def collect_sqlmesh_findings(context: Context) -> list[LintFinding]:
 
 
 def count_models_checked(context: Context) -> int:
-    return sum(
-        1 for model in context.models.values() if not model.kind.is_symbolic
-    )
+    return sum(1 for model in context.models.values() if not model.kind.is_symbolic)
 
 
 def _check_enabled(config: FitnessFunctionsConfig, check_name: str) -> bool:
@@ -106,32 +113,34 @@ def run_all_checks(
     context: Context | None = None,
     config: FitnessFunctionsConfig | None = None,
     checks: list[str] | None = None,
+    models: dict[str, ModelRepresentation] | None = None,
 ) -> tuple[list[LintFinding], int, list[str]]:
     project_root = project_root or Path.cwd()
     if config is None:
         config = load_fitness_config(project_root)
     set_ff_config(config)
 
-    context = context or Context(
-        paths=[str(project_root)],
-        loader=FitnessLoader,
-    )
-
     if checks is None:
         selected = ["sqlmesh"] + [
-            name
-            for name in CHECK_COLLECTORS
-            if _check_enabled(config, name)
+            name for name in CHECK_COLLECTORS if _check_enabled(config, name)
         ]
     else:
         selected = checks
 
     findings: list[LintFinding] = []
 
-    if "sqlmesh" in selected:
+    if "sqlmesh" in selected or models is None:
+        context = context or Context(
+            paths=[str(project_root)],
+            loader=FitnessLoader,
+        )
+
+    if "sqlmesh" in selected and context is not None:
         findings.extend(collect_sqlmesh_findings(context))
 
-    mapped_models = map_sqlmesh_context_models(context)
+    mapped_models = (
+        models if models is not None else map_sqlmesh_context_models(context)
+    )
 
     for check_name, collector in CHECK_COLLECTORS.items():
         if check_name not in selected:
@@ -140,4 +149,10 @@ def run_all_checks(
             continue
         findings.extend(collector(mapped_models, config))
 
-    return findings, count_models_checked(context), selected
+    checked_count = (
+        count_models_checked(context)
+        if context is not None
+        else sum(1 for m in mapped_models.values() if not m.is_symbolic)
+    )
+
+    return findings, checked_count, selected

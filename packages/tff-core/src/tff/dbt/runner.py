@@ -23,18 +23,29 @@ from tff.dbt.manifest import load_dbt_models
 logger = logging.getLogger(__name__)
 
 CHECK_COLLECTORS = {
-    "layer_integrity": lambda models, cfg: collect_layer_integrity_findings(models, cfg),
-    "custom_exclusions": lambda models, cfg: collect_custom_exclusion_findings(models, cfg),
+    "layer_integrity": lambda models, cfg: collect_layer_integrity_findings(
+        models, cfg
+    ),
+    "custom_exclusions": lambda models, cfg: collect_custom_exclusion_findings(
+        models, cfg
+    ),
     "schema_contracts": lambda _models, cfg: collect_schema_contract_findings(cfg),
-    "dependency_graph": lambda models, cfg: collect_dependency_graph_findings(models, cfg),
-    "materialization_depth": lambda models, cfg: collect_materialization_depth_findings(models, cfg),
+    "dependency_graph": lambda models, cfg: collect_dependency_graph_findings(
+        models, cfg
+    ),
+    "materialization_depth": lambda models, cfg: collect_materialization_depth_findings(
+        models, cfg
+    ),
     "duplicate_ctes": lambda models, cfg: collect_duplicate_cte_findings(models, cfg),
-    "connascence_of_value": lambda models, cfg: collect_connascence_of_value_findings(models, cfg),
+    "connascence_of_value": lambda models, cfg: collect_connascence_of_value_findings(
+        models, cfg
+    ),
 }
 
 
-
-def collect_dbt_rules_findings(models: dict[str, ModelRepresentation]) -> list[LintFinding]:
+def collect_dbt_rules_findings(
+    models: dict[str, ModelRepresentation],
+) -> list[LintFinding]:
     findings = []
     rules = [rule_cls() for rule_cls in ALL_RULES]
 
@@ -75,20 +86,20 @@ def run_all_checks(
     config: FitnessFunctionsConfig | None = None,
     checks: list[str] | None = None,
     dialect: str | None = None,
+    models: dict[str, ModelRepresentation] | None = None,
 ) -> tuple[list[LintFinding], int, list[str]]:
     project_root = project_root or Path.cwd()
     if config is None:
         config = load_fitness_config(project_root)
     set_ff_config(config)
 
-    # Parse and load manifest.json
-    models = load_dbt_models(project_root, dialect=dialect)
+    # Parse and load manifest.json if models not already provided
+    if models is None:
+        models = load_dbt_models(project_root, dialect=dialect)
 
     if checks is None:
         selected = ["rules"] + [
-            name
-            for name in CHECK_COLLECTORS
-            if _check_enabled(config, name)
+            name for name in CHECK_COLLECTORS if _check_enabled(config, name)
         ]
     else:
         selected = checks
