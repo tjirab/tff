@@ -15,109 +15,17 @@ from rich.text import Text
 from tff.core.config import FitnessFunctionsConfig
 from tff.core.report import CHECK_LABELS, CONNASCENCE_CATEGORIES, LintFinding
 
-PROJECT_LEVEL_CHECKS = {
-    "layer_integrity",
-    "custom_exclusions",
-    "schema_contracts",
-    "dependency_graph",
-    "materialization_depth",
-}
+from tff.core.registry import registry
 
-CATEGORIES = {
-    "Connascence of Name (CoN)": [
-        "banselectstar",
-        "filenameequalsmodelname",
-        "columnnames",
-        "martmodelnamingconvention",
-        "ambiguousorinvalidcolumn",
-        "invalidselectstarexpansion",
-    ],
-    "Connascence of Type (CoT)": [
-        "columntypes",
-        "schema_contracts",
-    ],
-    "Connascence of Position (CoP)": [
-        "nopositionalgroupbyororderby",
-    ],
-    "Connascence of Meaning (CoM)": [
-        "classificationmacros",
-    ],
-    "Connascence of Algorithm (CoA)": [
-        "duplicate_ctes",
-    ],
-    "Connascence of Value (CoV)": [
-        "connascence_of_value",
-    ],
-    "Dynamic Coupling & DAG Structure": [
-        "layer_integrity",
-        "custom_exclusions",
-        "dependency_graph",
-        "materialization_depth",
-        "environmentagnosticreferences",
-    ],
-    "Quality & Metadata (Non-Connascence)": [
-        "nomissingowner",
-        "nomissingdescription",
-        "nomissinggrain",
-        "nomissingnotnull",
-        "nomissinguniquevalues",
-        "sqlcomplexity",
-    ],
-}
+PROJECT_LEVEL_CHECKS: set[str] = registry.get_project_level_check_names()
+CATEGORIES: dict[str, list[str]] = registry.get_categories()
 
 
-def is_check_enabled(config: FitnessFunctionsConfig, check_name: str, provider: str) -> bool:
+def is_check_enabled(
+    config: FitnessFunctionsConfig, check_name: str, provider: str
+) -> bool:
     """Determine if a check/rule is enabled in the configuration."""
-    if check_name == "layer_integrity":
-        return config.checks.layer_integrity.enabled
-    if check_name == "custom_exclusions":
-        return config.checks.custom_exclusions.enabled
-    if check_name == "schema_contracts":
-        return config.checks.schema_contracts.enabled
-    if check_name == "dependency_graph":
-        return config.checks.dependency_graph.enabled
-    if check_name == "materialization_depth":
-        return config.checks.materialization_depth.enabled
-    if check_name == "duplicate_ctes":
-        return config.checks.duplicate_ctes.enabled
-    if check_name == "connascence_of_value":
-        return config.checks.connascence_of_value.enabled
-    if check_name == "classificationmacros":
-        return config.rules.classification_macros.enabled
-    if check_name == "sqlcomplexity":
-        return config.rules.sql_complexity.enabled
-    if check_name == "martmodelnamingconvention":
-        return config.rules.mart_naming.enabled
-    if check_name == "columnnames":
-        return config.rules.column_names.enabled
-    if check_name == "columntypes":
-        return config.rules.column_types.enabled
-    if check_name == "filenameequalsmodelname":
-        return config.rules.filename_equals_modelname.enabled
-    if check_name == "banselectstar":
-        return config.rules.ban_select_star.enabled
-    if check_name == "nopositionalgroupbyororderby":
-        return config.rules.no_positional_group_by_or_order_by.enabled
-    if check_name == "environmentagnosticreferences":
-        return config.rules.environment_agnostic_references.enabled
-
-    # Metadata sub-rules
-    if check_name == "nomissingowner":
-        return config.rules.metadata.enabled and config.rules.metadata.owner
-    if check_name == "nomissingdescription":
-        return config.rules.metadata.enabled and config.rules.metadata.description
-    if check_name == "nomissinggrain":
-        return config.rules.metadata.enabled and config.rules.metadata.grain
-    if check_name == "nomissingnotnull":
-        return config.rules.metadata.enabled and config.rules.metadata.not_null
-    if check_name == "nomissinguniquevalues":
-        return config.rules.metadata.enabled and config.rules.metadata.unique_values
-
-    # SQLMesh native rules
-    if check_name in {"ambiguousorinvalidcolumn", "invalidselectstarexpansion"}:
-        return provider == "sqlmesh"
-
-    return False
+    return registry.is_check_enabled(config, check_name, provider)
 
 
 def _matches_scope(finding_path: str | None, scope: list[str]) -> bool:

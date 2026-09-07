@@ -12,89 +12,9 @@ from rich.panel import Panel
 from rich.table import Table
 from rich.text import Text
 
+from tff.core.registry import registry
+
 Severity = Literal["error", "warning"]
-
-CHECK_LABELS: dict[str, str] = {
-    "classificationmacros": "Classification macros",
-    "sqlcomplexity": "SQL complexity",
-    "layer_integrity": "Layer integrity",
-    "custom_exclusions": "Custom exclusions",
-    "schema_contracts": "Schema contracts",
-    "dependency_graph": "Dependency graph",
-    "nomissinggrain": "Missing grain",
-    "nomissingowner": "Missing owner",
-    "nomissingdescription": "Missing description",
-    "nomissingaudits": "Missing audits",
-    "nomissingnotnull": "Missing not_null audit",
-    "nomissinguniquevalues": "Missing unique_values audit",
-    "banselectstar": "No SELECT *",
-    "filenameequalsmodelname": "Filename equals model name",
-    "columntypes": "Column types",
-    "columnnames": "Column names",
-    "martmodelnamingconvention": "Mart naming convention",
-    "ambiguousorinvalidcolumn": "Ambiguous/invalid column",
-    "invalidselectstarexpansion": "Invalid SELECT * expansion",
-    "nopositionalgroupbyororderby": "No positional GROUP BY or ORDER BY",
-    "environmentagnosticreferences": "Environment-agnostic references",
-    "duplicate_ctes": "Duplicate CTEs",
-    "connascence_of_value": "Connascence of Value",
-}
-
-CONNASCENCE_CATEGORIES: dict[str, str] = {
-    # Connascence of Name (CoN)
-    "banselectstar": "Connascence of Name (CoN)",
-    "filenameequalsmodelname": "Connascence of Name (CoN)",
-    "columnnames": "Connascence of Name (CoN)",
-    "martmodelnamingconvention": "Connascence of Name (CoN)",
-    "ambiguousorinvalidcolumn": "Connascence of Name (CoN)",
-    "invalidselectstarexpansion": "Connascence of Name (CoN)",
-
-    # Connascence of Type (CoT)
-    "columntypes": "Connascence of Type (CoT)",
-    "schema_contracts": "Connascence of Type (CoT)",
-
-    # Connascence of Position (CoP)
-    "nopositionalgroupbyororderby": "Connascence of Position (CoP)",
-
-    # Connascence of Meaning (CoM)
-    "classificationmacros": "Connascence of Meaning (CoM)",
-
-    # Dynamic Coupling
-    "layer_integrity": "Dynamic Coupling & DAG Structure",
-    "custom_exclusions": "Dynamic Coupling & DAG Structure",
-    "dependency_graph": "Dynamic Coupling & DAG Structure",
-    "materialization_depth": "Dynamic Coupling & DAG Structure",
-    "environmentagnosticreferences": "Dynamic Coupling & DAG Structure",
-
-
-    # Quality & Metadata
-    "nomissingowner": "Quality & Metadata (Non-Connascence)",
-    "nomissingdescription": "Quality & Metadata (Non-Connascence)",
-    "nomissinggrain": "Quality & Metadata (Non-Connascence)",
-    "nomissingaudits": "Quality & Metadata (Non-Connascence)",
-    "nomissingnotnull": "Quality & Metadata (Non-Connascence)",
-    "nomissinguniquevalues": "Quality & Metadata (Non-Connascence)",
-    "sqlcomplexity": "Quality & Metadata (Non-Connascence)",
-    "duplicate_ctes": "Connascence of Algorithm (CoA)",
-    "connascence_of_value": "Connascence of Value (CoV)",
-}
-
-ARCHITECTURAL_CHECKS = frozenset(
-    {
-        "layer_integrity",
-        "custom_exclusions",
-        "schema_contracts",
-        "dependency_graph",
-        "duplicate_ctes",
-        "connascence_of_value",
-    }
-)
-
-ALWAYS_VISIBLE_CHECKS = [
-    *ARCHITECTURAL_CHECKS,
-    "sqlcomplexity",
-    "classificationmacros",
-]
 
 
 @dataclass(frozen=True)
@@ -104,6 +24,16 @@ class LintFinding:
     message: str
     model: str | None = None
     path: str | None = None
+
+
+CHECK_LABELS: dict[str, str] = registry.get_check_labels()
+CONNASCENCE_CATEGORIES: dict[str, str] = registry.get_connascence_categories()
+ARCHITECTURAL_CHECKS: frozenset[str] = registry.get_architectural_check_names()
+ALWAYS_VISIBLE_CHECKS: list[str] = [
+    *ARCHITECTURAL_CHECKS,
+    "sqlcomplexity",
+    "classificationmacros",
+]
 
 
 def normalize_model_name(name: str) -> str:
@@ -128,18 +58,20 @@ def _summary_check_names(
 
     names: list[str] = []
     for check in executed_checks:
-        if check == "sqlmesh":
+        if check in ("sqlmesh", "rules"):
             from_findings = {
                 name for name in by_check if name not in ARCHITECTURAL_CHECKS
             }
             if from_findings:
                 names.extend(from_findings)
-            else:
+            elif check == "sqlmesh":
                 names.extend(
                     name
                     for name in ALWAYS_VISIBLE_CHECKS
                     if name not in ARCHITECTURAL_CHECKS
                 )
+            else:
+                names.append("rules")
         else:
             names.append(check)
 
