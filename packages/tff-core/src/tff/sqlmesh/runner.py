@@ -135,15 +135,11 @@ def run_all_checks(
             for c in checks
         )
 
-        if context is None and ("sqlmesh" in selected or model_rules_requested or models is None):
-            try:
-                context = Context(
-                    paths=[str(project_root)],
-                    loader=FitnessLoader,
-                )
-            except Exception as e:
-                logger.debug("Could not initialize SQLMesh Context: %s", e)
-                context = None
+        if context is None and (models is None or "sqlmesh" in selected):
+            context = Context(
+                paths=[str(project_root)],
+                loader=FitnessLoader,
+            )
 
         mapped_models = (
             models

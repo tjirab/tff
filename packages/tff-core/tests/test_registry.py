@@ -437,7 +437,7 @@ def test_sqlmesh_runner_granular_execution() -> None:
     assert sqlmesh_runner._check_enabled(cfg, "layer_integrity") is True
     assert sqlmesh_runner._check_enabled(cfg, "nonexistent") is False
 
-    # Granular check: DAG check only (layer_integrity)
+    # Granular check: DAG check only (layer_integrity) with automatic context initialization
     findings, count, selected = sqlmesh_runner.run_all_checks(
         project_root=fixture_path,
         checks=["layer_integrity"],
@@ -447,9 +447,14 @@ def test_sqlmesh_runner_granular_execution() -> None:
     assert all(f.check == "layer_integrity" for f in findings)
     assert len(findings) == 1
 
+    from sqlmesh.core.context import Context
+    from tff.sqlmesh.loader import FitnessLoader
+
+    context = Context(paths=[str(fixture_path)], loader=FitnessLoader)
+
     # Granular check: "sqlmesh" container
     findings_sqlmesh, count_s, selected_s = sqlmesh_runner.run_all_checks(
-        project_root=fixture_path,
+        context=context,
         checks=["sqlmesh"],
     )
     assert count_s == 2
@@ -457,14 +462,14 @@ def test_sqlmesh_runner_granular_execution() -> None:
 
     # Granular check: "rules" container
     findings_rules, count_r, selected_r = sqlmesh_runner.run_all_checks(
-        project_root=fixture_path,
+        context=context,
         checks=["rules"],
     )
     assert selected_r == ["rules"]
 
     # Granular check: model rule + DAG check together
     findings_combo, count_c, selected_c = sqlmesh_runner.run_all_checks(
-        project_root=fixture_path,
+        context=context,
         checks=["ban_select_star", "layer_integrity"],
     )
     assert selected_c == ["ban_select_star", "layer_integrity"]
@@ -472,7 +477,7 @@ def test_sqlmesh_runner_granular_execution() -> None:
 
     # Granular check: single model rule
     findings_ban, _, selected_ban = sqlmesh_runner.run_all_checks(
-        project_root=fixture_path,
+        context=context,
         checks=["ban_select_star"],
     )
     assert selected_ban == ["ban_select_star"]
@@ -481,7 +486,7 @@ def test_sqlmesh_runner_granular_execution() -> None:
     # Unknown check raises ValueError
     with pytest.raises(ValueError, match="Unknown check or rule: 'invalid_rule'"):
         sqlmesh_runner.run_all_checks(
-            project_root=fixture_path,
+            context=context,
             checks=["invalid_rule"],
         )
 
