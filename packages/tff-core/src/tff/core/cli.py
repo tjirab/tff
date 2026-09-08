@@ -309,6 +309,11 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="Automatically fix simple linting violations if possible",
     )
+    lint_parser.add_argument(
+        "--no-log",
+        action="store_true",
+        help="Disable saving run execution logs to .tff_logs/",
+    )
 
     health_parser = subparsers.add_parser(
         "health", help="Show project health report and scores"
@@ -368,6 +373,11 @@ def main(argv: list[str] | None = None) -> int:
         "--json",
         action="store_true",
         help="Output results in JSON format to stdout",
+    )
+    health_parser.add_argument(
+        "--no-log",
+        action="store_true",
+        help="Disable saving run execution logs to .tff_logs/",
     )
 
     # Info subcommand
@@ -458,6 +468,11 @@ def main(argv: list[str] | None = None) -> int:
         type=Path,
         default=None,
         help="Output HTML path (default: project_root / tff_report.html)",
+    )
+    docs_parser.add_argument(
+        "--no-log",
+        action="store_true",
+        help="Disable saving run execution logs to .tff_logs/",
     )
 
     help_parser = subparsers.add_parser("help", help="Show help details for a command")
@@ -797,6 +812,8 @@ def main(argv: list[str] | None = None) -> int:
             "dialect": args.dialect,
             "config_path": args.config,
         }
+        if getattr(args, "no_log", False):
+            docs_kwargs["no_log"] = True
         if getattr(args, "manifest", None) is not None:
             docs_kwargs["manifest_path"] = args.manifest
         try:
@@ -910,7 +927,12 @@ def main(argv: list[str] | None = None) -> int:
             import json
 
             json_data = get_lint_json_data(findings, models_checked, args.fail_level)
-            save_log(project_root, "lint", json_data)
+            save_log(
+                project_root,
+                "lint",
+                json_data,
+                no_log=getattr(args, "no_log", False),
+            )
 
             if args.json:
                 print(json.dumps(json_data, indent=2))
@@ -962,7 +984,12 @@ def main(argv: list[str] | None = None) -> int:
                 else models_checked
             )
             json_data = get_health_json_data(scores, effective_models_checked)
-            save_log(project_root, "health", json_data)
+            save_log(
+                project_root,
+                "health",
+                json_data,
+                no_log=getattr(args, "no_log", False),
+            )
 
             if args.json:
                 print(json.dumps(json_data, indent=2))

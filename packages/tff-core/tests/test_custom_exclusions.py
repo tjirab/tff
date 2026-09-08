@@ -298,3 +298,49 @@ def test_layer_integrity_missing_dependency() -> None:
     findings = collect_layer_integrity_findings(models, config)
     # Should not crash, and should just skip the non-existent dependency
     assert findings == []
+
+
+def test_custom_exclusions_top_level_config(tmp_path: Path):
+    from tff.core.checks.custom_exclusions import collect_custom_exclusion_findings
+    from tff.core.config import FitnessFunctionsConfig, CustomExclusionRule, AllowedExceptionRule
+
+    exclusions_file = tmp_path / "exclusions.json"
+    exclusions_file.write_text("{}", encoding="utf-8")
+
+    config = FitnessFunctionsConfig(
+        exclusions_path=str(exclusions_file),
+        exclusions=[
+            CustomExclusionRule(source_layer="core", target_layer="derived")
+        ],
+        allowed_exceptions=[
+            AllowedExceptionRule(model="derived.model_a", dependency="core.model_allowed")
+        ],
+    )
+    config._project_root = tmp_path
+
+    model_a = ModelRepresentation(
+        name="derived.model_a",
+        path="models/derived/model_a.sql",
+        dialect="bigquery",
+        depends_on={"core.model_b", "core.model_allowed"},
+    )
+    model_b = ModelRepresentation(
+        name="core.model_b",
+        path="models/core/model_b.sql",
+        dialect="bigquery",
+    )
+    model_allowed = ModelRepresentation(
+        name="core.model_allowed",
+        path="models/core/model_allowed.sql",
+        dialect="bigquery",
+    )
+    models = {
+        "derived.model_a": model_a,
+        "core.model_b": model_b,
+        "core.model_allowed": model_allowed,
+    }
+
+    findings = collect_custom_exclusion_findings(models, config)
+    assert len(findings) == 1
+    assert "core.model_b" in findings[0].message
+    assert "core.model_allowed" not in findings[0].message

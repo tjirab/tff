@@ -23,11 +23,12 @@ CHECK_COLLECTORS = {
 
 def collect_dataform_rules_findings(
     models: dict[str, ModelRepresentation],
+    config: FitnessFunctionsConfig | None = None,
 ) -> list[LintFinding]:
     """Collect findings for all registered model-level rules."""
     findings: list[LintFinding] = []
     for rule_def in registry.model_rules():
-        findings.extend(rule_def.run(models, config=None))
+        findings.extend(rule_def.run(models, config=config))
     return findings
 
 

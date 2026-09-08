@@ -41,7 +41,7 @@ def collect_duplicate_cte_findings(
         if model.is_external or model.is_symbolic:
             continue
 
-        layer = get_layer_from_path(model.path)
+        layer = get_layer_from_path(model.path, layer_order=config.layers.order)
         if not rule_config.should_run(layer):
             continue
 

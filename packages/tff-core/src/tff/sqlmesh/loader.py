@@ -15,7 +15,7 @@ from sqlmesh.core.loader import SqlMeshLoader
 from sqlmesh.utils import UniqueKeyDict
 from sqlmesh.utils.metaprogramming import import_python_file
 
-from tff.core.config import load_fitness_config
+from tff.core.config import FitnessFunctionsConfig, load_fitness_config
 from tff.core.context import set_ff_config
 from tff.core.model import ModelRepresentation
 from tff.core.rules import ALL_RULES as CORE_RULES
@@ -64,10 +64,13 @@ def map_sqlmesh_model(model: SqlMeshModel) -> ModelRepresentation:
 
 
 
-def wrap_core_rule(core_rule_cls) -> type[SqlMeshRule]:
+def wrap_core_rule(
+    core_rule_cls, config: FitnessFunctionsConfig | None = None
+) -> type[SqlMeshRule]:
     def check_model(self, model: SqlMeshModel) -> t.Optional[SqlMeshRuleViolation]:
         rep = map_sqlmesh_model(model)
-        rule_instance = core_rule_cls()
+        bound_config = getattr(self, "_ff_config", config)
+        rule_instance = core_rule_cls(config=bound_config)
         violation = rule_instance.check_model(rep)
         if violation:
             return self.violation(violation.violation_msg)
@@ -75,6 +78,7 @@ def wrap_core_rule(core_rule_cls) -> type[SqlMeshRule]:
 
     cls_name = core_rule_cls.__name__
     attrs = {
+        "_ff_config": config,
         "check_model": check_model,
         "__doc__": core_rule_cls.__doc__,
     }
@@ -105,7 +109,7 @@ class FitnessLoader(SqlMeshLoader):
 
         # Dynamically wrap all tff-core rules to be SQLMesh-compatible
         for core_rule_cls in CORE_RULES:
-            wrapped = wrap_core_rule(core_rule_cls)
+            wrapped = wrap_core_rule(core_rule_cls, config=self._ff_config)
             user_rules[wrapped.name] = wrapped
 
         for path in self._glob_paths(

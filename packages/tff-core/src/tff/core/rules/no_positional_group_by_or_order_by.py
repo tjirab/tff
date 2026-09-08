@@ -6,7 +6,6 @@ import sqlglot.expressions as exp
 
 from tff.core.model import ModelRepresentation
 from tff.core.rules.base import Rule, RuleViolation
-from tff.core.context import get_ff_config
 from tff.core.utils.paths import get_layer_from_path
 
 
@@ -15,14 +14,14 @@ class NoPositionalGroupByOrOrderBy(Rule):
     name = "nopositionalgroupbyororderby"
 
     def check_model(self, model: ModelRepresentation) -> RuleViolation | None:
-        rule_config = get_ff_config().rules.no_positional_group_by_or_order_by
+        rule_config = self.config.rules.no_positional_group_by_or_order_by
         if not rule_config.enabled:
             return None
 
         if model.is_symbolic:
             return None
 
-        layer = get_layer_from_path(model.path)
+        layer = get_layer_from_path(model.path, layer_order=self.config.layers.order)
         if not rule_config.should_run(layer):
             return None
 

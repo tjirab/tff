@@ -156,3 +156,110 @@ rules:
     assert rule_config.should_run("derived") is False
 
 
+def test_schema_contract_models_parsing():
+    from tff.core.config import (
+        ColumnParityMember,
+        ColumnParityGroup,
+        DimensionParityTarget,
+        DimensionParityGroup,
+        ContractGroupsConfig,
+    )
+
+    # ColumnParityMember
+    member = ColumnParityMember(file="models/dim_a.sql")
+    assert member.file == "models/dim_a.sql"
+
+    target = DimensionParityTarget(file="models/dim_b.sql")
+    assert target.file == "models/dim_b.sql"
+
+    # ColumnParityGroup with string shorthand members
+    group = ColumnParityGroup(
+        reference="models/ref.sql",
+        members=["models/m1.sql", {"file": "models/m2.sql", "substitutions": {"x": "y"}}],
+    )
+    assert len(group.members) == 2
+    assert group.members[0].file == "models/m1.sql"
+    assert group.members[1].file == "models/m2.sql"
+    assert group.members[1].substitutions == {"x": "y"}
+
+    # DimensionParityGroup with string shorthand targets
+    dim_group = DimensionParityGroup(
+        left="models/left.sql",
+        right={"file": "models/right.sql", "exclude_columns": ["col1"]},
+    )
+    assert dim_group.left.file == "models/left.sql"
+    assert dim_group.right.file == "models/right.sql"
+    assert dim_group.right.exclude_columns == ["col1"]
+
+    # ContractGroupsConfig
+    cg = ContractGroupsConfig(
+        column_parity_groups=[group],
+        dimension_parity_groups=[dim_group],
+    )
+    assert len(cg.column_parity_groups) == 1
+    assert len(cg.dimension_parity_groups) == 1
+
+    # Validator branch coverage
+    assert ColumnParityGroup.validate_members(None) is None
+    assert DimensionParityGroup.validate_target({"file": "m.sql"}) == {"file": "m.sql"}
+
+
+def test_yaml_config_with_contract_groups_and_exclusions(tmp_path: Path):
+    yaml_path = tmp_path / "fitness_functions.yaml"
+    yaml_path.write_text(
+        """
+contract_groups:
+  column_parity_groups:
+    - reference: models/ref.sql
+      members:
+        - models/m1.sql
+  dimension_parity_groups:
+    - left: models/left.sql
+      right: models/right.sql
+
+exclusions:
+  - source_layer: core
+    target_layer: derived
+
+allowed_exceptions:
+  - model: derived.m1
+    dependency: core.m2
+""",
+        encoding="utf-8",
+    )
+    config = load_fitness_config(tmp_path)
+    assert config.contract_groups is not None
+    assert len(config.contract_groups.column_parity_groups) == 1
+    assert len(config.contract_groups.dimension_parity_groups) == 1
+    assert len(config.exclusions) == 1
+    assert config.exclusions[0].source_layer == "core"
+    assert len(config.allowed_exceptions) == 1
+    assert config.allowed_exceptions[0].model == "derived.m1"
+
+
+def test_rule_config_injection_and_deprecation():
+    import warnings
+    from tff.core.rules.base import Rule
+    from tff.core.config import FitnessFunctionsConfig
+
+    cfg = FitnessFunctionsConfig()
+    rule = Rule(config=cfg)
+    assert rule.config is cfg
+
+    new_cfg = FitnessFunctionsConfig()
+    rule.config = new_cfg
+    assert rule.config is new_cfg
+
+    # Unbound rule should emit DeprecationWarning on .config
+    unbound_rule = Rule()
+    with warnings.catch_warnings(record=True) as w:
+        warnings.simplefilter("always")
+        fallback_cfg = unbound_rule.config
+        assert fallback_cfg is not None
+        deprecation_warnings = [
+            item for item in w if issubclass(item.category, DeprecationWarning)
+        ]
+        assert len(deprecation_warnings) >= 1
+        assert "get_ff_config() is deprecated" in str(deprecation_warnings[0].message)
+
+

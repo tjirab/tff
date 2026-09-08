@@ -103,6 +103,7 @@ For detailed option explanations, run `tff help <command>` or `tff <command> --h
 * `--dialect DIALECT`: SQL dialect of models (dbt and Dataform; auto-inferred by default).
 * `--json`: Output results in JSON format to stdout.
 * `--fix`: Automatically fix simple linting violations if possible (e.g. rewriting positional `GROUP BY`/`ORDER BY` and auto-scaffolding missing metadata).
+* `--no-log`: Bypass writing execution logs to `.tff_logs/` (can also be enabled via `TFF_NO_LOG=1`).
 
 #### `tff health`
 * `--project PATH`, `--config PATH`, `--provider {auto,dbt,sqlmesh,dataform}`, `--dialect DIALECT`, `--manifest PATH`: (Same as above)
@@ -110,10 +111,12 @@ For detailed option explanations, run `tff help <command>` or `tff <command> --h
 * `--scope PATH_PREFIX [...]`: Restrict the health report to models whose path starts with one of the given prefixes (e.g. `models/sources`, `definitions/staging`, or `models/marts/marketing`). Multiple prefixes can be provided.
 * `--group-by {connascence,domain}`: How to group the detailed health breakdown. `connascence` (default) groups by connascence category; `domain` groups by path segment under model directory (`models/` or `definitions/`).
 * `--json`: Output results in JSON format to stdout.
+* `--no-log`: Bypass writing execution logs to `.tff_logs/` (can also be enabled via `TFF_NO_LOG=1`).
 
 #### `tff docs`
 * `--project PATH`, `--config PATH`, `--provider {auto,dbt,sqlmesh,dataform}`, `--dialect DIALECT`, `--manifest PATH`: (Same as above)
 * `--output PATH`, `-o PATH`: Path where the output HTML dashboard file will be generated (default: `tff_report.html` in the project root).
+* `--no-log`: Bypass writing execution logs to `.tff_logs/` (can also be enabled via `TFF_NO_LOG=1`).
 
 #### `tff info`
 * `--project PATH`: Path to the project root directory (default: current directory).
@@ -225,8 +228,16 @@ TFF runs two categories of quality guardrails (for full configuration details, s
 All adapters use a shared `fitness_functions.yaml` config file located in the root of your project:
 
 ```yaml
-contract_groups_path: linter_contract_groups.json
-exclusions_path: linter_exclusions.json
+# Schema contracts and custom exclusions can be configured directly in YAML
+# (or loaded from external JSON files via contract_groups_path / exclusions_path)
+exclusions:
+  - source_layer: core
+    target_layer: derived
+
+contract_groups:
+  column_parity_groups:
+    - reference: models/core/dim_customer_ref.sql
+      members: [models/core/dim_customer_replica.sql]
 
 layers:
   order: [staging, core, marts]  # Configured bottom-to-top hierarchy

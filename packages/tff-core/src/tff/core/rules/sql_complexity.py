@@ -10,7 +10,6 @@ from sqlglot import parse_one
 
 from tff.core.model import ModelRepresentation
 from tff.core.rules.base import Rule, RuleViolation
-from tff.core.context import get_ff_config
 
 MODEL_BLOCK_PATTERN = re.compile(r"^MODEL\s*\(.*?\)\s*;", re.DOTALL | re.IGNORECASE)
 
@@ -122,7 +121,7 @@ class SqlComplexity(Rule):
     name = "sqlcomplexity"
 
     def check_model(self, model: ModelRepresentation) -> RuleViolation | None:
-        rule_config = get_ff_config().rules.sql_complexity
+        rule_config = self.config.rules.sql_complexity
         if not rule_config.enabled:
             return None
 
@@ -131,7 +130,7 @@ class SqlComplexity(Rule):
 
         from tff.core.utils.paths import get_layer_from_path
 
-        layer = get_layer_from_path(model.path)
+        layer = get_layer_from_path(model.path, layer_order=self.config.layers.order)
         if not rule_config.should_run(layer):
             return None
 

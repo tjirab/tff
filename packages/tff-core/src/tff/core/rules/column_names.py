@@ -6,7 +6,6 @@ import re
 
 from tff.core.model import ModelRepresentation
 from tff.core.rules.base import Rule, RuleViolation
-from tff.core.context import get_ff_config
 from tff.core.utils.paths import get_layer_from_path
 
 
@@ -15,11 +14,11 @@ class ColumnNames(Rule):
     name = "columnnames"
 
     def check_model(self, model: ModelRepresentation) -> RuleViolation | None:
-        rule_config = get_ff_config().rules.column_names
+        rule_config = self.config.rules.column_names
         if not rule_config.enabled or not rule_config.replacements:
             return None
 
-        layer = get_layer_from_path(model.path)
+        layer = get_layer_from_path(model.path, layer_order=self.config.layers.order)
         if not rule_config.should_run(layer):
             return None
 
