@@ -1,8 +1,16 @@
 {
-  "exclude": [
-    ".env",
-    "legacy_data_table",
-    "temp_staging_column"
+  "exclusions": [
+    {
+      "source_layer": "marts",
+      "source_domain": "finance",
+      "target_layer": "marts",
+      "target_domain": "marketing"
+    }
   ],
-  "description": "Tables or columns that are intentionally excluded from linting checks."
+  "allowed_exceptions": [
+    {
+      "model": "sqlmesh_example.marketing_all_users",
+      "dependency": "sqlmesh_example.finance_stats"
+    }
+  ]
 }

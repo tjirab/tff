@@ -1,8 +1,15 @@
 {
-  "group_name": "CoreBusinessData",
-  "description": "Defines the core set of tables required for business intelligence.",
-  "contracts": [
-    {"table": "dim_user", "columns": ["user_id", "created_at"]},
-    {"table": "fact_order", "columns": ["order_id", "user_id"]}
+  "column_parity_groups": [],
+  "dimension_parity_groups": [
+    {
+      "left": {
+        "file": "models/marts/finance/finance_stats.sql",
+        "exclude_columns": ["revenue"]
+      },
+      "right": {
+        "file": "models/sources/src_users.sql",
+        "exclude_columns": ["user_name", "created_date"]
+      }
+    }
   ]
 }
