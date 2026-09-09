@@ -100,3 +100,8 @@ tff health [--project PATH] [--config PATH] [--provider PROVIDER] [--dialect DIA
   tff health --scope models/marts --group-by domain
   ```
 
+---
+
+## Real-World Case Study
+
+See the [GitLab Architectural Audit Case Study](case_study_gitlab.md) to explore how TFF analyzed GitLab's 2,213-model Snowflake dbt repository in ~13 seconds with 100% static analysis, uncovering 54 duplicated CTE algorithms and 111 layer violations.
