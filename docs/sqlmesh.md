@@ -40,11 +40,11 @@ tff lint
 
 | File | Role | You edit this? |
 |------|------|----------------|
-| `fitness_functions.yaml` | Toggles, thresholds, and parameters for all checks and rules. | **Yes** — main fitness config. |
+| `fitness_functions.yaml` | Toggles, thresholds, rules, schema contracts, and exclusions. | **Yes** — main fitness config (fully consolidated). |
 | `settings.yaml` | SQLMesh specific settings, including active linter rules. | **Yes** — normal SQLMesh config. |
 | `config.py` | Python file in project root that imports `FitnessLoader` to register the adapter. | **Rarely** — simple ~10 lines of boilerplate. |
-| `linter_contract_groups.json` | Parity group definitions for schema contracts. | **Yes** — project specific schema data. |
-| `linter_exclusions.json` | Exclusions for layer boundaries or custom exceptions. | **Yes** — project specific exclusions. |
+| `linter_contract_groups.json` *(optional)* | Legacy external parity definitions for schema contracts (can be defined directly in `fitness_functions.yaml`). | Optional — backwards compatibility. |
+| `linter_exclusions.json` *(optional)* | Legacy external exclusions for layer boundaries (can be defined directly in `fitness_functions.yaml`). | Optional — backwards compatibility. |
 
 ---
 

@@ -2,7 +2,7 @@ layers:
   order: [sources, core, marts]
 
 # Custom exclusions and allowed exceptions configured directly in YAML
-# (can also be loaded from external JSON via exclusions_path: linter_exclusions.json)
+# (consolidated from previously separate linter_exclusions.json)
 exclusions:
   - source_layer: marts
     source_domain: finance
@@ -14,7 +14,7 @@ allowed_exceptions:
     dependency: sqlmesh_example.finance_stats
 
 # Schema contracts configured directly in YAML
-# (can also be loaded from external JSON via contract_groups_path: linter_contract_groups.json)
+# (consolidated from previously separate linter_contract_groups.json)
 contract_groups:
   dimension_parity_groups:
     - left:
