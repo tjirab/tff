@@ -112,22 +112,120 @@ Quality & Metadata                    4/7      3,451          ·    61.0%
 ## 🔍 Key Architectural Discoveries
 
 ### 1. Duplicated Algorithms (Connascence of Algorithm — CoA)
-TFF detected **54 cases of complex CTE transformation logic copied verbatim across distinct models**.
+TFF detected **54 duplicate CTE findings**, which cluster into **12 distinct duplicated algorithm groups** across the repository.
 
-* **`accepted_solutions.sql`**: The `parsed` CTE transformation logic was duplicated across **8 separate models**:
-  * `daily_engaged_users.sql`
-  * `posts.sql`
-  * `signups.sql`
-  * `time_to_first_response.sql`
-  * `topics_with_no_response.sql`
-  * `visits.sql`
-  * `page_view_total_reqs.sql`
-  * `accepted_solutions.sql`
-* **`bamboohr_custom_bonus_source.sql`**: The `intermediate` parsing logic was copied across **7 other BambooHR models** (`bamboohr_emergency_contacts_source.sql`, `bamboohr_job_info_source.sql`, `engineering_development_team_members.sql`, etc.).
+#### Precision in Nested Data Access (AST Parsing)
+A common question when analyzing CTE duplication is whether static analysis can differentiate column projections in nested data (e.g. JSON variants in Snowflake). **TFF's AST engine distinguishes nested field access with high precision.**
 
-> **Architectural Impact**: If the business definition of "accepted solution" or BambooHR schema changes, engineers must locate and update 8 different models manually. If one is missed, reporting silent logic drift occurs.
->
-> **Recommended Solution**: Extract this logic into an upstream intermediate staging model (e.g. `prep_accepted_solutions.sql`) or a reusable dbt macro.
+For instance, comparing `bamboohr_custom_bonus_source.sql` and `engineering_development_team_members.sql`:
+* In their final `renamed` CTEs, the models extract entirely different JSON elements (`data_by_row['id']::number` vs. `data_by_row['country']::varchar`). In SQLGlot, bracketed variant accesses compile into distinct `exp.Bracket` nodes with specific string literal identifiers. TFF computes distinct hashes for these and **never flags them as duplicates**.
+* What TFF *did* flag was the upstream **JSON-flattening CTE** (`intermediate` in BambooHR vs. `flattened` in Engineering):
+  ```sql
+  -- Duplicated across 8 models (canonical AST matches identically despite alias differences):
+  select d.value as data_by_row
+  from source, lateral flatten(input => parse_json(jsontext), outer => true) d
+  ```
+Because TFF hashes the normalized query AST rather than outer CTE aliases, it caught that 8 separate models across People Analytics and Engineering shared the exact same 18-node unnesting algorithm.
+
+---
+
+#### Key Duplication Archetypes
+
+##### Archetype A: PII Masking Algorithm Duplication (High Compliance Risk)
+**Models involved (2)**: `zendesk_community_relations_users_source`, `zendesk_users_source`
+```sql
+-- Copied PII hashing algorithm:
+select
+    id as user_id,
+    case
+        when lower(email) like '%gitlab.com%' then name else md5(name)
+    end as name,
+    case
+        when lower(email) like '%gitlab.com%' then email else md5(email)
+    end as email,
+    restricted_agent as is_restricted_agent,
+    role,
+    suspended as is_suspended,
+    time_zone,
+    created_at,
+    ...
+```
+> **Architectural Risk**: When sensitive compliance logic (like PII masking) is copied between models rather than enforced via a macro, any future policy change (e.g., salting hashes or migrating from MD5 to SHA-256) risks partial rollout, exposing plain PII or creating mismatched customer IDs across systems.
+
+##### Archetype B: Snapshot Deduplication Pattern (11 Models)
+**Models involved (11)**: `categories_yaml_latest`, `feature_flags_yaml_latest`, `flaky_tests_latest`, `roles_yaml_latest`, `snowflake_grants_to_role`, `snowflake_grants_to_user`, `snowflake_show_roles`, `snowflake_show_users`, `stages_groups_yaml_latest`, `stages_yaml_latest`, `team_yaml_latest`.
+```sql
+-- Copied across 11 separate models:
+select *
+from source
+where snapshot_date = (select max(snapshot_date) from source)
+```
+> **Architectural Risk**: 11 models maintain independent scalar subquery deduplications. Standardizing on dbt snapshots or a reusable snapshot filter macro eliminates boilerplate and improves query planner predictability.
+
+##### Archetype C: Multi-Level Nested JSON Parsing (8 Models)
+**Models involved (8)**: `accepted_solutions`, `daily_engaged_users`, `page_view_total_reqs`, `posts`, `signups`, `time_to_first_response`, `topics_with_no_response`, `visits`.
+```sql
+-- Identical 8-column double LATERAL FLATTEN copied across 8 models:
+select
+    json_value.value['start_date']::datetime as report_start_date,
+    json_value.value['title']::varchar as report_title,
+    json_value.value['type']::varchar as report_type,
+    json_value.value['total']::varchar as report_total,
+    data_level_one.value['x']::date as report_value_date,
+    data_level_one.value['y']::int as report_value,
+    uploaded_at as uploaded_at
+from
+    source,
+    lateral flatten(input => parse_json(jsontext), outer => true) json_value,
+    lateral flatten(json_value.value:data, '') data_level_one
+```
+> **Architectural Risk**: 8 separate Discourse source models run identical double `lateral flatten` table generators and data type conversions over raw JSON. An upstream `stg_discourse_reports` model would compute this once, reducing warehouse compute costs and eliminating schema drift risk.
+
+##### Archetype D: Label Array Aggregation (2 Models)
+**Models involved (2)**: `gitlab_dotcom_merge_requests_xf`, `gitlab_ops_merge_requests_xf`.
+```sql
+-- Complex label grouping with intra-group ordering:
+select
+    merge_requests.merge_request_id,
+    array_agg(lower(masked_label_title)) within group (order by masked_label_title asc) as labels
+from merge_requests
+left join label_links on merge_requests.merge_request_id = label_links.target_id
+left join all_labels on label_links.label_id = all_labels.label_id
+group by merge_requests.merge_request_id
+```
+
+##### Archetype E: Deduplication via Window Function (2 Models)
+**Models involved (2)**: `qualtrics_distribution_xf`, `qualtrics_survey_invitation_emails_sent`.
+```sql
+-- Window qualification deduplication:
+select *
+from {{ ref("qualtrics_distribution") }}
+qualify row_number() over (partition by distribution_id order by uploaded_at desc) = 1
+```
+
+---
+
+#### All 12 Duplication Clusters in GitLab's Codebase
+
+| Cluster | Pattern / Sample CTE | Models Affected | Common Transformation Logic |
+|---|:---|:---|:---|
+| **1** | `max_select` | **11 models** | Snapshot filter: `snapshot_date = (select max(snapshot_date) from source)` |
+| **2** | `parsed` (Discourse) | **8 models** | Double `lateral flatten` JSON unnesting & metric casting |
+| **3** | `intermediate` (JSON flatten) | **8 models** | Single `lateral flatten(parse_json(jsontext))` |
+| **4** | `intermediate` (Ranked YAML) | **6 models** | `lateral flatten` + `date_trunc('day', uploaded_at)` |
+| **5** | `intermediate` (Flatten + upload) | **5 models** | `d.value as data_by_row, uploaded_at from lateral flatten` |
+| **6** | `agg_labels` | **2 models** | MR `array_agg(lower(...)) within group` + label joins |
+| **7** | `renamed` (PII Masking) | **2 models** | MD5 email/name hashing for non-`@gitlab.com` users |
+| **8** | `qualtrics_distribution` | **2 models** | `qualify row_number() over (partition by distribution_id...) = 1` |
+| **9** | `department_division_mapping` | **2 models** | `distinct department, division_mapped_current` |
+| **10** | `renamed` (Projects) | **2 models** | Dotcom vs. Ops project source column mapping |
+| **11** | `source` (YAML Rank) | **2 models** | `rank() over (partition by date_trunc('day', uploaded_at)...)` |
+| **12** | `metric_per_row` | **2 models** | Array extraction for web vitals (blocking time & layout shift) |
+
+> **Recommended Remediation**:
+> 1. Centralize JSON flattening and PII hashing algorithms into reusable macros (e.g. `{{ flatten_json_source(...) }}`).
+> 2. Create upstream intermediate models (e.g. `prep_discourse_reports.sql`, `prep_merge_request_labels.sql`) to avoid running heavy aggregations repeatedly in downstream models.
+
 
 ---
 
