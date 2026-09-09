@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.11.0](https://github.com/tjirab/tff/compare/tff-core-v0.10.0...tff-core-v0.11.0) (2026-09-09)
+
+
+### Features
+
+* **registry:** unified CheckRegistry and granular rule execution (tff[#146](https://github.com/tjirab/tff/issues/146)) ([#152](https://github.com/tjirab/tff/issues/152)) ([d690825](https://github.com/tjirab/tff/commit/d690825d098ebc79c730572f491a6d0042569b2d))
+
+
+### Bug Fixes
+
+* **core:** resolve correctness bugs, false positives, and metric distortions (tff[#144](https://github.com/tjirab/tff/issues/144)) ([#148](https://github.com/tjirab/tff/issues/148)) ([56b75af](https://github.com/tjirab/tff/commit/56b75affc8328e3843db14d01681f09449cd9492))
+
 ## [0.10.0](https://github.com/tjirab/tff/compare/tff-core-v0.9.0...tff-core-v0.10.0) (2026-09-06)
 
 
