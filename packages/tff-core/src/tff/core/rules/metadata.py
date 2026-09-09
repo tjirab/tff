@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from tff.core.model import ModelRepresentation
 from tff.core.rules.base import Rule, RuleViolation
-from tff.core.context import get_ff_config
 from tff.core.utils.paths import get_layer_from_path
 
 
@@ -13,14 +12,14 @@ class NoMissingOwner(Rule):
     name = "nomissingowner"
 
     def check_model(self, model: ModelRepresentation) -> RuleViolation | None:
-        rule_config = get_ff_config().rules.metadata
+        rule_config = self.config.rules.metadata
         if not rule_config.owner:
             return None
 
         if model.is_external or model.is_symbolic:
             return None
 
-        layer = get_layer_from_path(model.path)
+        layer = get_layer_from_path(model.path, layer_order=self.config.layers.order)
         if not rule_config.should_run(layer):
             return None
 
@@ -34,14 +33,14 @@ class NoMissingDescription(Rule):
     name = "nomissingdescription"
 
     def check_model(self, model: ModelRepresentation) -> RuleViolation | None:
-        rule_config = get_ff_config().rules.metadata
+        rule_config = self.config.rules.metadata
         if not rule_config.description:
             return None
 
         if model.is_external or model.is_symbolic:
             return None
 
-        layer = get_layer_from_path(model.path)
+        layer = get_layer_from_path(model.path, layer_order=self.config.layers.order)
         if not rule_config.should_run(layer):
             return None
 
@@ -57,14 +56,14 @@ class NoMissingGrain(Rule):
     name = "nomissinggrain"
 
     def check_model(self, model: ModelRepresentation) -> RuleViolation | None:
-        rule_config = get_ff_config().rules.metadata
+        rule_config = self.config.rules.metadata
         if not rule_config.grain:
             return None
 
         if model.is_external or model.is_symbolic:
             return None
 
-        layer = get_layer_from_path(model.path)
+        layer = get_layer_from_path(model.path, layer_order=self.config.layers.order)
         if not rule_config.should_run(layer):
             return None
 
@@ -80,13 +79,13 @@ class NoMissingNotNull(Rule):
     name = "nomissingnotnull"
 
     def check_model(self, model: ModelRepresentation) -> RuleViolation | None:
-        rule_config = get_ff_config().rules.metadata
+        rule_config = self.config.rules.metadata
         if not rule_config.not_null:
             return None
         if model.is_external or model.is_symbolic:
             return None
 
-        layer = get_layer_from_path(model.path)
+        layer = get_layer_from_path(model.path, layer_order=self.config.layers.order)
         if not rule_config.should_run(layer):
             return None
 
@@ -99,13 +98,13 @@ class NoMissingUniqueValues(Rule):
     name = "nomissinguniquevalues"
 
     def check_model(self, model: ModelRepresentation) -> RuleViolation | None:
-        rule_config = get_ff_config().rules.metadata
+        rule_config = self.config.rules.metadata
         if not rule_config.unique_values:
             return None
         if model.is_external or model.is_symbolic:
             return None
 
-        layer = get_layer_from_path(model.path)
+        layer = get_layer_from_path(model.path, layer_order=self.config.layers.order)
         if not rule_config.should_run(layer):
             return None
 

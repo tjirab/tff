@@ -203,6 +203,29 @@ def test_cli_docs_command(
 
 @patch("tff.core.cli._detect_provider")
 @patch("tff.core.docs.generate_docs_dashboard")
+def test_cli_docs_command_no_log(
+    mock_generate_docs,
+    mock_detect_provider,
+    tmp_path: Path
+):
+    mock_detect_provider.return_value = "dbt"
+    mock_generate_docs.return_value = tmp_path / "tff_report.html"
+
+    exit_code = main(["docs", "--project", str(tmp_path), "--output", str(tmp_path / "tff_report.html"), "--no-log"])
+    
+    assert exit_code == 0
+    mock_generate_docs.assert_called_once_with(
+        project_root=tmp_path.resolve(),
+        output_path=tmp_path / "tff_report.html",
+        provider="dbt",
+        dialect=None,
+        config_path="fitness_functions.yaml",
+        no_log=True,
+    )
+
+
+@patch("tff.core.cli._detect_provider")
+@patch("tff.core.docs.generate_docs_dashboard")
 def test_cli_docs_command_error(
     mock_generate_docs,
     mock_detect_provider,

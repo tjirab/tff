@@ -9,7 +9,6 @@ import sqlglot.expressions as exp
 
 from tff.core.model import ModelRepresentation
 from tff.core.rules.base import Rule, RuleViolation
-from tff.core.context import get_ff_config
 from tff.core.utils.paths import get_layer_from_path
 
 
@@ -21,14 +20,14 @@ class EnvironmentAgnosticReferences(Rule):
     name = "environmentagnosticreferences"
 
     def check_model(self, model: ModelRepresentation) -> RuleViolation | None:
-        rule_config = get_ff_config().rules.environment_agnostic_references
+        rule_config = self.config.rules.environment_agnostic_references
         if not rule_config.enabled:
             return None
 
         if model.is_symbolic:
             return None
 
-        layer = get_layer_from_path(model.path)
+        layer = get_layer_from_path(model.path, layer_order=self.config.layers.order)
         if not rule_config.should_run(layer):
             return None
 

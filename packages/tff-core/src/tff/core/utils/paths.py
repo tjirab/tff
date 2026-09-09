@@ -51,12 +51,15 @@ def get_marts_domain_from_path(path: str, layer_name: str = "marts") -> str | No
         return None
 
 
-def get_layer_and_domain(path: str) -> tuple[str | None, str | None]:
+def get_layer_and_domain(
+    path: str, layer_order: list[str] | None = None
+) -> tuple[str | None, str | None]:
     parts = Path(path).parts
     try:
         models_index = _find_base_index(parts)
-        from tff.core.context import get_ff_config
-        layer_order = get_ff_config().layers.order
+        if layer_order is None:
+            from tff.core.context import get_ff_config
+            layer_order = get_ff_config().layers.order
 
         layer = None
         layer_index = None
@@ -119,7 +122,7 @@ def resolve_layer_and_domain(
     domain = None
     path = getattr(model, "path", getattr(model, "_path", None))
     if path:
-        layer, domain = get_layer_and_domain(path)
+        layer, domain = get_layer_and_domain(path, layer_order=layer_order)
 
     # Check if the resolved layer is actually a valid layer in layer_order
     if not layer or (layer_order and layer not in layer_order):

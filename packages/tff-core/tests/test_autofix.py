@@ -141,6 +141,38 @@ def test_fix_dbt_metadata_scaffold(tmp_path: Path):
     assert data["models"][0]["meta"]["owner"] == "TODO: Add owner"
 
 
+def test_fix_dbt_metadata_preserves_comments(tmp_path: Path):
+    model_file = tmp_path / "my_model.sql"
+    model_file.touch()
+
+    schema_file = tmp_path / "schema.yml"
+    original_yaml = (
+        "# Top-level comment\n"
+        "version: 2\n"
+        "\n"
+        "models:\n"
+        "  # Other model comment\n"
+        "  - name: other_model\n"
+        '    description: "other desc" # inline comment\n'
+        "\n"
+        "  # My model comment\n"
+        "  - name: my_model\n"
+        '    description: "existing desc"\n'
+    )
+    schema_file.write_text(original_yaml, encoding="utf-8")
+
+    log = fix_dbt_metadata(model_file, "my_model", missing_owner=True, missing_description=False)
+    assert log == "Updated metadata for model my_model in schema.yml"
+
+    content = schema_file.read_text(encoding="utf-8")
+    assert "# Top-level comment" in content
+    assert "# Other model comment" in content
+    assert "# inline comment" in content
+    assert "# My model comment" in content
+    assert "owner:" in content
+    assert "TODO: Add owner" in content
+
+
 def test_apply_autofixes(tmp_path: Path):
     # Setup files
     sql_file = tmp_path / "models/marts/my_model.sql"

@@ -551,6 +551,29 @@ def test_main_lint_json(
 @patch("tff.core.cli._detect_provider")
 @patch("tff.core.cli._get_runner")
 @patch("tff.core.cli.load_fitness_config")
+@patch("tff.core.cli.render_lint_report")
+def test_main_lint_no_log(
+    mock_render,
+    mock_load_config,
+    mock_get_runner,
+    mock_detect_provider,
+    tmp_path: Path,
+):
+    mock_detect_provider.return_value = "dbt"
+    mock_runner = MagicMock()
+    mock_runner.run_all_checks.return_value = ([], 5, ["rules"])
+    mock_get_runner.return_value = mock_runner
+
+    project_str = str(tmp_path)
+    exit_code = main(["lint", "--project", project_str, "--no-log"])
+
+    assert exit_code == 0
+    assert not (tmp_path / ".tff_logs").exists()
+
+
+@patch("tff.core.cli._detect_provider")
+@patch("tff.core.cli._get_runner")
+@patch("tff.core.cli.load_fitness_config")
 @patch("tff.core.health.render_health_report")
 def test_main_health_normal_and_json(
     mock_render_health,
@@ -595,6 +618,28 @@ def test_main_health_normal_and_json(
     # Verify log file was written again
     log_files = list((tmp_path / ".tff_logs" / "health").glob("*.log"))
     assert len(log_files) == 1
+
+
+@patch("tff.core.cli._detect_provider")
+@patch("tff.core.cli._get_runner")
+@patch("tff.core.cli.load_fitness_config")
+@patch("tff.core.health.render_health_report")
+def test_main_health_no_log(
+    mock_render_health,
+    mock_load_config,
+    mock_get_runner,
+    mock_detect_provider,
+    tmp_path: Path,
+):
+    mock_detect_provider.return_value = "dbt"
+    mock_runner = MagicMock()
+    mock_runner.run_all_checks.return_value = ([], 8, ["rules"])
+    mock_get_runner.return_value = mock_runner
+
+    project_str = str(tmp_path)
+    exit_code = main(["health", "--project", project_str, "--no-log"])
+    assert exit_code == 0
+    assert not (tmp_path / ".tff_logs").exists()
 
 
 @patch("tff.core.cli._detect_provider")

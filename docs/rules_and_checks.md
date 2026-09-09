@@ -55,9 +55,27 @@ Architectural checks evaluate the structure, dependencies, and layout of your en
 ### Custom Exclusions (`custom_exclusions`)
 
 * **What it checks**:
-  * Enforces custom dependency boundaries defined in a separate JSON file. It blocks defined layer/domain dependencies and supports specifying whitelist exceptions.
+  * Enforces custom dependency boundaries. It blocks defined layer/domain dependencies and supports specifying whitelist exceptions. Exclusions can be defined directly in `fitness_functions.yaml` or in a separate JSON file.
 * **How to configure**:
-  Defined under `checks.custom_exclusions` in `fitness_functions.yaml`.
+  Defined directly under `exclusions` and `allowed_exceptions` (or under `checks.custom_exclusions`) in `fitness_functions.yaml`:
+  ```yaml
+  exclusions:
+    - source_layer: core
+      target_layer: derived
+    - source_layer: core
+      source_domain: finance
+      target_layer: marts
+      target_domain: marketing
+
+  allowed_exceptions:
+    - model: derived.model_name
+      dependency: core.dependency_name
+
+  checks:
+    custom_exclusions:
+      enabled: true
+  ```
+  Alternatively, you can point to an external JSON exclusions file (e.g. `linter_exclusions.json`):
   ```yaml
   exclusions_path: linter_exclusions.json  # Relative to project root
 
@@ -150,9 +168,26 @@ Architectural checks evaluate the structure, dependencies, and layout of your en
 ### Schema Contracts (`schema_contracts`)
 
 * **What it checks**:
-  * Enforces schema structural parity between related models to ensure they stay in sync.
+  * Enforces schema structural parity between related models to ensure they stay in sync. Contracts can be configured directly in `fitness_functions.yaml` or in an external JSON file.
 * **How to configure**:
-  Defined under `checks.schema_contracts` in `fitness_functions.yaml`.
+  Defined under `contract_groups` (or under `checks.schema_contracts`) in `fitness_functions.yaml`:
+  ```yaml
+  contract_groups:
+    column_parity_groups:
+      - reference: models/core/dim_customer_ref.sql
+        exclude_columns: [created_at, updated_at]
+        members:
+          - models/core/dim_customer_replica.sql
+
+    dimension_parity_groups:
+      - left: models/core/fact_sales.sql
+        right: models/core/fact_orders.sql
+
+  checks:
+    schema_contracts:
+      enabled: true
+  ```
+  Alternatively, you can point to an external JSON contract groups file (e.g. `linter_contract_groups.json`):
   ```yaml
   contract_groups_path: linter_contract_groups.json  # Relative to project root
 

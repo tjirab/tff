@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Any
 
 import yaml
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 
 class LayersConfig(BaseModel):
@@ -79,12 +79,73 @@ class CustomExclusionsCheckConfig(LayerFilterConfig):
     allowed_exceptions: list[AllowedExceptionRule] = Field(default_factory=list)
 
 
+class ColumnParityMember(BaseModel):
+    file: str
+    substitutions: dict[str, str] = Field(default_factory=dict)
+
+    @field_validator("file", mode="before")
+    @classmethod
+    def validate_file(cls, v: Any) -> str:
+        return str(v)
+
+
+class ColumnParityGroup(BaseModel):
+    models_dir: str = ""
+    reference: str
+    members: list[ColumnParityMember] = Field(default_factory=list)
+    exclude_columns: list[str] = Field(default_factory=list)
+    reference_substitutions: dict[str, str] = Field(default_factory=dict)
+
+    @field_validator("members", mode="before")
+    @classmethod
+    def validate_members(cls, v: Any) -> Any:
+        if isinstance(v, list):
+            result = []
+            for item in v:
+                if isinstance(item, str):
+                    result.append({"file": item})
+                else:
+                    result.append(item)
+            return result
+        return v
+
+
+class DimensionParityTarget(BaseModel):
+    file: str
+    exclude_columns: list[str] = Field(default_factory=list)
+
+
+class DimensionParityGroup(BaseModel):
+    models_dir: str = ""
+    left: DimensionParityTarget
+    right: DimensionParityTarget
+
+    @field_validator("left", "right", mode="before")
+    @classmethod
+    def validate_target(cls, v: Any) -> Any:
+        if isinstance(v, str):
+            return {"file": v}
+        return v
+
+
+class ContractGroupsConfig(BaseModel):
+    column_parity_groups: list[ColumnParityGroup] = Field(default_factory=list)
+    dimension_parity_groups: list[DimensionParityGroup] = Field(default_factory=list)
+
+
+class SchemaContractsCheckConfig(LayerFilterConfig):
+    column_parity_groups: list[ColumnParityGroup] = Field(default_factory=list)
+    dimension_parity_groups: list[DimensionParityGroup] = Field(default_factory=list)
+
+
 class ChecksConfig(BaseModel):
     layer_integrity: CheckEnabled = Field(default_factory=CheckEnabled)
     custom_exclusions: CustomExclusionsCheckConfig = Field(
         default_factory=CustomExclusionsCheckConfig
     )
-    schema_contracts: CheckEnabled = Field(default_factory=CheckEnabled)
+    schema_contracts: SchemaContractsCheckConfig = Field(
+        default_factory=SchemaContractsCheckConfig
+    )
     dependency_graph: DependencyGraphCheckConfig = Field(
         default_factory=DependencyGraphCheckConfig
     )
@@ -203,6 +264,9 @@ class FitnessFunctionsConfig(BaseModel):
     layers: LayersConfig = Field(default_factory=LayersConfig)
     checks: ChecksConfig = Field(default_factory=ChecksConfig)
     rules: RulesConfig = Field(default_factory=RulesConfig)
+    contract_groups: ContractGroupsConfig | None = None
+    exclusions: list[CustomExclusionRule] | None = None
+    allowed_exceptions: list[AllowedExceptionRule] | None = None
 
 
 def _deep_merge(base: dict[str, Any], override: dict[str, Any]) -> dict[str, Any]:

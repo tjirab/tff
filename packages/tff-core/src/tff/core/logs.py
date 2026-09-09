@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import time
 from datetime import date, datetime, timedelta
 from pathlib import Path
@@ -81,8 +82,21 @@ def get_health_json_data(
     }
 
 
-def save_log(project_root: Path, command: str, data: dict[str, Any]) -> Path:
-    """Save execution JSON to .tff_logs/<command>/<timestamp>.log and clean up logs older than 60 days."""
+def is_logging_disabled() -> bool:
+    """Return True if disk logging is disabled via environment variable."""
+    return os.environ.get("TFF_NO_LOG", "").strip().lower() in ("1", "true", "yes")
+
+
+def save_log(
+    project_root: Path, command: str, data: dict[str, Any], no_log: bool = False
+) -> Path | None:
+    """Save execution JSON to .tff_logs/<command>/<timestamp>.log and clean up logs older than 60 days.
+
+    If no_log is True or TFF_NO_LOG=1 is set, logging is bypassed and returns None.
+    """
+    if no_log or is_logging_disabled():
+        return None
+
     log_dir = project_root / ".tff_logs" / command
     log_dir.mkdir(parents=True, exist_ok=True)
 

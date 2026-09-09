@@ -4,9 +4,10 @@ from __future__ import annotations
 
 import re
 from collections import defaultdict
+from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import TYPE_CHECKING
-import yaml
+from ruamel.yaml import YAML
 import sqlglot
 from sqlglot import exp
 
@@ -228,10 +229,20 @@ def fix_sqlmesh_metadata(
         return f"Failed to write SQLMesh metadata for {abs_path.name}: {e}"
 
 
+def _get_roundtrip_yaml() -> YAML:
+    yaml_rt = YAML()
+    yaml_rt.preserve_quotes = True
+    yaml_rt.indent(mapping=2, sequence=4, offset=2)
+    return yaml_rt
+
+
 def fix_dbt_metadata(
     abs_path: Path, model_name: str, missing_owner: bool, missing_description: bool
 ) -> str | None:
-    """Scaffold or update metadata fields for a dbt model in its directory's schema file."""
+    """Scaffold or update metadata fields for a dbt model in its directory's schema file,
+    preserving comments, indentation, and key order using ruamel.yaml.
+    """
+    yaml_rt = _get_roundtrip_yaml()
     # Find any existing .yml/.yaml files in the same directory
     yaml_files = list(abs_path.parent.glob("*.yml")) + list(
         abs_path.parent.glob("*.yaml")
@@ -240,21 +251,21 @@ def fix_dbt_metadata(
     for yf in yaml_files:
         try:
             with open(yf, encoding="utf-8") as f:
-                data = yaml.safe_load(f)
+                data = yaml_rt.load(f)
         except Exception:
             continue
 
         if (
-            not isinstance(data, dict)
+            not isinstance(data, (dict, Mapping))
             or "models" not in data
-            or not isinstance(data["models"], list)
+            or not isinstance(data["models"], (list, Sequence))
         ):
             continue
 
         # Look for the model entry
         model_entry = None
         for m in data["models"]:
-            if isinstance(m, dict) and m.get("name") == model_name:
+            if isinstance(m, (dict, Mapping)) and m.get("name") == model_name:
                 model_entry = m
                 break
 
@@ -267,7 +278,7 @@ def fix_dbt_metadata(
                 modified = True
             if missing_owner:
                 if "meta" not in model_entry or not isinstance(
-                    model_entry["meta"], dict
+                    model_entry["meta"], (dict, Mapping)
                 ):
                     model_entry["meta"] = {}
                 if (
@@ -280,9 +291,7 @@ def fix_dbt_metadata(
             if modified:
                 try:
                     with open(yf, "w", encoding="utf-8") as f:
-                        yaml.safe_dump(
-                            data, f, default_flow_style=False, sort_keys=False
-                        )
+                        yaml_rt.dump(data, f)
                     return f"Updated metadata for model {model_name} in {yf.name}"
                 except Exception as e:
                     return f"Failed to write dbt metadata to {yf.name}: {e}"
@@ -291,20 +300,20 @@ def fix_dbt_metadata(
     # If the model entry was not found in any existing file, we append to schema.yml (or create it)
     schema_path = abs_path.parent / "schema.yml"
     is_new = not schema_path.exists()
-    data = {}
+    data = None
     if not is_new:
         try:
             with open(schema_path, encoding="utf-8") as f:
-                data = yaml.safe_load(f) or {}
+                data = yaml_rt.load(f)
         except Exception:
             pass
 
-    if not isinstance(data, dict):
-        data = {}
+    if not isinstance(data, (dict, Mapping)):
+        data = {"version": 2, "models": []}
 
     if "version" not in data:
         data["version"] = 2
-    if "models" not in data or not isinstance(data["models"], list):
+    if "models" not in data or not isinstance(data["models"], (list, Sequence)):
         data["models"] = []
 
     model_entry = {"name": model_name}
@@ -317,7 +326,7 @@ def fix_dbt_metadata(
 
     try:
         with open(schema_path, "w", encoding="utf-8") as f:
-            yaml.safe_dump(data, f, default_flow_style=False, sort_keys=False)
+            yaml_rt.dump(data, f)
         if is_new:
             return f"Scaffolded schema.yml for model {model_name}"
         return f"Appended metadata for model {model_name} to schema.yml"

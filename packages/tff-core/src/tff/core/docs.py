@@ -21,6 +21,7 @@ def generate_docs_dashboard(
     dialect: str | None = None,
     config_path: str = "fitness_functions.yaml",
     manifest_path: str | Path | None = None,
+    no_log: bool = False,
 ) -> Path:
     """Run checks, compile, and output a standalone interactive HTML dashboard."""
     # 1. Load config
@@ -51,7 +52,7 @@ def generate_docs_dashboard(
     # 5. Calculate scores and save health log
     scores = calculate_health_scores(findings, models_checked, config, provider)
     json_data = get_health_json_data(scores, models_checked)
-    save_log(project_root, "health", json_data)
+    save_log(project_root, "health", json_data, no_log=no_log)
 
     # 6. Collect history (60 days)
     history = collect_stats(project_root, days=60)

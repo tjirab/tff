@@ -24,12 +24,13 @@ def run_model_rule(
     models: dict[str, ModelRepresentation],
     severity: Severity = "error",
     check_name: str | None = None,
+    config: FitnessFunctionsConfig | None = None,
 ) -> list[LintFinding]:
     """Execute a single model-level Rule across all eligible models in a project."""
     from tff.core.report import LintFinding
     from tff.core.utils.paths import model_path_relative
 
-    rule = rule_cls()
+    rule = rule_cls(config=config)
     findings: list[LintFinding] = []
     finding_check = check_name or getattr(rule, "name", rule_cls.__name__.lower())
 
@@ -125,6 +126,7 @@ class CheckDefinition:
                     models,
                     severity=self.default_severity,
                     check_name=self.finding_id,
+                    config=config,
                 )
             return []
         elif self.scope == "dag":
@@ -402,9 +404,9 @@ def create_default_registry() -> CheckRegistry:
             scope="dag",
             collector_module="tff.core.checks.schema_contracts",
             collector_func_name="collect_schema_contract_findings",
-            collector_fn=lambda _models, cfg: __import__(
+            collector_fn=lambda models, cfg: __import__(
                 "tff.core.checks.schema_contracts", fromlist=["collect_schema_contract_findings"]
-            ).collect_schema_contract_findings(cfg),
+            ).collect_schema_contract_findings(models, cfg),
             is_enabled_fn=lambda cfg, p: bool(cfg.checks.schema_contracts.enabled),
         )
     )

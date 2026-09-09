@@ -1,6 +1,29 @@
 layers:
   order: [sources, core, marts]
 
+# Custom exclusions and allowed exceptions configured directly in YAML
+# (consolidated from previously separate linter_exclusions.json)
+exclusions:
+  - source_layer: marts
+    source_domain: finance
+    target_layer: marts
+    target_domain: marketing
+
+allowed_exceptions:
+  - model: sqlmesh_example.marketing_all_users
+    dependency: sqlmesh_example.finance_stats
+
+# Schema contracts configured directly in YAML
+# (consolidated from previously separate linter_contract_groups.json)
+contract_groups:
+  dimension_parity_groups:
+    - left:
+        file: models/marts/finance/finance_stats.sql
+        exclude_columns: [revenue]
+      right:
+        file: models/sources/src_users.sql
+        exclude_columns: [user_name, created_date]
+
 checks:
   layer_integrity: { enabled: true }
   custom_exclusions: { enabled: true }

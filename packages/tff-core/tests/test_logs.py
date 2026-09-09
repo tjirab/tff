@@ -12,6 +12,7 @@ from tff.core.logs import (
     save_log,
     collect_stats,
     render_ascii_chart,
+    is_logging_disabled,
 )
 
 
@@ -264,6 +265,36 @@ def test_collect_stats_corrupt_files(tmp_path: Path):
     # Collect stats (should pass without raising exceptions, and return empty list since no valid logs exist)
     stats = collect_stats(tmp_path, days=7)
     assert stats == []
+
+
+def test_is_logging_disabled(monkeypatch):
+    monkeypatch.delenv("TFF_NO_LOG", raising=False)
+    assert not is_logging_disabled()
+
+    monkeypatch.setenv("TFF_NO_LOG", "1")
+    assert is_logging_disabled()
+
+    monkeypatch.setenv("TFF_NO_LOG", "true")
+    assert is_logging_disabled()
+
+    monkeypatch.setenv("TFF_NO_LOG", "yes")
+    assert is_logging_disabled()
+
+    monkeypatch.setenv("TFF_NO_LOG", "0")
+    assert not is_logging_disabled()
+
+
+def test_save_log_no_log_flag(tmp_path: Path):
+    res = save_log(tmp_path, "lint", {"test": "data"}, no_log=True)
+    assert res is None
+    assert not (tmp_path / ".tff_logs").exists()
+
+
+def test_save_log_env_disabled(tmp_path: Path, monkeypatch):
+    monkeypatch.setenv("TFF_NO_LOG", "1")
+    res = save_log(tmp_path, "lint", {"test": "data"})
+    assert res is None
+    assert not (tmp_path / ".tff_logs").exists()
 
 
 
