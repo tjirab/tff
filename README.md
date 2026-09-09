@@ -33,6 +33,7 @@ Setup and usage details differ depending on your pipeline engine. Refer to the c
 * ⚡ **dbt Integration**: See [docs/dbt.md](docs/dbt.md)
 * ☁️ **Dataform Integration**: See [docs/dataform.md](docs/dataform.md)
 * 🔍 **Rules & Checks Reference**: See [docs/rules_and_checks.md](docs/rules_and_checks.md)
+* 📊 **Case Study: GitLab dbt Audit (2,200+ models)**: See [docs/case_study_gitlab.md](docs/case_study_gitlab.md)
 * 🏗️ **Architecture & Contributor Guide**: See [docs/contributing.md](docs/contributing.md)
 
 ---
