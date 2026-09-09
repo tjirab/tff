@@ -123,11 +123,26 @@ TFF detected **54 cases of complex CTE transformation logic copied verbatim acro
   * `visits.sql`
   * `page_view_total_reqs.sql`
   * `accepted_solutions.sql`
-* **`bamboohr_custom_bonus_source.sql`**: The `intermediate` parsing logic was copied across **7 other BambooHR models** (`bamboohr_emergency_contacts_source.sql`, `bamboohr_job_info_source.sql`, `engineering_development_team_members.sql`, etc.).
+* **`bamboohr_custom_bonus_source.sql`**: The JSON-flattening CTE (`intermediate` in BambooHR models, `flattened` in Engineering models) was duplicated across **7 separate models**:
+  * `bamboohr_emergency_contacts_source.sql`
+  * `bamboohr_employment_status_source.sql`
+  * `bamboohr_job_info_source.sql`
+  * `qualtrics_survey.sql`
+  * `engineering_development_team_members.sql`
+  * `engineering_red_master_stats.sql`
+  * `engineering_commit_stats.sql`
 
-> **Architectural Impact**: If the business definition of "accepted solution" or BambooHR schema changes, engineers must locate and update 8 different models manually. If one is missed, reporting silent logic drift occurs.
+  ```sql
+  -- Duplicated across all 7 models (identical AST, even with different CTE aliases):
+  select d.value as data_by_row
+  from source, lateral flatten(input => parse_json(jsontext), outer => true) d
+  ```
+
+  > **Note on Nested Data & AST Precision**: TFF's SQLGlot AST engine distinguishes nested field access (e.g. `data_by_row['id']` vs. `data_by_row['country']` in the downstream `renamed` CTEs produce distinct ASTs and are **not** flagged as duplicates). TFF specifically isolated the copy-pasted `LATERAL FLATTEN` algorithmic pattern.
+
+> **Architectural Impact**: If the business definition of "accepted solution" or the JSON extraction pattern changes, engineers must locate and update 7–8 different models manually. If one is missed, reporting silent logic drift occurs.
 >
-> **Recommended Solution**: Extract this logic into an upstream intermediate staging model (e.g. `prep_accepted_solutions.sql`) or a reusable dbt macro.
+> **Recommended Solution**: Extract the `LATERAL FLATTEN` pattern into a reusable dbt macro (e.g. `{{ flatten_json_source(...) }}`) and extract repeated business algorithms into upstream intermediate staging models.
 
 ---
 
