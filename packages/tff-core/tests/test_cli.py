@@ -330,6 +330,16 @@ def test_help_subcommand(capsys):
     captured = capsys.readouterr()
     assert "--fail-under" in captured.out
 
+    # Test tff help docs
+    assert main(["help", "docs"]) == 0
+    captured = capsys.readouterr()
+    assert "--output" in captured.out
+
+    # Test tff help init
+    assert main(["help", "init"]) == 0
+    captured = capsys.readouterr()
+    assert "--force" in captured.out
+
 
 def test_invalid_command_error_hint(capsys):
     # Test tff foo
@@ -980,3 +990,104 @@ def test_cli_main_lint_with_fix_rerun_exception(tmp_path: Path):
         exit_code = main(["lint", "--project", str(tmp_path), "--fix"])
         assert exit_code == 1
         assert mock_runner.run_all_checks.call_count == 2
+
+
+def test_cli_init_success(tmp_path: Path, capsys):
+    exit_code = main(["init", "--project", str(tmp_path)])
+    assert exit_code == 0
+    captured = capsys.readouterr()
+    assert "Created fitness_functions.yaml" in captured.out
+    assert (tmp_path / "fitness_functions.yaml").exists()
+
+
+def test_cli_init_already_exists_error(tmp_path: Path, capsys):
+    (tmp_path / "fitness_functions.yaml").write_text("existing: true\n", encoding="utf-8")
+    exit_code = main(["init", "--project", str(tmp_path)])
+    assert exit_code == 1
+    captured = capsys.readouterr()
+    assert "already exists" in captured.err
+    assert "--force" in captured.err
+
+
+def test_cli_init_force_overwrite(tmp_path: Path, capsys):
+    (tmp_path / "fitness_functions.yaml").write_text("existing: true\n", encoding="utf-8")
+    exit_code = main(["init", "--project", str(tmp_path), "--force"])
+    assert exit_code == 0
+    captured = capsys.readouterr()
+    assert "Overwrote fitness_functions.yaml" in captured.out
+
+
+def test_cli_init_unexpected_error(tmp_path: Path, capsys):
+    with patch("tff.core.cli.init_fitness_config", side_effect=OSError("Disk full")):
+        exit_code = main(["init", "--project", str(tmp_path)])
+        assert exit_code == 1
+        captured = capsys.readouterr()
+        assert "Error creating configuration file: Disk full" in captured.err
+
+
+def test_cli_lint_missing_config_notice(tmp_path: Path, capsys):
+    (tmp_path / "dbt_project.yml").touch()
+    mock_runner = MagicMock()
+    mock_runner.run_all_checks.return_value = ([], 0, [])
+
+    with patch("tff.core.cli._get_runner", return_value=mock_runner):
+        exit_code = main(["lint", "--project", str(tmp_path)])
+        assert exit_code == 0
+        captured = capsys.readouterr()
+        assert "Notice: No fitness_functions.yaml found." in captured.err
+        assert "staging -> intermediate -> core -> marts" in captured.err
+        assert "Run 'tff init' to generate a project configuration file." in captured.err
+
+
+def test_cli_lint_existing_config_no_notice(tmp_path: Path, capsys):
+    (tmp_path / "dbt_project.yml").touch()
+    (tmp_path / "fitness_functions.yaml").write_text("layers:\n  order: [staging, marts]\n", encoding="utf-8")
+    mock_runner = MagicMock()
+    mock_runner.run_all_checks.return_value = ([], 0, [])
+
+    with patch("tff.core.cli._get_runner", return_value=mock_runner):
+        exit_code = main(["lint", "--project", str(tmp_path)])
+        assert exit_code == 0
+        captured = capsys.readouterr()
+        assert "Notice: No fitness_functions.yaml found." not in captured.err
+
+
+def test_cli_lint_json_no_notice(tmp_path: Path, capsys):
+    (tmp_path / "dbt_project.yml").touch()
+    mock_runner = MagicMock()
+    mock_runner.run_all_checks.return_value = ([], 0, [])
+
+    with patch("tff.core.cli._get_runner", return_value=mock_runner):
+        exit_code = main(["lint", "--project", str(tmp_path), "--json"])
+        assert exit_code == 0
+        captured = capsys.readouterr()
+        assert "Notice: No fitness_functions.yaml found." not in captured.err
+        assert "Notice: No fitness_functions.yaml found." not in captured.out
+
+
+def test_cli_health_missing_config_notice(tmp_path: Path, capsys):
+    (tmp_path / "dbt_project.yml").touch()
+    mock_runner = MagicMock()
+    mock_runner.run_all_checks.return_value = ([], 0, [])
+
+    with patch("tff.core.cli._get_runner", return_value=mock_runner), \
+         patch("tff.core.health.render_health_report"):
+        exit_code = main(["health", "--project", str(tmp_path)])
+        assert exit_code == 0
+        captured = capsys.readouterr()
+        assert "Notice: No fitness_functions.yaml found." in captured.err
+        assert "Run 'tff init' to generate a project configuration file." in captured.err
+
+
+def test_cli_health_existing_config_no_notice(tmp_path: Path, capsys):
+    (tmp_path / "dbt_project.yml").touch()
+    (tmp_path / "fitness_functions.yaml").write_text("layers:\n  order: [staging, marts]\n", encoding="utf-8")
+    mock_runner = MagicMock()
+    mock_runner.run_all_checks.return_value = ([], 0, [])
+
+    with patch("tff.core.cli._get_runner", return_value=mock_runner), \
+         patch("tff.core.health.render_health_report"):
+        exit_code = main(["health", "--project", str(tmp_path)])
+        assert exit_code == 0
+        captured = capsys.readouterr()
+        assert "Notice: No fitness_functions.yaml found." not in captured.err

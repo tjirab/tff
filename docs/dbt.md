@@ -20,14 +20,17 @@ pip install "tff-core[dbt]"
 
 ## Quick Start
 
-1. Add `fitness_functions.yaml` to your dbt project root.
-2. Compile your dbt project to generate the manifest file:
+1. Compile your dbt project to generate the manifest file:
    ```bash
    dbt compile
    ```
-3. Run the linter CLI:
+2. Run the linter CLI (runs out of the box with zero configuration!):
    ```bash
    tff lint
+   ```
+3. (Optional) Scaffold an annotated starter configuration to customize layer conventions or rules:
+   ```bash
+   tff init
    ```
 
 ---

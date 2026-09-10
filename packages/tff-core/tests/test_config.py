@@ -5,7 +5,11 @@ from pathlib import Path
 import pytest
 
 from tff.core.config import (
+    DEFAULT_LAYER_ORDER,
+    MISSING_CONFIG_NOTICE,
+    STARTER_CONFIG_YAML,
     FitnessFunctionsConfig,
+    init_fitness_config,
     load_fitness_config,
     resolve_project_path,
 )
@@ -261,5 +265,74 @@ def test_rule_config_injection_and_deprecation():
         ]
         assert len(deprecation_warnings) >= 1
         assert "get_ff_config() is deprecated" in str(deprecation_warnings[0].message)
+
+
+def test_default_layer_hierarchy(tmp_path: Path):
+    from tff.core.config import LayersConfig
+
+    assert DEFAULT_LAYER_ORDER == ["staging", "intermediate", "core", "marts"]
+    assert LayersConfig().order == ["staging", "intermediate", "core", "marts"]
+    assert "No fitness_functions.yaml found" in MISSING_CONFIG_NOTICE
+    assert "tff init" in MISSING_CONFIG_NOTICE
+
+    # Loading without a config file falls back to defaults
+    config = load_fitness_config(tmp_path, config_path="missing.yaml")
+    assert config.layers.order == ["staging", "intermediate", "core", "marts"]
+    assert config.config_file_found is False
+
+    # Check core rules enabled by default
+    assert config.rules.ban_select_star.enabled is True
+    assert config.checks.layer_integrity.enabled is True
+    assert config.checks.duplicate_ctes.enabled is True
+    assert config.rules.no_positional_group_by_or_order_by.enabled is True
+    assert config.rules.environment_agnostic_references.enabled is True
+    assert config.rules.metadata.enabled is True
+    assert config.rules.metadata.owner is True
+    assert config.rules.metadata.description is True
+    assert config.rules.metadata.grain is True
+    assert config.rules.metadata.not_null is True
+    assert config.rules.metadata.unique_values is True
+
+
+def test_config_file_found_flag(tmp_path: Path):
+    config_file = tmp_path / "fitness_functions.yaml"
+    config_file.write_text("layers:\n  order: [staging, marts]\n", encoding="utf-8")
+
+    config = load_fitness_config(tmp_path)
+    assert config.config_file_found is True
+    assert config.layers.order == ["staging", "marts"]
+
+
+def test_init_fitness_config_success(tmp_path: Path):
+    created_path = init_fitness_config(tmp_path)
+    assert created_path.exists()
+    assert created_path == tmp_path / "fitness_functions.yaml"
+    assert created_path.read_text(encoding="utf-8") == STARTER_CONFIG_YAML
+
+    # Verify that the generated YAML loads and validates cleanly
+    loaded_config = load_fitness_config(tmp_path)
+    assert loaded_config.config_file_found is True
+    assert loaded_config.layers.order == ["staging", "intermediate", "core", "marts"]
+    assert loaded_config.checks.layer_integrity.enabled is True
+    assert loaded_config.rules.ban_select_star.enabled is True
+    assert loaded_config.rules.no_positional_group_by_or_order_by.enabled is True
+    assert loaded_config.rules.environment_agnostic_references.enabled is True
+
+
+def test_init_fitness_config_already_exists(tmp_path: Path):
+    init_fitness_config(tmp_path)
+    assert (tmp_path / "fitness_functions.yaml").exists()
+
+    with pytest.raises(FileExistsError, match="already exists"):
+        init_fitness_config(tmp_path, force=False)
+
+
+def test_init_fitness_config_force_overwrite(tmp_path: Path):
+    config_path = init_fitness_config(tmp_path)
+    config_path.write_text("modified: true\n", encoding="utf-8")
+    assert "modified: true" in config_path.read_text(encoding="utf-8")
+
+    overwritten_path = init_fitness_config(tmp_path, force=True)
+    assert overwritten_path.read_text(encoding="utf-8") == STARTER_CONFIG_YAML
 
 

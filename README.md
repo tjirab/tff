@@ -87,11 +87,17 @@ tff [command] [options]
 * **`health`**: Calculate and report overall project fitness health scores.
 * **`docs`**: Generate a standalone, interactive HTML documentation and health dashboard containing lineage graphs and historical trends.
 * **`info`**: Show diagnostic information about the project environment, configuration files, and adapter versions.
+* **`stats`**: Show history and trends of fitness checks.
+* **`init`**: Scaffold an annotated starter `fitness_functions.yaml` configuration file.
 * **`help`**: Print help information for the CLI or specific subcommands.
 
 ### Common Options
 
 For detailed option explanations, run `tff help <command>` or `tff <command> --help`.
+
+#### `tff init`
+* `--project PATH`: Path to the project root directory (default: current directory).
+* `--force`, `-f`: Overwrite existing `fitness_functions.yaml` if present.
 
 #### `tff lint`
 * `--project PATH`: Path to the project root directory (default: current directory).
@@ -124,9 +130,21 @@ For detailed option explanations, run `tff help <command>` or `tff <command> --h
 * `--config PATH`: Path to `fitness_functions.yaml` relative to project root (default: `fitness_functions.yaml`).
 * `--provider {auto,dbt,sqlmesh,dataform}`: Pipeline engine provider (default: auto-detected).
 
+### Zero-Config Default Execution
+
+TFF requires zero initial configuration to run. If no `fitness_functions.yaml` file exists in the project root:
+* `tff lint` and `tff health` automatically fall back to standard layer conventions (`staging -> intermediate -> core -> marts`).
+* Core rules (such as `ban_select_star`, `layer_integrity`, `duplicate_ctes`, `no_positional_group_by_or_order_by`, `environment_agnostic_references`, `metadata`) are enabled out of the box with sensible thresholds.
+* Run `tff init` whenever you want to generate an annotated starter `fitness_functions.yaml` configuration to customize for your project.
+
 ### Quick Start Examples
 
-Run linting on the current project:
+Scaffold an annotated configuration file:
+```bash
+tff init
+```
+
+Run linting on the current project (zero-config out of the box):
 ```bash
 tff lint
 ```
