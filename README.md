@@ -215,6 +215,49 @@ tff health --json
 
 ---
 
+## Pre-commit Integration
+
+TFF can be integrated as a native [pre-commit](https://pre-commit.com/) hook to automatically run fitness function checks or auto-fix violations when SQL, YAML, or JSON files are committed.
+
+Add the following to your project's `.pre-commit-config.yaml`:
+
+```yaml
+repos:
+  - repo: https://github.com/tjirab/tff
+    rev: v0.11.0  # Use the latest release or tag
+    hooks:
+      - id: tff-lint
+```
+
+### Available Hooks
+
+| Hook ID | Description | Default Dependencies |
+| :--- | :--- | :--- |
+| `tff-lint` | Run Transformation Fitness Functions architectural and styling linter | `tff-core[dbt]` |
+| `tff-lint-fix` | Automatically fix simple TFF violations (positional `GROUP BY`/`ORDER BY`, missing metadata) | `tff-core[dbt]` |
+
+### Customizing Adapter Dependencies
+
+The pre-commit hooks ship with dbt support enabled by default. If your project uses SQLMesh or Dataform, override `additional_dependencies`:
+
+```yaml
+  # For SQLMesh projects:
+  - repo: https://github.com/tjirab/tff
+    rev: v0.11.0
+    hooks:
+      - id: tff-lint
+        additional_dependencies: ["tff-core[sqlmesh]"]
+
+  # For Dataform projects:
+  - repo: https://github.com/tjirab/tff
+    rev: v0.11.0
+    hooks:
+      - id: tff-lint
+        additional_dependencies: ["tff-core[dataform]"]
+```
+
+---
+
 
 ## Core Features
 

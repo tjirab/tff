@@ -154,3 +154,19 @@ jobs:
       - uses: astral-sh/setup-uv@v3
       - run: uv tool run tff-core lint
 ```
+
+---
+
+## Pre-commit Integration
+
+Enforce TFF fitness functions automatically on git commit using [pre-commit](https://pre-commit.com/):
+
+```yaml
+# .pre-commit-config.yaml
+repos:
+  - repo: https://github.com/tjirab/tff
+    rev: v0.11.0
+    hooks:
+      - id: tff-lint
+        additional_dependencies: ["tff-core[dataform]"]
+```

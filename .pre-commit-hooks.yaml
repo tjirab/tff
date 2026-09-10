@@ -1,0 +1,17 @@
+- id: tff-lint
+  name: TFF Lint
+  description: Run Transformation Fitness Functions architectural linter
+  entry: tff lint
+  language: python
+  types_or: [sql, yaml, json]
+  pass_filenames: false
+  additional_dependencies: ["tff-core[dbt]"]
+
+- id: tff-lint-fix
+  name: TFF Auto-Fix
+  description: Automatically fix simple TFF lint violations
+  entry: tff lint --fix
+  language: python
+  types_or: [sql, yaml]
+  pass_filenames: false
+  additional_dependencies: ["tff-core[dbt]"]
