@@ -127,3 +127,22 @@ tff health [--project PATH] [--config PATH] [--provider PROVIDER] [--fail-under 
   tff health --scope models/marts --group-by domain
   ```
 
+---
+
+## Pre-commit Integration
+
+Enforce TFF fitness functions automatically on git commit using [pre-commit](https://pre-commit.com/):
+
+```yaml
+# .pre-commit-config.yaml
+repos:
+  - repo: https://github.com/tjirab/tff
+    rev: v0.11.0
+    hooks:
+      - id: tff-lint
+        additional_dependencies: ["tff-core[sqlmesh]"]
+```
+
+Because SQLMesh projects require the `sqlmesh` Python engine to load and evaluate models, specify `additional_dependencies: ["tff-core[sqlmesh]"]` so pre-commit installs SQLMesh into the hook's isolated virtual environment.
+
+

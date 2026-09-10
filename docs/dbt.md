@@ -105,6 +105,36 @@ tff health [--project PATH] [--config PATH] [--provider PROVIDER] [--dialect DIA
 
 ---
 
+## Pre-commit Integration
+
+Enforce TFF fitness functions automatically on git commit using [pre-commit](https://pre-commit.com/):
+
+```yaml
+# .pre-commit-config.yaml
+repos:
+  - repo: https://github.com/tjirab/tff
+    rev: v0.11.0
+    hooks:
+      - id: tff-lint
+
+      # Or automatically fix simple violations like positional GROUP BY/ORDER BY
+      # - id: tff-lint-fix
+```
+
+Both `tff-lint` and `tff-lint-fix` default to bare `tff-core`, which supports dbt projects out of the box (as dbt manifest parsing requires no heavy external Python packages). If you prefer explicit adapter dependencies in your configuration, you can declare `additional_dependencies: ["tff-core[dbt]"]`:
+
+```yaml
+# .pre-commit-config.yaml
+repos:
+  - repo: https://github.com/tjirab/tff
+    rev: v0.11.0
+    hooks:
+      - id: tff-lint
+        additional_dependencies: ["tff-core[dbt]"]
+```
+
+---
+
 ## Real-World Case Study
 
 See the [GitLab Architectural Audit Case Study](case_study_gitlab.md) to explore how TFF analyzed GitLab's 2,213-model Snowflake dbt repository in ~13 seconds with 100% static analysis, uncovering 54 duplicated CTE algorithms and 111 layer violations.
