@@ -233,12 +233,14 @@ repos:
 
 | Hook ID | Description | Default Dependencies |
 | :--- | :--- | :--- |
-| `tff-lint` | Run Transformation Fitness Functions architectural and styling linter | `tff-core[dbt]` |
-| `tff-lint-fix` | Automatically fix simple TFF violations (positional `GROUP BY`/`ORDER BY`, missing metadata) | `tff-core[dbt]` |
+| `tff-lint` | Run Transformation Fitness Functions architectural and styling linter | `tff-core` |
+| `tff-lint-fix` | Automatically fix simple TFF violations (positional `GROUP BY`/`ORDER BY`, missing metadata) | `tff-core` |
 
 ### Customizing Adapter Dependencies
 
-The pre-commit hooks ship with dbt support enabled by default. If your project uses SQLMesh or Dataform, override `additional_dependencies`:
+The pre-commit hooks default to bare `tff-core`, which out of the box provides support for **dbt** and **Dataform** projects without requiring additional dependencies.
+
+If your project uses **SQLMesh**, the SQLMesh engine package is required; declare `additional_dependencies: ["tff-core[sqlmesh]"]` in your `.pre-commit-config.yaml`:
 
 ```yaml
   # For SQLMesh projects:
@@ -248,12 +250,19 @@ The pre-commit hooks ship with dbt support enabled by default. If your project u
       - id: tff-lint
         additional_dependencies: ["tff-core[sqlmesh]"]
 
-  # For Dataform projects:
-  - repo: https://github.com/tjirab/tff
-    rev: v0.11.0
-    hooks:
-      - id: tff-lint
-        additional_dependencies: ["tff-core[dataform]"]
+  # For dbt projects (optional explicit declaration):
+  # - repo: https://github.com/tjirab/tff
+  #   rev: v0.11.0
+  #   hooks:
+  #     - id: tff-lint
+  #       additional_dependencies: ["tff-core[dbt]"]
+
+  # For Dataform projects (optional explicit declaration):
+  # - repo: https://github.com/tjirab/tff
+  #   rev: v0.11.0
+  #   hooks:
+  #     - id: tff-lint
+  #       additional_dependencies: ["tff-core[dataform]"]
 ```
 
 ---

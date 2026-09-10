@@ -31,7 +31,7 @@ def test_pre_commit_hooks_structure() -> None:
     assert tff_lint["language"] == "python"
     assert tff_lint["types_or"] == ["sql", "yaml", "json"]
     assert tff_lint["pass_filenames"] is False
-    assert tff_lint["additional_dependencies"] == ["tff-core[dbt]"]
+    assert tff_lint["additional_dependencies"] == ["tff-core"]
 
     # Validate tff-lint-fix hook
     tff_lint_fix = hooks_by_id["tff-lint-fix"]
@@ -41,4 +41,4 @@ def test_pre_commit_hooks_structure() -> None:
     assert tff_lint_fix["language"] == "python"
     assert tff_lint_fix["types_or"] == ["sql", "yaml"]
     assert tff_lint_fix["pass_filenames"] is False
-    assert tff_lint_fix["additional_dependencies"] == ["tff-core[dbt]"]
+    assert tff_lint_fix["additional_dependencies"] == ["tff-core"]

@@ -143,3 +143,6 @@ repos:
         additional_dependencies: ["tff-core[sqlmesh]"]
 ```
 
+Because SQLMesh projects require the `sqlmesh` Python engine to load and evaluate models, specify `additional_dependencies: ["tff-core[sqlmesh]"]` so pre-commit installs SQLMesh into the hook's isolated virtual environment.
+
+

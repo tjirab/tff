@@ -168,5 +168,15 @@ repos:
     rev: v0.11.0
     hooks:
       - id: tff-lint
+```
+
+The hooks default to bare `tff-core`, which supports Dataform projects out of the box (with zero external Python dependencies for static source parsing or precompiled JSON manifests). If you prefer an explicit declaration in your configuration, you can specify `additional_dependencies: ["tff-core[dataform]"]`:
+
+```yaml
+  - repo: https://github.com/tjirab/tff
+    rev: v0.11.0
+    hooks:
+      - id: tff-lint
         additional_dependencies: ["tff-core[dataform]"]
 ```
+

@@ -121,7 +121,17 @@ repos:
       # - id: tff-lint-fix
 ```
 
-Both `tff-lint` and `tff-lint-fix` include `tff-core[dbt]` by default, executing the linter across your models when SQL, YAML, or JSON files are modified.
+Both `tff-lint` and `tff-lint-fix` default to bare `tff-core`, which supports dbt projects out of the box (as dbt manifest parsing requires no heavy external Python packages). If you prefer explicit adapter dependencies in your configuration, you can declare `additional_dependencies: ["tff-core[dbt]"]`:
+
+```yaml
+# .pre-commit-config.yaml
+repos:
+  - repo: https://github.com/tjirab/tff
+    rev: v0.11.0
+    hooks:
+      - id: tff-lint
+        additional_dependencies: ["tff-core[dbt]"]
+```
 
 ---
 

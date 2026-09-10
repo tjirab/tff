@@ -5,7 +5,7 @@
   language: python
   types_or: [sql, yaml, json]
   pass_filenames: false
-  additional_dependencies: ["tff-core[dbt]"]
+  additional_dependencies: ["tff-core"]
 
 - id: tff-lint-fix
   name: TFF Auto-Fix
@@ -14,4 +14,4 @@
   language: python
   types_or: [sql, yaml]
   pass_filenames: false
-  additional_dependencies: ["tff-core[dbt]"]
+  additional_dependencies: ["tff-core"]
