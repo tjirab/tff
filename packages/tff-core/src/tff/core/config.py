@@ -6,12 +6,112 @@ from pathlib import Path
 from typing import Any
 
 import yaml
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, PrivateAttr, field_validator
+
+DEFAULT_LAYER_ORDER: list[str] = ["staging", "intermediate", "core", "marts"]
+
+MISSING_CONFIG_NOTICE: str = (
+    "Notice: No fitness_functions.yaml found. Running with default layer conventions (staging -> intermediate -> core -> marts).\n"
+    "Run 'tff init' to generate a project configuration file."
+)
+
+STARTER_CONFIG_YAML: str = """# =============================================================================
+# Transformation Fitness Functions (TFF) Configuration
+# Documentation: https://github.com/tjirab/tff
+# =============================================================================
+
+# Define the architectural layer hierarchy (upstream -> downstream).
+# Models in an upstream layer cannot depend on models in a downstream layer.
+layers:
+  order:
+    - staging
+    - intermediate
+    - core
+    - marts
+
+# Project-level architectural and DAG checks
+checks:
+  # Enforce unidirectional dependencies between layers and domain boundaries in marts
+  layer_integrity:
+    enabled: true
+
+  # Flag models with excessive fan-in (dependents) or fan-out (dependencies)
+  dependency_graph:
+    enabled: true
+    fan_out_warn: 15
+    fan_out_fail: 25
+    fan_in_warn: 10
+
+  # Warn on excessively deep chains of views / non-table materializations
+  materialization_depth:
+    enabled: true
+    max_depth_warn: 3
+    max_depth_fail: 5
+
+  # Detect identical or duplicate CTEs across models
+  duplicate_ctes:
+    enabled: true
+    severity: warning
+    min_ast_nodes: 12
+
+  # Detect repeated hardcoded literals and magic values across models
+  connascence_of_value:
+    enabled: true
+    severity: warning
+    min_occurrences: 2
+    ignored_values: ["0", "1", ""]
+
+# Model-level SQL rules
+rules:
+  # Prohibit 'SELECT *' to avoid silent breakage from upstream schema drift
+  ban_select_star:
+    enabled: true
+    skip_layers: [sources]
+
+  # Require explicit column names instead of positional references (e.g. GROUP BY 1, 2)
+  no_positional_group_by_or_order_by:
+    enabled: true
+    skip_layers: [sources]
+
+  # Prevent hardcoded environment prefixes/databases (e.g. prod, dev, uat)
+  environment_agnostic_references:
+    enabled: true
+    banned_environments: [prod, dev, staging, uat, qa]
+
+  # Enforce model documentation and metadata requirements
+  metadata:
+    enabled: true
+    owner: true
+    description: true
+    grain: true
+    not_null: true
+    unique_values: true
+
+  # Monitor SQL complexity (cyclomatic decision points, join count, line count)
+  sql_complexity:
+    enabled: true
+    warn_only: true
+    thresholds:
+      decision_points: [15, 25]
+      cte_count: [8, 12]
+      join_count: [8, 12]
+      line_count: [250, 400]
+
+  # Require SQL model filename to match model name
+  filename_equals_modelname:
+    enabled: true
+
+  # Mart model naming convention (e.g. prefix with subdirectory)
+  mart_naming:
+    enabled: true
+    layer_name: marts
+    rule: prefix_with_subdirectory
+"""
 
 
 class LayersConfig(BaseModel):
     order: list[str] = Field(
-        default_factory=lambda: ["sources", "derived", "core", "marts", "export"]
+        default_factory=lambda: list(DEFAULT_LAYER_ORDER)
     )
 
 
@@ -259,6 +359,8 @@ class RulesConfig(BaseModel):
 
 
 class FitnessFunctionsConfig(BaseModel):
+    _project_root: Path = PrivateAttr(default_factory=Path.cwd)
+    _config_file_found: bool = PrivateAttr(default=True)
     contract_groups_path: str = "linter_contract_groups.json"
     exclusions_path: str = "linter_exclusions.json"
     layers: LayersConfig = Field(default_factory=LayersConfig)
@@ -267,6 +369,10 @@ class FitnessFunctionsConfig(BaseModel):
     contract_groups: ContractGroupsConfig | None = None
     exclusions: list[CustomExclusionRule] | None = None
     allowed_exceptions: list[AllowedExceptionRule] | None = None
+
+    @property
+    def config_file_found(self) -> bool:
+        return self._config_file_found
 
 
 def _deep_merge(base: dict[str, Any], override: dict[str, Any]) -> dict[str, Any]:
@@ -286,12 +392,14 @@ def load_fitness_config(
 ) -> FitnessFunctionsConfig:
     """Load fitness config with defaults, yaml file, and optional overrides."""
     data: dict[str, Any] = {}
+    config_found = False
 
     if config_path is not None:
         yaml_path = Path(config_path)
         if not yaml_path.is_absolute():
             yaml_path = project_root / yaml_path
         if yaml_path.exists():
+            config_found = True
             loaded = yaml.safe_load(yaml_path.read_text(encoding="utf-8")) or {}
             if not isinstance(loaded, dict):
                 raise ValueError(f"Expected mapping in {yaml_path}")
@@ -301,8 +409,25 @@ def load_fitness_config(
         data = _deep_merge(data, overrides)
 
     config = FitnessFunctionsConfig.model_validate(data)
-    config._project_root = project_root  # type: ignore[attr-defined]
+    config._project_root = project_root
+    config._config_file_found = config_found
     return config
+
+
+def init_fitness_config(
+    project_root: Path,
+    filename: str = "fitness_functions.yaml",
+    force: bool = False,
+) -> Path:
+    """Scaffold an annotated starter fitness_functions.yaml configuration file."""
+    target = project_root / filename
+    if target.exists() and not force:
+        raise FileExistsError(
+            f"'{target.name}' already exists in {project_root}. Use --force to overwrite."
+        )
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text(STARTER_CONFIG_YAML, encoding="utf-8")
+    return target
 
 
 def _ensure_under_root(path: Path, root: Path) -> Path:

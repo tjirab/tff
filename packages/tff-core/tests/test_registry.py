@@ -478,13 +478,13 @@ def test_sqlmesh_runner_granular_execution() -> None:
     mapped_models = {
         "sqlmesh_example.src_model": ModelRepresentation(
             name="sqlmesh_example.src_model",
-            path="models/sources/src_model.sql",
+            path="models/staging/src_model.sql",
             dialect="duckdb",
             depends_on={"sqlmesh_example.violating_model"},
         ),
         "sqlmesh_example.violating_model": ModelRepresentation(
             name="sqlmesh_example.violating_model",
-            path="models/derived/violating_model.sql",
+            path="models/marts/violating_model.sql",
             dialect="duckdb",
         ),
     }

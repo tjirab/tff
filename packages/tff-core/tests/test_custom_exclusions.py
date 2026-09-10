@@ -9,13 +9,13 @@ def test_custom_exclusions_checker_skips_missing_models(tmp_path: Path) -> None:
     exclusions_file = tmp_path / "exclusions.json"
     exclusions_file.write_text(json.dumps({
         "exclusions": [
-            {"source_layer": "core", "target_layer": "derived"}
+            {"source_layer": "core", "target_layer": "staging"}
         ]
     }), encoding="utf-8")
 
     model = ModelRepresentation(
-        name="derived.model_a",
-        path="models/derived/model_a.sql",
+        name="staging.model_a",
+        path="models/staging/model_a.sql",
         dialect="bigquery",
         depends_on={"core.model_b"},
     )
@@ -30,13 +30,13 @@ def test_custom_exclusions_checker_detects_violations(tmp_path: Path) -> None:
     exclusions_file = tmp_path / "exclusions.json"
     exclusions_file.write_text(json.dumps({
         "exclusions": [
-            {"source_layer": "core", "target_layer": "derived"}
+            {"source_layer": "core", "target_layer": "staging"}
         ]
     }), encoding="utf-8")
 
     model_a = ModelRepresentation(
-        name="derived.model_a",
-        path="models/derived/model_a.sql",
+        name="staging.model_a",
+        path="models/staging/model_a.sql",
         dialect="bigquery",
         depends_on={"core.model_b"},
     )
@@ -47,7 +47,7 @@ def test_custom_exclusions_checker_detects_violations(tmp_path: Path) -> None:
     )
 
     models = {
-        "derived.model_a": model_a,
+        "staging.model_a": model_a,
         "core.model_b": model_b,
     }
 
@@ -310,17 +310,17 @@ def test_custom_exclusions_top_level_config(tmp_path: Path):
     config = FitnessFunctionsConfig(
         exclusions_path=str(exclusions_file),
         exclusions=[
-            CustomExclusionRule(source_layer="core", target_layer="derived")
+            CustomExclusionRule(source_layer="core", target_layer="staging")
         ],
         allowed_exceptions=[
-            AllowedExceptionRule(model="derived.model_a", dependency="core.model_allowed")
+            AllowedExceptionRule(model="staging.model_a", dependency="core.model_allowed")
         ],
     )
     config._project_root = tmp_path
 
     model_a = ModelRepresentation(
-        name="derived.model_a",
-        path="models/derived/model_a.sql",
+        name="staging.model_a",
+        path="models/staging/model_a.sql",
         dialect="bigquery",
         depends_on={"core.model_b", "core.model_allowed"},
     )
@@ -335,7 +335,7 @@ def test_custom_exclusions_top_level_config(tmp_path: Path):
         dialect="bigquery",
     )
     models = {
-        "derived.model_a": model_a,
+        "staging.model_a": model_a,
         "core.model_b": model_b,
         "core.model_allowed": model_allowed,
     }

@@ -11,7 +11,12 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from tff.core.adapter import PipelineAdapter, detect_provider, get_adapter
-from tff.core.config import load_fitness_config, resolve_project_path
+from tff.core.config import (
+    MISSING_CONFIG_NOTICE,
+    init_fitness_config,
+    load_fitness_config,
+    resolve_project_path,
+)
 from tff.core.context import set_ff_config
 from tff.core.report import render_lint_report
 
@@ -214,12 +219,12 @@ class TFFArgumentParser(argparse.ArgumentParser):
         # If the prog is already subcommand-specific (e.g. 'tff lint'), use it.
         # Otherwise, check the arguments to see if a subcommand was targetted.
         if hint_cmd == "tff" and TFFArgumentParser._current_argv is not None:
-            for sub in ("lint", "health", "info", "help", "stats"):
+            for sub in ("lint", "health", "info", "help", "stats", "docs", "init"):
                 if sub in TFFArgumentParser._current_argv:
                     hint_cmd = f"tff {sub}"
                     break
         elif hint_cmd == "tff":
-            for sub in ("lint", "health", "info", "help", "stats"):
+            for sub in ("lint", "health", "info", "help", "stats", "docs", "init"):
                 if sub in sys.argv:
                     hint_cmd = f"tff {sub}"
                     break
@@ -475,11 +480,30 @@ def main(argv: list[str] | None = None) -> int:
         help="Disable saving run execution logs to .tff_logs/",
     )
 
+    # Init subcommand
+    init_parser = subparsers.add_parser(
+        "init",
+        help="Scaffold an annotated starter fitness_functions.yaml configuration file",
+        description="Scaffold an annotated starter fitness_functions.yaml configuration file in the project directory",
+    )
+    init_parser.add_argument(
+        "--project",
+        type=Path,
+        default=Path.cwd(),
+        help="Project root directory (default: current directory)",
+    )
+    init_parser.add_argument(
+        "--force",
+        "-f",
+        action="store_true",
+        help="Overwrite existing fitness_functions.yaml if present",
+    )
+
     help_parser = subparsers.add_parser("help", help="Show help details for a command")
     help_parser.add_argument(
         "subcommand",
         nargs="?",
-        choices=["lint", "health", "info", "stats", "docs"],
+        choices=["lint", "health", "info", "stats", "docs", "init"],
         help="Specific command to get help for",
     )
 
@@ -496,6 +520,8 @@ def main(argv: list[str] | None = None) -> int:
             stats_parser.print_help()
         elif args.subcommand == "docs":
             docs_parser.print_help()
+        elif args.subcommand == "init":
+            init_parser.print_help()
         else:
             parser.print_help()
         return 0
@@ -824,6 +850,22 @@ def main(argv: list[str] | None = None) -> int:
             print(f"Error generating dashboard: {e}", file=sys.stderr)
             return 1
 
+    if args.command == "init":
+        project_root = args.project.resolve()
+        target_path = project_root / "fitness_functions.yaml"
+        file_existed = target_path.exists()
+        try:
+            init_fitness_config(project_root, force=getattr(args, "force", False))
+            action = "Overwrote" if file_existed else "Created"
+            print(f"{action} {target_path.name} in {project_root}")
+            return 0
+        except FileExistsError as e:
+            print(f"Error: {e}", file=sys.stderr)
+            return 1
+        except Exception as e:
+            print(f"Error creating configuration file: {e}", file=sys.stderr)
+            return 1
+
     if args.command in ("lint", "health"):
         logging.basicConfig(level=logging.ERROR)
         project_root = args.project.resolve()
@@ -853,6 +895,9 @@ def main(argv: list[str] | None = None) -> int:
         except Exception as e:
             print(f"Error loading configuration: {e}", file=sys.stderr)
             return 1
+
+        if not getattr(config, "_config_file_found", True) and not getattr(args, "json", False):
+            print(MISSING_CONFIG_NOTICE, file=sys.stderr)
 
         set_ff_config(config)
         if args.command == "lint":
