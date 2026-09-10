@@ -1,0 +1,185 @@
+{
+  "metadata": {
+    "dbt_schema_version": "https://schemas.getdbt.com/dbt/manifest/v12.json",
+    "project_name": "minimal_dbt_project",
+    "adapter_type": "duckdb"
+  },
+  "nodes": {
+    "model.minimal_dbt_project.stg_customers": {
+      "resource_type": "model",
+      "name": "stg_customers",
+      "original_file_path": "models/staging/stg_customers.sql",
+      "columns": {
+        "customer_id": {
+          "name": "customer_id",
+          "data_type": "INTEGER"
+        },
+        "name": {
+          "name": "name",
+          "data_type": "VARCHAR"
+        },
+        "email": {
+          "name": "email",
+          "data_type": "VARCHAR"
+        }
+      },
+      "config": {
+        "materialized": "view"
+      },
+      "meta": {
+        "owner": "analytics-engineering",
+        "grain": [
+          "customer_id"
+        ]
+      },
+      "description": "Cleaned customer records",
+      "depends_on": {
+        "nodes": []
+      }
+    },
+    "model.minimal_dbt_project.stg_orders": {
+      "resource_type": "model",
+      "name": "stg_orders",
+      "original_file_path": "models/staging/stg_orders.sql",
+      "columns": {
+        "order_id": {
+          "name": "order_id",
+          "data_type": "INTEGER"
+        },
+        "customer_id": {
+          "name": "customer_id",
+          "data_type": "INTEGER"
+        },
+        "order_date": {
+          "name": "order_date",
+          "data_type": "DATE"
+        },
+        "amount": {
+          "name": "amount",
+          "data_type": "DECIMAL"
+        }
+      },
+      "config": {
+        "materialized": "view"
+      },
+      "meta": {
+        "owner": "analytics-engineering",
+        "grain": [
+          "order_id"
+        ]
+      },
+      "description": "Cleaned orders staging model",
+      "depends_on": {
+        "nodes": []
+      }
+    },
+    "model.minimal_dbt_project.int_customer_orders": {
+      "resource_type": "model",
+      "name": "int_customer_orders",
+      "original_file_path": "models/intermediate/int_customer_orders.sql",
+      "columns": {
+        "customer_id": {
+          "name": "customer_id",
+          "data_type": "INTEGER"
+        },
+        "order_count": {
+          "name": "order_count",
+          "data_type": "BIGINT"
+        },
+        "total_spent": {
+          "name": "total_spent",
+          "data_type": "DECIMAL"
+        }
+      },
+      "config": {
+        "materialized": "view"
+      },
+      "meta": {
+        "owner": "analytics-engineering",
+        "grain": [
+          "customer_id"
+        ]
+      },
+      "description": "Order metrics aggregated by customer",
+      "depends_on": {
+        "nodes": [
+          "model.minimal_dbt_project.stg_orders"
+        ]
+      }
+    },
+    "model.minimal_dbt_project.dim_customers": {
+      "resource_type": "model",
+      "name": "dim_customers",
+      "original_file_path": "models/marts/marketing/dim_customers.sql",
+      "columns": {
+        "customer_id": {
+          "name": "customer_id",
+          "data_type": "INTEGER"
+        },
+        "name": {
+          "name": "name",
+          "data_type": "VARCHAR"
+        },
+        "email": {
+          "name": "email",
+          "data_type": "VARCHAR"
+        },
+        "order_count": {
+          "name": "order_count",
+          "data_type": "BIGINT"
+        },
+        "total_spent": {
+          "name": "total_spent",
+          "data_type": "DECIMAL"
+        }
+      },
+      "config": {
+        "materialized": "table"
+      },
+      "meta": {
+        "owner": "marketing",
+        "grain": [
+          "customer_id"
+        ]
+      },
+      "description": "Customer dimension with aggregated order statistics",
+      "depends_on": {
+        "nodes": [
+          "model.minimal_dbt_project.stg_customers",
+          "model.minimal_dbt_project.int_customer_orders"
+        ]
+      }
+    },
+    "test.minimal_dbt_project.not_null_dim_customers_customer_id": {
+      "resource_type": "test",
+      "name": "not_null_dim_customers_customer_id",
+      "test_metadata": {
+        "name": "not_null",
+        "kwargs": {
+          "column_name": "customer_id"
+        }
+      },
+      "depends_on": {
+        "nodes": [
+          "model.minimal_dbt_project.dim_customers"
+        ]
+      }
+    },
+    "test.minimal_dbt_project.unique_dim_customers_customer_id": {
+      "resource_type": "test",
+      "name": "unique_dim_customers_customer_id",
+      "test_metadata": {
+        "name": "unique_values",
+        "kwargs": {
+          "column_name": "customer_id"
+        }
+      },
+      "depends_on": {
+        "nodes": [
+          "model.minimal_dbt_project.dim_customers"
+        ]
+      }
+    }
+  },
+  "sources": {}
+}

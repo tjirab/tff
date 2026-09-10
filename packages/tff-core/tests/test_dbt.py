@@ -424,3 +424,15 @@ def test_dbt_metadata_checks_coverage(tmp_path: Path):
     assert findings_by_model["model_missing_unique"] == ["nomissinguniquevalues"]
 
 
+def test_example_minimal_dbt_project_zero_config():
+    example_root = Path(__file__).resolve().parents[3] / "examples" / "minimal-dbt-project"
+    assert (example_root / "dbt_project.yml").exists()
+    assert not (example_root / "fitness_functions.yaml").exists()
+
+    findings, models_checked, selected = run_all_checks(project_root=example_root)
+    assert models_checked == 4
+    # Ensure layer_integrity passes (zero violations) under default staging -> intermediate -> core -> marts conventions
+    layer_violations = [f for f in findings if f.check == "layer_integrity"]
+    assert len(layer_violations) == 0
+
+
