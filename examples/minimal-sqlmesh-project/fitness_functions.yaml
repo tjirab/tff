@@ -60,3 +60,17 @@ rules:
     unique_values: true
   filename_equals_modelname:
     enabled: true
+
+# Health scoring configuration (custom weights and failure penalties)
+health:
+  weights:
+    layer_integrity: 3.0       # Prioritize layer integrity boundaries
+    schema_contracts: 2.0      # Prioritize cross-model contract parity
+    custom_exclusions: 1.5
+    ban_select_star: 1.0
+  penalties:
+    error: 1.0
+    warning: 0.5
+    project_error: 100.0
+    project_warning: 50.0
+
