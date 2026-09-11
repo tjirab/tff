@@ -1,5 +1,4 @@
 from tff.core.config import FitnessFunctionsConfig
-from tff.core.context import set_ff_config
 from tff.core.model import ModelRepresentation
 from tff.core.rules.mart_naming import MartModelNamingConvention
 
@@ -9,9 +8,8 @@ def test_mart_model_naming_convention():
     config.rules.mart_naming.enabled = True
     config.rules.mart_naming.layer_name = "marts"
     config.rules.mart_naming.rule = "prefix_with_subdirectory"
-    set_ff_config(config)
 
-    rule = MartModelNamingConvention()
+    rule = MartModelNamingConvention(config=config)
 
     # 1. Mart model violating naming convention
     model_violation = ModelRepresentation(

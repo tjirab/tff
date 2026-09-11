@@ -26,13 +26,11 @@ def test_sql_complexity_rule_missing_or_non_sql_file() -> None:
     from tff.core.rules.sql_complexity import SqlComplexity
     from tff.core.model import ModelRepresentation
     from tff.core.config import FitnessFunctionsConfig
-    from tff.core.context import set_ff_config
 
     config = FitnessFunctionsConfig()
     config.rules.sql_complexity.enabled = True
-    set_ff_config(config)
 
-    rule = SqlComplexity()
+    rule = SqlComplexity(config=config)
 
     # Case 1: non-existent file
     model1 = ModelRepresentation(
@@ -69,13 +67,11 @@ def test_sql_complexity_rule_read_exception(tmp_path: Path) -> None:
     from tff.core.rules.sql_complexity import SqlComplexity
     from tff.core.model import ModelRepresentation
     from tff.core.config import FitnessFunctionsConfig
-    from tff.core.context import set_ff_config
 
     config = FitnessFunctionsConfig()
     config.rules.sql_complexity.enabled = True
-    set_ff_config(config)
 
-    rule = SqlComplexity()
+    rule = SqlComplexity(config=config)
 
     # Create a directory ending with .sql to raise IsADirectoryError upon read
     invalid_dir = tmp_path / "invalid_model.sql"

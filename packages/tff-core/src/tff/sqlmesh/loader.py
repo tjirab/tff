@@ -16,7 +16,6 @@ from sqlmesh.utils import UniqueKeyDict
 from sqlmesh.utils.metaprogramming import import_python_file
 
 from tff.core.config import FitnessFunctionsConfig, load_fitness_config
-from tff.core.context import set_ff_config
 from tff.core.model import ModelRepresentation
 from tff.core.rules import ALL_RULES as CORE_RULES
 
@@ -101,7 +100,6 @@ class FitnessLoader(SqlMeshLoader):
             config_path=config_path,
             overrides=overrides or None,
         )
-        set_ff_config(ff_config)
         self._ff_config = ff_config
 
     def _load_linting_rules(self) -> RuleSet:

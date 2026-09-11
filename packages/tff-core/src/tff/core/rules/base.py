@@ -21,11 +21,13 @@ class Rule:
 
     @property
     def config(self) -> FitnessFunctionsConfig:
-        if self._config is not None:
-            return self._config
-        from tff.core.context import get_ff_config
+        cfg = getattr(self, "_config", None)
+        if cfg is None:
+            from tff.core.config import FitnessFunctionsConfig
 
-        return get_ff_config()
+            cfg = FitnessFunctionsConfig()
+            self._config = cfg
+        return cfg
 
     @config.setter
     def config(self, value: FitnessFunctionsConfig | None) -> None:

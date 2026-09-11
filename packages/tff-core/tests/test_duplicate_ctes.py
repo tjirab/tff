@@ -2,14 +2,12 @@ from pathlib import Path
 
 from tff.core.checks.duplicate_ctes import collect_duplicate_cte_findings
 from tff.core.config import FitnessFunctionsConfig
-from tff.core.context import set_ff_config
 from tff.core.model import ModelRepresentation
 
 
 def test_duplicate_ctes_no_duplicates():
     config = FitnessFunctionsConfig()
     config.checks.duplicate_ctes.enabled = True
-    set_ff_config(config)
 
     model1 = ModelRepresentation(
         name="model1",
@@ -43,7 +41,6 @@ def test_duplicate_ctes_with_duplicates():
     config = FitnessFunctionsConfig()
     config.checks.duplicate_ctes.enabled = True
     config.checks.duplicate_ctes.min_ast_nodes = 8
-    set_ff_config(config)
 
     # Identical query logic inside CTEs in two different models
     query1 = """
@@ -95,7 +92,6 @@ def test_duplicate_ctes_with_duplicates():
 def test_duplicate_ctes_simple_ignored():
     config = FitnessFunctionsConfig()
     config.checks.duplicate_ctes.enabled = True
-    set_ff_config(config)
 
     # Simple import CTEs that should be ignored
     query1 = "WITH imported AS (SELECT * FROM ref('stg_users')) SELECT * FROM imported"
@@ -123,7 +119,6 @@ def test_duplicate_ctes_layer_filtering():
     config = FitnessFunctionsConfig()
     config.checks.duplicate_ctes.enabled = True
     config.checks.duplicate_ctes.skip_layers = ["sources"]
-    set_ff_config(config)
 
     query = """
     WITH complex_cte AS (
@@ -155,7 +150,6 @@ def test_duplicate_ctes_layer_filtering():
 def test_duplicate_ctes_disabled():
     config = FitnessFunctionsConfig()
     config.checks.duplicate_ctes.enabled = False
-    set_ff_config(config)
 
     query = """
     WITH complex_cte AS (
@@ -185,7 +179,6 @@ def test_duplicate_ctes_disabled():
 def test_duplicate_ctes_file_fallbacks(tmp_path: Path):
     config = FitnessFunctionsConfig()
     config.checks.duplicate_ctes.enabled = True
-    set_ff_config(config)
 
     # 1. Nonexistent/invalid path
     model_nonexistent = ModelRepresentation(
@@ -214,7 +207,6 @@ def test_duplicate_ctes_file_fallbacks(tmp_path: Path):
 def test_duplicate_ctes_parse_exception():
     config = FitnessFunctionsConfig()
     config.checks.duplicate_ctes.enabled = True
-    set_ff_config(config)
 
     # Invalid SQL syntax that sqlglot cannot parse
     model_invalid_sql = ModelRepresentation(

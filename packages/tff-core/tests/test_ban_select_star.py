@@ -1,6 +1,5 @@
 from pathlib import Path
 from tff.core.config import FitnessFunctionsConfig
-from tff.core.context import set_ff_config
 from tff.core.model import ModelRepresentation
 from tff.core.rules.ban_select_star import BanSelectStar
 
@@ -10,9 +9,8 @@ def test_ban_select_star_violations(tmp_path: Path):
     config.rules.ban_select_star.enabled = True
     config.rules.ban_select_star.skip_layers = ["sources"]
     config.rules.ban_select_star.only_layers = None
-    set_ff_config(config)
 
-    rule = BanSelectStar()
+    rule = BanSelectStar(config=config)
 
     # 1. Violating model in non-skipped layer (marts)
     sql_file = tmp_path / "models/marts/my_model.sql"
@@ -110,9 +108,8 @@ def test_ban_select_star_violations(tmp_path: Path):
 def test_ban_select_star_error_paths(tmp_path: Path):
     config = FitnessFunctionsConfig()
     config.rules.ban_select_star.enabled = True
-    set_ff_config(config)
 
-    rule = BanSelectStar()
+    rule = BanSelectStar(config=config)
 
     # Non-existent file path
     model_missing = ModelRepresentation(

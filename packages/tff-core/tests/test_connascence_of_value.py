@@ -5,14 +5,12 @@ from tff.core.checks.connascence_of_value import (
     is_ignored_literal,
 )
 from tff.core.config import FitnessFunctionsConfig
-from tff.core.context import set_ff_config
 from tff.core.model import ModelRepresentation
 
 
 def test_cov_no_duplicates():
     config = FitnessFunctionsConfig()
     config.checks.connascence_of_value.enabled = True
-    set_ff_config(config)
 
     model1 = ModelRepresentation(
         name="model1",
@@ -36,7 +34,6 @@ def test_cov_with_duplicates():
     config = FitnessFunctionsConfig()
     config.checks.connascence_of_value.enabled = True
     config.checks.connascence_of_value.min_occurrences = 2
-    set_ff_config(config)
 
     model1 = ModelRepresentation(
         name="model1",
@@ -74,7 +71,6 @@ def test_cov_ignored_values():
     config.checks.connascence_of_value.enabled = True
     # 'active' is now ignored
     config.checks.connascence_of_value.ignored_values = ["0", "1", "", "active"]
-    set_ff_config(config)
 
     model1 = ModelRepresentation(
         name="model1",
@@ -97,7 +93,6 @@ def test_cov_ignored_values():
 def test_cov_negated_literals():
     config = FitnessFunctionsConfig()
     config.checks.connascence_of_value.enabled = True
-    set_ff_config(config)
 
     model1 = ModelRepresentation(
         name="model1",
@@ -121,7 +116,6 @@ def test_cov_negated_literals():
 def test_cov_limit_offset_ignored():
     config = FitnessFunctionsConfig()
     config.checks.connascence_of_value.enabled = True
-    set_ff_config(config)
 
     # 100 and 10 are duplicated in LIMIT and OFFSET
     model1 = ModelRepresentation(
@@ -146,7 +140,6 @@ def test_cov_layer_filtering():
     config = FitnessFunctionsConfig()
     config.checks.connascence_of_value.enabled = True
     config.checks.connascence_of_value.skip_layers = ["sources"]
-    set_ff_config(config)
 
     # sources/model1.sql is in 'sources' layer, marts/model2.sql is in 'marts' layer.
     model1 = ModelRepresentation(
@@ -171,7 +164,6 @@ def test_cov_layer_filtering():
 def test_cov_disabled():
     config = FitnessFunctionsConfig()
     config.checks.connascence_of_value.enabled = False
-    set_ff_config(config)
 
     model1 = ModelRepresentation(
         name="model1",
@@ -194,7 +186,6 @@ def test_cov_disabled():
 def test_cov_unparseable_query():
     config = FitnessFunctionsConfig()
     config.checks.connascence_of_value.enabled = True
-    set_ff_config(config)
 
     # model with unparseable query (syntax error causing parsed to be None)
     model1 = ModelRepresentation(
@@ -218,7 +209,6 @@ def test_cov_unparseable_query():
 def test_cov_duplicate_within_single_model():
     config = FitnessFunctionsConfig()
     config.checks.connascence_of_value.enabled = True
-    set_ff_config(config)
 
     # status = 'active' occurs twice in model1, but only once in model2.
     model1 = ModelRepresentation(
@@ -243,7 +233,6 @@ def test_cov_multiple_other_occurrences():
     config = FitnessFunctionsConfig()
     config.checks.connascence_of_value.enabled = True
     config.checks.connascence_of_value.min_occurrences = 2
-    set_ff_config(config)
 
     # literal duplicated across 4 models (so 3 other occurrences for each)
     models = {}
@@ -266,7 +255,6 @@ def test_cov_multiple_other_occurrences():
 def test_cov_structural_sql_literals_ignored():
     config = FitnessFunctionsConfig()
     config.checks.connascence_of_value.enabled = True
-    set_ff_config(config)
 
     queries = [
         "SELECT md5(a || '|' || b) as uuid FROM {{ ref('stg_a') }}",
@@ -302,7 +290,6 @@ def test_cov_domain_reuse_fixtures_warn():
     config = FitnessFunctionsConfig()
     config.checks.connascence_of_value.enabled = True
     config.checks.connascence_of_value.min_occurrences = 2
-    set_ff_config(config)
 
     # 1. WHERE status = 'premium'
     model1 = ModelRepresentation(
@@ -345,7 +332,6 @@ def test_cov_domain_reuse_fixtures_warn():
 def test_cov_ignored_punctuation():
     config = FitnessFunctionsConfig()
     config.checks.connascence_of_value.enabled = True
-    set_ff_config(config)
 
     model1 = ModelRepresentation(
         name="model1",
@@ -386,7 +372,6 @@ def test_cov_ignored_punctuation():
 def test_cov_negated_with_parentheses():
     config = FitnessFunctionsConfig()
     config.checks.connascence_of_value.enabled = True
-    set_ff_config(config)
 
     model1 = ModelRepresentation(
         name="model1",

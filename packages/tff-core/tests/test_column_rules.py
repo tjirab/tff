@@ -1,5 +1,4 @@
 from tff.core.config import ColumnTypeRuleEntry, FitnessFunctionsConfig
-from tff.core.context import set_ff_config
 from tff.core.model import ModelRepresentation
 from tff.core.rules.column_names import ColumnNames
 from tff.core.rules.column_types import ColumnTypes
@@ -12,7 +11,6 @@ def test_column_names_multiple_replacements():
         "api_request": "api_call",
         "user_dt": "user_date",
     }
-    set_ff_config(config)
 
     model = ModelRepresentation(
         name="test_model",
@@ -26,7 +24,7 @@ def test_column_names_multiple_replacements():
         is_symbolic=False,
     )
 
-    rule = ColumnNames()
+    rule = ColumnNames(config=config)
     violation = rule.check_model(model)
 
     assert violation is not None
@@ -43,7 +41,6 @@ def test_column_names_regex_replacement():
         r"^cust_": "customer_",
         r"_num$": "_count",
     }
-    set_ff_config(config)
 
     model = ModelRepresentation(
         name="test_regex_model",
@@ -57,7 +54,7 @@ def test_column_names_regex_replacement():
         is_symbolic=False,
     )
 
-    rule = ColumnNames()
+    rule = ColumnNames(config=config)
     violation = rule.check_model(model)
 
     assert violation is not None
@@ -74,7 +71,6 @@ def test_column_types_multiple_rules():
         ColumnTypeRuleEntry(name="id_is_text", pattern="_id$", data_type="text"),
         ColumnTypeRuleEntry(name="date_is_date", pattern="_date$", data_type="date"),
     ]
-    set_ff_config(config)
 
     model = ModelRepresentation(
         name="test_model",
@@ -88,7 +84,7 @@ def test_column_types_multiple_rules():
         is_symbolic=False,
     )
 
-    rule = ColumnTypes()
+    rule = ColumnTypes(config=config)
     violation = rule.check_model(model)
 
     assert violation is not None

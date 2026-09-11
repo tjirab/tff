@@ -5,7 +5,6 @@ from unittest.mock import MagicMock
 import pytest
 
 from tff.core.config import FitnessFunctionsConfig
-from tff.core.context import set_ff_config
 from tff.core.model import ModelRepresentation
 from tff.core.registry import (
     CheckDefinition,
@@ -134,7 +133,6 @@ def test_check_definition_is_enabled() -> None:
 def test_check_definition_run(tmp_path: Path) -> None:
     cfg = FitnessFunctionsConfig()
     cfg.rules.ban_select_star.enabled = True
-    set_ff_config(cfg)
 
     sql_file = tmp_path / "models/marts/test_model.sql"
     sql_file.parent.mkdir(parents=True, exist_ok=True)
@@ -323,7 +321,6 @@ def test_check_registry_run_checks_helper(tmp_path: Path) -> None:
 
     cfg = FitnessFunctionsConfig()
     cfg.rules.ban_select_star.enabled = True
-    set_ff_config(cfg)
 
     sql_file = tmp_path / "model.sql"
     sql_file.write_text("SELECT * FROM t", encoding="utf-8")
@@ -364,7 +361,6 @@ def test_check_registry_metadata_dictionaries() -> None:
 def test_dbt_runner_granular_execution(tmp_path: Path) -> None:
     cfg = FitnessFunctionsConfig()
     cfg.rules.ban_select_star.enabled = True
-    set_ff_config(cfg)
 
     sql_file = tmp_path / "model.sql"
     sql_file.write_text("SELECT * FROM t", encoding="utf-8")
@@ -372,7 +368,7 @@ def test_dbt_runner_granular_execution(tmp_path: Path) -> None:
     models = {"m": model}
 
     # Test collect_dbt_rules_findings direct call
-    rule_findings = dbt_runner.collect_dbt_rules_findings(models)
+    rule_findings = dbt_runner.collect_dbt_rules_findings(models, config=cfg)
     assert len(rule_findings) >= 1
 
     # Test _check_enabled
@@ -398,7 +394,6 @@ def test_dbt_runner_granular_execution(tmp_path: Path) -> None:
 def test_dataform_runner_granular_execution(tmp_path: Path) -> None:
     cfg = FitnessFunctionsConfig()
     cfg.rules.ban_select_star.enabled = True
-    set_ff_config(cfg)
 
     sql_file = tmp_path / "model.sqlx"
     sql_file.write_text("SELECT * FROM t", encoding="utf-8")
@@ -406,7 +401,7 @@ def test_dataform_runner_granular_execution(tmp_path: Path) -> None:
     models = {"m": model}
 
     # Test collect_dataform_rules_findings direct call
-    rule_findings = dataform_runner.collect_dataform_rules_findings(models)
+    rule_findings = dataform_runner.collect_dataform_rules_findings(models, config=cfg)
     assert len(rule_findings) >= 1
 
     # Test _check_enabled
@@ -433,7 +428,6 @@ def test_sqlmesh_runner_granular_execution() -> None:
     from sqlmesh.core.linter.definition import AnnotatedRuleViolation
 
     cfg = FitnessFunctionsConfig()
-    set_ff_config(cfg)
 
     # Test _check_enabled
     assert sqlmesh_runner._check_enabled(cfg, "layer_integrity") is True
@@ -554,7 +548,6 @@ def test_sqlmesh_runner_granular_execution() -> None:
 def test_sqlmesh_runner_fallback_without_context(tmp_path: Path) -> None:
     cfg = FitnessFunctionsConfig()
     cfg.rules.ban_select_star.enabled = True
-    set_ff_config(cfg)
 
     sql_file = tmp_path / "model.sql"
     sql_file.write_text("SELECT * FROM t", encoding="utf-8")
@@ -578,7 +571,6 @@ def test_sqlmesh_runner_initializes_context_when_missing(tmp_path: Path) -> None
     from unittest.mock import patch
 
     cfg = FitnessFunctionsConfig()
-    set_ff_config(cfg)
 
     mock_context = MagicMock()
     mock_context.models = {}
@@ -587,6 +579,7 @@ def test_sqlmesh_runner_initializes_context_when_missing(tmp_path: Path) -> None
     with patch("tff.sqlmesh.runner.Context", return_value=mock_context) as mock_ctx_cls:
         findings, count, selected = sqlmesh_runner.run_all_checks(
             project_root=tmp_path,
+            config=cfg,
             checks=["sqlmesh"],
         )
         assert mock_ctx_cls.called

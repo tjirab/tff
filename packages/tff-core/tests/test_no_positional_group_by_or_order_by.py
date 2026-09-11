@@ -1,6 +1,5 @@
 from pathlib import Path
 from tff.core.config import FitnessFunctionsConfig
-from tff.core.context import set_ff_config
 from tff.core.model import ModelRepresentation
 from tff.core.rules.no_positional_group_by_or_order_by import (
     NoPositionalGroupByOrOrderBy,
@@ -12,9 +11,8 @@ def test_no_positional_group_by_or_order_by_violations(tmp_path: Path):
     config.rules.no_positional_group_by_or_order_by.enabled = True
     config.rules.no_positional_group_by_or_order_by.skip_layers = ["sources"]
     config.rules.no_positional_group_by_or_order_by.only_layers = None
-    set_ff_config(config)
 
-    rule = NoPositionalGroupByOrOrderBy()
+    rule = NoPositionalGroupByOrOrderBy(config=config)
 
     # 1. Violating GROUP BY in non-skipped layer (marts)
     sql_file = tmp_path / "models/marts/my_model.sql"
@@ -88,7 +86,6 @@ def test_no_positional_group_by_or_order_by_violations(tmp_path: Path):
 
     # 6. Rule disabled in config
     config.rules.no_positional_group_by_or_order_by.enabled = False
-    set_ff_config(config)
     violation_disabled = rule.check_model(model)
     assert violation_disabled is None
 
@@ -96,9 +93,8 @@ def test_no_positional_group_by_or_order_by_violations(tmp_path: Path):
 def test_no_positional_group_by_or_order_by_error_paths(tmp_path: Path):
     config = FitnessFunctionsConfig()
     config.rules.no_positional_group_by_or_order_by.enabled = True
-    set_ff_config(config)
 
-    rule = NoPositionalGroupByOrOrderBy()
+    rule = NoPositionalGroupByOrOrderBy(config=config)
 
     # Non-existent file path
     model_missing = ModelRepresentation(

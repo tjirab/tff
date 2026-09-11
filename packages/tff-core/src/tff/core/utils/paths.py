@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from tff.core.config import DEFAULT_LAYER_ORDER
+
 
 def _find_base_index(parts: tuple[str, ...]) -> int:
     for base in ("models", "definitions"):
@@ -17,8 +19,7 @@ def get_layer_from_path(path: str, layer_order: list[str] | None = None) -> str 
     try:
         models_index = _find_base_index(parts)
         if layer_order is None:
-            from tff.core.context import get_ff_config
-            layer_order = get_ff_config().layers.order
+            layer_order = DEFAULT_LAYER_ORDER
 
         if layer_order:
             for part in parts[models_index + 1:]:
@@ -58,8 +59,7 @@ def get_layer_and_domain(
     try:
         models_index = _find_base_index(parts)
         if layer_order is None:
-            from tff.core.context import get_ff_config
-            layer_order = get_ff_config().layers.order
+            layer_order = DEFAULT_LAYER_ORDER
 
         layer = None
         layer_index = None
@@ -114,8 +114,7 @@ def resolve_layer_and_domain(
     model, layer_order: list[str] | None = None, marts_layer: str = "marts"
 ) -> tuple[str | None, str | None]:
     if layer_order is None:
-        from tff.core.context import get_ff_config
-        layer_order = get_ff_config().layers.order
+        layer_order = DEFAULT_LAYER_ORDER
 
     # 1. Try path first
     layer = None
