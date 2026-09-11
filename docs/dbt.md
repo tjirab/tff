@@ -140,7 +140,10 @@ repos:
 
 ## GitHub Actions Integration
 
-To enforce TFF on pull requests with automated PR summary comments and baseline health score diffs, use the official GitHub Action:
+To enforce TFF on pull requests with automated PR summary comments and baseline health score diffs, use the official GitHub Action.
+
+> [!IMPORTANT]
+> **Compilation Requirement**: dbt relies on `target/manifest.json`. You must run `dbt compile` or `dbt parse` in your workflow before calling the TFF action so the current PR's manifest exists.
 
 ```yaml
 # .github/workflows/tff.yml
@@ -159,7 +162,20 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          fetch-depth: 0  # Required for health score diff calculation
+          fetch-depth: 0  # Required for git diff and baseline comparisons
+
+      - name: Setup Python & Dependencies
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dbt & dependencies
+        run: |
+          pip install dbt-core dbt-snowflake  # Or your specific dbt adapter
+          dbt deps
+
+      - name: Compile dbt Project
+        run: dbt compile  # Generates target/manifest.json for TFF
 
       - uses: tjirab/tff@v1
         with:
@@ -167,9 +183,13 @@ jobs:
           provider: "dbt"
           fail-under: "80.0"
           fail-level: "error"
-          only-changed: "true"  # Only gate models modified in this PR
+          only-changed: "true"  # 👈 Only gate models modified in this PR
           comment-pr: "true"
 ```
+
+### How `only-changed: true` and Baseline Diffing Work with dbt
+* **Modified-Files Gating (`only-changed: true`)**: TFF runs `git diff origin/main...HEAD` directly against git commits to detect changed SQL files. It filters findings in your compiled `target/manifest.json` to only those files. **This works out of the box and does NOT require `main` to be compiled**.
+* **Baseline Score Diffing (`+X% vs main`)**: Because `target/` is gitignored, checking out `origin/main` creates a clean worktree without `target/manifest.json`. By default, TFF gracefully skips the baseline score delta without failing the workflow. To enable baseline score diffing, cache your production manifest or pre-compile `main` using the patterns detailed in the [CI/CD Guide](ci_cd.md#4-dbt-the-manifestjson-challenge--ci-best-practices).
 
 For advanced inputs, monorepo matrix setups, and PR comment details, see the [CI/CD Guide](ci_cd.md).
 

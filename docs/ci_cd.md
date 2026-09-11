@@ -114,6 +114,72 @@ Under the hood:
 
 ---
 
+### Engine Compilation & Baseline Comparison (dbt, SQLMesh, Dataform)
+
+When running in CI/CD, different transformation engines handle metadata, DAG compilation, and base branch comparisons differently.
+
+#### Engine Comparison Matrix
+
+| Engine | Compilation Required? | How Feature Branch is Evaluated | How Base Branch (`main`) is Evaluated | Does `only-changed: true` require compiling `main`? |
+| :--- | :--- | :--- | :--- | :--- |
+| **SQLMesh** | ❌ **No** | Python AST & SQLGlot semantic parser (`Context`) | Independent in-memory `Context` on temp worktree | ❌ **No** (`git diff` only) |
+| **Dataform** | ⚠️ **Optional** | Precompiled manifest, CLI on-the-fly, or static `.sqlx` fallback | Static `.sqlx` AST parser or on-the-fly CLI compile | ❌ **No** (`git diff` only) |
+| **dbt** | ✅ **Yes** (`dbt compile`) | Reads local `target/manifest.json` | Requires `manifest.json` (or gracefully skips baseline delta) | ❌ **No** (`git diff` only) |
+
+#### 1. Crucial Distinction: Gating vs. Score Diffing
+
+It is important to separate **changed-files gating** from **baseline score diffing**:
+
+* **`only-changed: true` Gating**:
+  Uses Git commit history (`git diff origin/${base_ref}...HEAD --name-only`) to find which models/files were touched in the PR, and filters the violations in the current project.
+  **This does NOT require compiling `main` or having a manifest for `main`**. It works immediately out of the box for dbt, SQLMesh, and Dataform alike.
+* **Baseline Score Diffing (`diff-against-base: true`)**:
+  Computes the health score delta (`+2.5% vs main 📈` or `-1.0% vs main 📉`) by checking out `origin/${base_ref}` in a detached temporary git worktree.
+
+#### 2. SQLMesh: Zero-Compilation Native Evaluation
+SQLMesh parses `.sql` and `.py` model definitions directly into an AST using SQLGlot and Python's semantic engine.
+* **In-Memory Analysis**: TFF instantiates an in-memory SQLMesh `Context` via `FitnessLoader` on both the feature branch and the temporary git worktree for `main`.
+* **Zero Credentials**: No warehouse connection or database profile is required.
+* **Instant Diffing**: Baseline comparison against `main` runs automatically and instantly in memory.
+
+#### 3. Dataform: 3-Tier Resolution Strategy
+TFF resolves Dataform projects via a 3-tier fallback strategy:
+1. **Tier 1 (Cached Manifest)**: If `compilation_result.json` exists, TFF parses it.
+2. **Tier 2 (On-the-Fly CLI Compilation)**: If `dataform` CLI or `npx @dataform/cli` is present on `PATH`, TFF compiles `main` in memory.
+3. **Tier 3 (Zero-Tooling Static Parser)**: If neither a manifest nor Node/Dataform CLI exists, TFF uses its built-in `.sqlx` parser (`_load_from_sqlx_files`) to extract `config { ... }` blocks and dependencies directly from source files.
+
+Both branches evaluate seamlessly without requiring a compiled artifact committed to Git.
+
+#### 4. dbt: The `manifest.json` Challenge & CI Best Practices
+dbt relies on Jinja macros, package dispatch (`dbt_utils`), and adapter configs that require `dbt compile` or `dbt parse` to generate `target/manifest.json`.
+
+* **Feature Branch**: You must compile the current PR branch before running TFF:
+  ```yaml
+  - name: Compile dbt
+    run: dbt compile
+
+  - name: Run TFF Action
+    uses: tjirab/tff@v1
+    with:
+      provider: "dbt"
+      only-changed: "true"
+  ```
+* **Base Branch (`main`)**: Because `target/` is gitignored by default, checking out `origin/main` in a temporary worktree creates a clean directory with no `target/manifest.json`.
+  * **Default Behavior**: TFF catches the missing manifest in `main` gracefully, logs a notice, and skips the baseline score delta. **The workflow does not fail**—the PR is still fully gated on health thresholds and violations in touched files.
+* **Enabling Baseline Score Diffing for dbt**:
+  * **Pattern A: Slim CI Artifact Cache (Recommended)**: Download the latest production `manifest.json` from your CI cache or cloud storage (e.g. S3, GCS) into your baseline directory, matching dbt Slim CI practices (`dbt --defer --state`).
+  * **Pattern B: Pre-compile `main` in Runner**: If warehouse credentials are available in the CI runner:
+    ```yaml
+    - name: Compile Base Branch
+      run: |
+        git checkout ${{ github.base_ref }}
+        dbt compile --target-path target-base
+        git checkout -
+        dbt compile
+    ```
+
+---
+
 ### PR Comment & Annotation Features
 
 #### 1. Interactive PR Summary Comment

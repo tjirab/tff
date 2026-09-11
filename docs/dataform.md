@@ -215,5 +215,8 @@ jobs:
           comment-pr: "true"
 ```
 
+### 3-Tier Resolution Strategy in CI
+Dataform projects support three loading tiers: precompiled `compilation_result.json`, on-the-fly CLI compilation (`dataform compile --json`), and a built-in zero-tooling `.sqlx` static parser. In CI, both the feature branch and `main` baseline comparisons evaluate out of the box without requiring precompiled artifacts committed to Git. For more details, see the [CI/CD Guide](ci_cd.md#3-dataform-3-tier-resolution-strategy).
+
 For advanced inputs, matrix setups, and PR comment details, see the [CI/CD Guide](ci_cd.md).
 
