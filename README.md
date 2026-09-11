@@ -32,6 +32,7 @@ Setup and usage details differ depending on your pipeline engine. Refer to the c
 * 📐 **SQLMesh Integration**: See [docs/sqlmesh.md](docs/sqlmesh.md)
 * ⚡ **dbt Integration**: See [docs/dbt.md](docs/dbt.md)
 * ☁️ **Dataform Integration**: See [docs/dataform.md](docs/dataform.md)
+* 💻 **CLI Reference Guide**: See [docs/cli.md](docs/cli.md)
 * 🤖 **CI/CD & GitHub Actions Guide**: See [docs/ci_cd.md](docs/ci_cd.md)
 * 🔍 **Rules & Checks Reference**: See [docs/rules_and_checks.md](docs/rules_and_checks.md)
 * 📊 **Case Study: GitLab dbt Audit (2,200+ models)**: See [docs/case_study_gitlab.md](docs/case_study_gitlab.md)
@@ -76,176 +77,48 @@ pip install "tff-core[dataform]"
 
 ## CLI Usage Guide
 
-Once installed, use the unified `tff` CLI to run linting and health checks. Running `tff` with no arguments will display the help menu by default.
+Once installed, use the unified `tff` CLI to run linting, calculate health scores, and enforce architectural quality gates:
 
 ```bash
 tff [command] [options]
 ```
 
-### Subcommands
+### Commands Overview
 
-* **`lint`**: Run all enabled fitness checks and format lint reports.
-* **`health`**: Calculate and report overall project fitness health scores.
-* **`docs`**: Generate a standalone, interactive HTML documentation and health dashboard containing lineage graphs and historical trends.
-* **`info`**: Show diagnostic information about the project environment, configuration files, and adapter versions.
-* **`stats`**: Show history and trends of fitness checks.
-* **`init`**: Scaffold an annotated starter `fitness_functions.yaml` configuration file.
-* **`action`**: Run TFF GitHub Action pipeline (health scoring, baseline diff calculation, and PR comment generation).
-* **`help`**: Print help information for the CLI or specific subcommands.
-
-### Common Options
-
-For detailed option explanations, run `tff help <command>` or `tff <command> --help`.
-
-#### `tff init`
-* `--project PATH`: Path to the project root directory (default: current directory).
-* `--force`, `-f`: Overwrite existing `fitness_functions.yaml` if present.
-
-#### `tff action`
-* `--project PATH`: Path to the project root directory (default: current directory).
-* `--provider {auto,dbt,sqlmesh,dataform}`: Pipeline engine provider (default: auto-detected).
-* `--config PATH`: Path to `fitness_functions.yaml` relative to project root (default: `fitness_functions.yaml`).
-* `--fail-under SCORE`: Exit non-zero when overall health score is below this threshold (default: `0.0`).
-* `--fail-level {error,warning}`: Exit non-zero when findings at or above this severity exist (default: `error`).
-* `--comment-pr {true,false}`: Post or update PR summary comment with health score and violations (default: `false`).
-* `--github-token TOKEN`: GitHub token for creating/updating PR comments.
-* `--base-ref REF`: Git base branch reference to compare health score against (e.g. `main`).
-* `--diff-against-base` / `--no-diff-against-base`: Compute health score diff against base branch (default: enabled).
-* `--annotations` / `--no-annotations`: Emit GitHub Actions workflow command annotations (default: enabled).
-* `--json`: Output results in JSON format to stdout.
-
-#### `tff lint`
-* `--project PATH`: Path to the project root directory (default: current directory).
-* `--config PATH`: Path to `fitness_functions.yaml` relative to project root (default: `fitness_functions.yaml`).
-* `--provider {auto,dbt,sqlmesh,dataform}`: Pipeline engine provider (default: auto-detected).
-* `--manifest PATH`: Path to precompiled manifest or compilation result (dbt or Dataform).
-* `--checks CHECKS`: Comma-separated list of specific checks to run (default: all enabled).
-* `--fail-level {error,warning}`: Exit non-zero when findings at or above this severity exist (default: `error`).
-* `--group-by {connascence,model}`: How to group violations in the report (default: `model`).
-* `--dialect DIALECT`: SQL dialect of models (dbt and Dataform; auto-inferred by default).
-* `--format {text,json,sarif,github}`: Output format to stdout (default: `text`). `sarif` outputs OASIS SARIF v2.1.0 JSON format for GitHub Code Scanning; `github` outputs pure workflow command annotations (`::error` / `::warning`) without tables or banners.
-* `--json`: Output results in JSON format to stdout (shorthand for `--format json`).
-* `--github-annotations`: Emit GitHub Actions workflow command annotations alongside console report (automatically enabled when `GITHUB_ACTIONS=true` in environment; safely routed to `stderr` when combined with `--format json` or `--format sarif` to keep `stdout` pure JSON).
-* `--junit-xml PATH`: Write JUnit XML test results to the specified file path for CI/CD test results tab rendering (GitLab CI, Azure DevOps, Bitbucket).
-* `--fix`: Automatically fix simple linting violations if possible (e.g. rewriting positional `GROUP BY`/`ORDER BY` and auto-scaffolding missing metadata).
-* `--no-log`: Bypass writing execution logs to `.tff_logs/` (can also be enabled via `TFF_NO_LOG=1`).
-
-#### `tff health`
-* `--project PATH`, `--config PATH`, `--provider {auto,dbt,sqlmesh,dataform}`, `--dialect DIALECT`, `--manifest PATH`: (Same as above)
-* `--fail-under SCORE`: Exit non-zero when overall health score (0.0 - 100.0) is below this threshold (default: `0.0`).
-* `--scope PATH_PREFIX [...]`: Restrict the health report to models whose path starts with one of the given prefixes (e.g. `models/sources`, `definitions/staging`, or `models/marts/marketing`). Multiple prefixes can be provided.
-* `--group-by {connascence,domain}`: How to group the detailed health breakdown. `connascence` (default) groups by connascence category; `domain` groups by path segment under model directory (`models/` or `definitions/`).
-* `--json`: Output results in JSON format to stdout.
-* `--no-log`: Bypass writing execution logs to `.tff_logs/` (can also be enabled via `TFF_NO_LOG=1`).
-* *Weights & Penalties*: Check weights, category weights, and error/warning penalties can be customized under `health:` in `fitness_functions.yaml` (see [Health Scoring Configuration](docs/rules_and_checks.md#3-health-scoring-configuration)).
-
-#### `tff docs`
-* `--project PATH`, `--config PATH`, `--provider {auto,dbt,sqlmesh,dataform}`, `--dialect DIALECT`, `--manifest PATH`: (Same as above)
-* `--output PATH`, `-o PATH`: Path where the output HTML dashboard file will be generated (default: `tff_report.html` in the project root).
-* `--no-log`: Bypass writing execution logs to `.tff_logs/` (can also be enabled via `TFF_NO_LOG=1`).
-
-#### `tff info`
-* `--project PATH`: Path to the project root directory (default: current directory).
-* `--config PATH`: Path to `fitness_functions.yaml` relative to project root (default: `fitness_functions.yaml`).
-* `--provider {auto,dbt,sqlmesh,dataform}`: Pipeline engine provider (default: auto-detected).
-
-### Zero-Config Default Execution
-
-TFF requires zero initial configuration to run. If no `fitness_functions.yaml` file exists in the project root:
-* `tff lint` and `tff health` automatically fall back to standard layer conventions (`staging -> intermediate -> core -> marts`).
-* Core rules (such as `ban_select_star`, `layer_integrity`, `duplicate_ctes`, `no_positional_group_by_or_order_by`, `environment_agnostic_references`, `metadata`) are enabled out of the box with sensible thresholds.
-* Run `tff init` whenever you want to generate an annotated starter `fitness_functions.yaml` configuration to customize for your project.
+| Command | Description | Quick Example |
+| :--- | :--- | :--- |
+| **`lint`** | Run architectural fitness checks and output lint reports | `tff lint --fix` |
+| **`health`** | Calculate overall project fitness health score (0–100) | `tff health --fail-under 80` |
+| **`action`** | Run official GitHub Action pipeline (score, diff, PR comments) | `tff action --only-changed` |
+| **`docs`** | Generate standalone interactive HTML dashboard with lineage graphs | `tff docs --output docs/index.html` |
+| **`init`** | Scaffold an annotated starter `fitness_functions.yaml` file | `tff init` |
+| **`stats`** | View historical fitness check execution trends and logs | `tff stats --days 30` |
+| **`info`** | Inspect project environment, config, and adapter versions | `tff info` |
+| **`help`** | Show detailed help and options for any command | `tff help lint` |
 
 ### Quick Start Examples
 
-Scaffold an annotated configuration file:
 ```bash
-tff init
-```
-
-Run linting on the current project (zero-config out of the box):
-```bash
+# Lint current project (zero-config out of the box)
 tff lint
-```
 
-Run specific fitness checks or rules:
-```bash
-tff lint --checks no_missing_owner,ban_select_star
-```
-
-Automatically fix simple linting violations (positional GROUP BY/ORDER BY, missing owner/description metadata):
-```bash
+# Automatically fix simple linting violations
 tff lint --fix
-```
 
-Output SARIF v2.1.0 report for GitHub Advanced Security / Code Scanning:
-```bash
+# Require an 80% health score to pass CI
+tff health --fail-under 80
+
+# Restrict health scoring to a specific domain
+tff health --scope models/marts/marketing
+
+# Generate interactive HTML dashboard
+tff docs
+
+# Export SARIF for GitHub Code Scanning
 tff lint --format sarif > results.sarif
 ```
 
-Output pure GitHub Actions annotations directly to stdout (no tables or banners):
-```bash
-tff lint --format github
-```
-
-Export JUnit XML test results for CI/CD test results tab (GitLab CI, Azure DevOps, Bitbucket):
-```bash
-tff lint --junit-xml reports/junit.xml
-```
-
-Show project health report and require a score of at least 80% to pass:
-```bash
-tff health --fail-under 80
-```
-
-Generate interactive HTML documentation and health dashboard:
-```bash
-tff docs
-```
-
-Generate HTML documentation with a custom output file:
-```bash
-tff docs --output docs/index.html
-```
-
-Show health scores only for the `models/marts/marketing` domain:
-```bash
-tff health --scope models/marts/marketing
-```
-
-Group health breakdown by domain instead of connascence category:
-```bash
-tff health --group-by domain
-```
-
-Combine domain scoping and grouping:
-```bash
-tff health --scope models/marts --group-by domain
-```
-
-Show configuration, adapter versions, and provider files for the current project:
-```bash
-tff info
-```
-
-Get detailed help for the `lint` subcommand:
-```bash
-tff help lint
-# or
-tff lint --help
-```
-
-### Local Run Logging & JSON Output
-
-TFF automatically logs every execution of `tff lint` and `tff health` to the project's local directory:
-* Logs are stored as JSON files under `.tff_logs/lint/<timestamp>.log` and `.tff_logs/health/<timestamp>.log`.
-* TFF automatically keeps only the last 60 days of logs, cleaning up older ones during each execution.
-
-If you want to integrate TFF with other tools (e.g. `jq`, CI pipelines), you can output the run reports as JSON using the `--json` flag:
-```bash
-tff lint --json
-tff health --json
-```
+👉 **For the complete CLI reference, detailed option tables for every command, output formats, and cookbooks, see the [CLI Reference Guide](docs/cli.md).**
 
 ---
 
