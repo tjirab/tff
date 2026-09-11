@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Any
 
 import yaml
-from pydantic import BaseModel, Field, PrivateAttr, field_validator
+from pydantic import BaseModel, Field, PrivateAttr, field_validator, model_validator
 
 DEFAULT_LAYER_ORDER: list[str] = ["staging", "intermediate", "core", "marts"]
 
@@ -107,6 +107,18 @@ rules:
     enabled: true
     layer_name: marts
     rule: prefix_with_subdirectory
+
+# Health scoring configuration (weights and penalties)
+# health:
+#   weights:
+#     layer_integrity: 3.0
+#     schema_contracts: 2.0
+#     column_names: 0.5
+#   penalties:
+#     error: 1.0
+#     warning: 0.5
+#     project_error: 100.0
+#     project_warning: 50.0
 """
 
 
@@ -362,6 +374,97 @@ class RulesConfig(BaseModel):
     )
 
 
+class HealthCheckPenaltyConfig(BaseModel):
+    error: float | None = Field(default=None, ge=0.0)
+    warning: float | None = Field(default=None, ge=0.0)
+
+
+class HealthPenaltiesConfig(BaseModel):
+    error: float = Field(default=1.0, ge=0.0)
+    warning: float = Field(default=0.5, ge=0.0)
+    project_error: float = Field(default=100.0, ge=0.0)
+    project_warning: float = Field(default=50.0, ge=0.0)
+    checks: dict[str, HealthCheckPenaltyConfig] = Field(default_factory=dict)
+
+    @model_validator(mode="before")
+    @classmethod
+    def _normalize_penalties(cls, data: Any) -> Any:
+        if isinstance(data, dict):
+            data = dict(data)
+            if "model" in data and isinstance(data["model"], dict):
+                model_data = data.pop("model")
+                if "error" in model_data and "error" not in data:
+                    data["error"] = model_data["error"]
+                if "warning" in model_data and "warning" not in data:
+                    data["warning"] = model_data["warning"]
+            if "project" in data and isinstance(data["project"], dict):
+                proj_data = data.pop("project")
+                if "error" in proj_data and "project_error" not in data:
+                    data["project_error"] = proj_data["error"]
+                if "warning" in proj_data and "project_warning" not in data:
+                    data["project_warning"] = proj_data["warning"]
+        return data
+
+    def get_project_error_penalty(self) -> float:
+        val = self.project_error
+        if 0.0 < val <= 1.0:
+            return val * 100.0
+        return val
+
+    def get_project_warning_penalty(self) -> float:
+        val = self.project_warning
+        if 0.0 < val <= 1.0:
+            return val * 100.0
+        return val
+
+    def get_check_error_penalty(self, check: str, is_project_level: bool) -> float:
+        norm = check.lower().replace("-", "").replace("_", "").replace(" ", "")
+        for k, v in self.checks.items():
+            if k.lower().replace("-", "").replace("_", "").replace(" ", "") == norm and v.error is not None:
+                val = v.error
+                if is_project_level and 0.0 < val <= 1.0:
+                    return val * 100.0
+                return val
+        if is_project_level:
+            return self.get_project_error_penalty()
+        return self.error
+
+    def get_check_warning_penalty(self, check: str, is_project_level: bool) -> float:
+        norm = check.lower().replace("-", "").replace("_", "").replace(" ", "")
+        for k, v in self.checks.items():
+            if k.lower().replace("-", "").replace("_", "").replace(" ", "") == norm and v.warning is not None:
+                val = v.warning
+                if is_project_level and 0.0 < val <= 1.0:
+                    return val * 100.0
+                return val
+        if is_project_level:
+            return self.get_project_warning_penalty()
+        return self.warning
+
+
+class HealthConfig(BaseModel):
+    weights: dict[str, float] = Field(default_factory=dict)
+    category_weights: dict[str, float] = Field(default_factory=dict)
+    penalties: HealthPenaltiesConfig = Field(default_factory=HealthPenaltiesConfig)
+
+    @field_validator("weights", "category_weights", mode="before")
+    @classmethod
+    def _validate_weights(cls, v: Any) -> Any:
+        if v is None:
+            return {}
+        if isinstance(v, dict):
+            validated: dict[str, float] = {}
+            for k, val in v.items():
+                flt_val = float(val)
+                if flt_val < 0.0:
+                    raise ValueError(
+                        f"Weight for '{k}' must be non-negative, got {flt_val}"
+                    )
+                validated[str(k)] = flt_val
+            return validated
+        return v
+
+
 class FitnessFunctionsConfig(BaseModel):
     _project_root: Path = PrivateAttr(default_factory=Path.cwd)
     _config_file_found: bool = PrivateAttr(default=True)
@@ -370,6 +473,7 @@ class FitnessFunctionsConfig(BaseModel):
     layers: LayersConfig = Field(default_factory=LayersConfig)
     checks: ChecksConfig = Field(default_factory=ChecksConfig)
     rules: RulesConfig = Field(default_factory=RulesConfig)
+    health: HealthConfig = Field(default_factory=HealthConfig)
     contract_groups: ContractGroupsConfig | None = None
     exclusions: list[CustomExclusionRule] | None = None
     allowed_exceptions: list[AllowedExceptionRule] | None = None

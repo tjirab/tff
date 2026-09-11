@@ -12,13 +12,92 @@ from rich.panel import Panel
 from rich.table import Table
 from rich.text import Text
 
-from tff.core.config import FitnessFunctionsConfig
+from tff.core.config import FitnessFunctionsConfig, HealthPenaltiesConfig
 from tff.core.report import CHECK_LABELS, CONNASCENCE_CATEGORIES, LintFinding
 
-from tff.core.registry import registry
+from tff.core.registry import normalize_check_name, registry
 
 PROJECT_LEVEL_CHECKS: set[str] = registry.get_project_level_check_names()
 CATEGORIES: dict[str, list[str]] = registry.get_categories()
+
+CATEGORY_ALIASES: dict[str, str] = {
+    "con": "Connascence of Name (CoN)",
+    "connascence_of_name": "Connascence of Name (CoN)",
+    "name": "Connascence of Name (CoN)",
+    "cot": "Connascence of Type (CoT)",
+    "connascence_of_type": "Connascence of Type (CoT)",
+    "type": "Connascence of Type (CoT)",
+    "cop": "Connascence of Position (CoP)",
+    "connascence_of_position": "Connascence of Position (CoP)",
+    "position": "Connascence of Position (CoP)",
+    "com": "Connascence of Meaning (CoM)",
+    "connascence_of_meaning": "Connascence of Meaning (CoM)",
+    "meaning": "Connascence of Meaning (CoM)",
+    "coa": "Connascence of Algorithm (CoA)",
+    "connascence_of_algorithm": "Connascence of Algorithm (CoA)",
+    "algorithm": "Connascence of Algorithm (CoA)",
+    "cov": "Connascence of Value (CoV)",
+    "connascence_of_value": "Connascence of Value (CoV)",
+    "value": "Connascence of Value (CoV)",
+    "dynamic_coupling": "Dynamic Coupling & DAG Structure",
+    "coupling": "Dynamic Coupling & DAG Structure",
+    "dag": "Dynamic Coupling & DAG Structure",
+    "dynamic_coupling_dag_structure": "Dynamic Coupling & DAG Structure",
+    "quality": "Quality & Metadata (Non-Connascence)",
+    "metadata": "Quality & Metadata (Non-Connascence)",
+    "quality_metadata": "Quality & Metadata (Non-Connascence)",
+}
+
+
+def normalize_category_name(name: str) -> str:
+    """Normalize category name for lookup."""
+    norm = normalize_check_name(name)
+    alias_match = CATEGORY_ALIASES.get(name.lower().strip()) or CATEGORY_ALIASES.get(norm)
+    if alias_match:
+        return normalize_check_name(alias_match)
+    return norm
+
+
+def get_check_weight(
+    check_name: str,
+    config: FitnessFunctionsConfig,
+) -> float:
+    """Resolve weight for a given check name or category from config."""
+    health_cfg = getattr(config, "health", None)
+    if health_cfg is None:
+        return 1.0
+
+    weights = health_cfg.weights
+    category_weights = health_cfg.category_weights
+    check_def = registry.get(check_name)
+
+    # 1. Direct check weight match
+    candidate_names: list[str] = [check_name]
+    if check_def is not None:
+        candidate_names.append(check_def.id)
+        if check_def.finding_check_id:
+            candidate_names.append(check_def.finding_check_id)
+        candidate_names.extend(check_def.aliases)
+
+    candidate_norms = {normalize_check_name(c) for c in candidate_names}
+
+    for k, w in weights.items():
+        if normalize_check_name(k) in candidate_norms:
+            return w
+
+    # 2. Category weight match
+    category: str | None = check_def.category if check_def is not None else None
+
+    if category is not None:
+        norm_cat = normalize_check_name(category)
+        for k, w in category_weights.items():
+            if normalize_category_name(k) == norm_cat:
+                return w
+        for k, w in weights.items():
+            if normalize_category_name(k) == norm_cat:
+                return w
+
+    return 1.0
 
 
 def is_check_enabled(
@@ -86,6 +165,12 @@ def calculate_health_scores(
         if f.check not in all_known_checks:
             enabled_checks.add(f.check)
 
+    penalties = (
+        config.health.penalties
+        if hasattr(config, "health")
+        else HealthPenaltiesConfig()
+    )
+
     check_scores: dict[str, float] = {}
     check_findings: dict[str, list[LintFinding]] = defaultdict(list)
     for f in findings:
@@ -100,10 +185,12 @@ def calculate_health_scores(
 
         if check in PROJECT_LEVEL_CHECKS:
             # Project level check
+            err_penalty = penalties.get_check_error_penalty(check, is_project_level=True)
+            warn_penalty = penalties.get_check_warning_penalty(check, is_project_level=True)
             if any(f.severity == "error" for f in cf):
-                check_scores[check] = 0.0
+                check_scores[check] = max(0.0, 100.0 - err_penalty)
             elif any(f.severity == "warning" for f in cf):
-                check_scores[check] = 50.0
+                check_scores[check] = max(0.0, 100.0 - warn_penalty)
             else:
                 check_scores[check] = 100.0
         else:
@@ -133,8 +220,15 @@ def calculate_health_scores(
             if M <= 0:
                 check_scores[check] = 100.0
             else:
-                score = 100.0 * (1.0 - (E + 0.5 * W) / M)
+                err_mult = penalties.get_check_error_penalty(check, is_project_level=False)
+                warn_mult = penalties.get_check_warning_penalty(check, is_project_level=False)
+                score = 100.0 * (1.0 - (err_mult * E + warn_mult * W) / M)
                 check_scores[check] = max(0.0, score)
+
+    # Collect weights for enabled checks
+    check_weights: dict[str, float] = {
+        check: get_check_weight(check, config) for check in enabled_checks
+    }
 
     # Calculate category scores
     category_scores: dict[str, float | None] = {}
@@ -143,12 +237,26 @@ def calculate_health_scores(
         if not enabled_cat_checks:
             category_scores[cat_name] = None
         else:
-            category_scores[cat_name] = sum(check_scores[c] for c in enabled_cat_checks) / len(enabled_cat_checks)
+            cat_total_weight = sum(check_weights[c] for c in enabled_cat_checks)
+            if cat_total_weight > 0:
+                category_scores[cat_name] = (
+                    sum(check_scores[c] * check_weights[c] for c in enabled_cat_checks)
+                    / cat_total_weight
+                )
+            else:
+                category_scores[cat_name] = sum(check_scores[c] for c in enabled_cat_checks) / len(enabled_cat_checks)
 
     # Handle "Other Checks" category if findings exist for unknown checks
     unknown_enabled = [c for c in enabled_checks if c not in all_known_checks]
     if unknown_enabled:
-        category_scores["Other Checks"] = sum(check_scores[c] for c in unknown_enabled) / len(unknown_enabled)
+        unknown_total_weight = sum(check_weights[c] for c in unknown_enabled)
+        if unknown_total_weight > 0:
+            category_scores["Other Checks"] = (
+                sum(check_scores[c] * check_weights[c] for c in unknown_enabled)
+                / unknown_total_weight
+            )
+        else:
+            category_scores["Other Checks"] = sum(check_scores[c] for c in unknown_enabled) / len(unknown_enabled)
     else:
         category_scores["Other Checks"] = None
 
@@ -156,7 +264,14 @@ def calculate_health_scores(
     if not enabled_checks:
         overall_score = 100.0
     else:
-        overall_score = sum(check_scores.values()) / len(enabled_checks)
+        overall_total_weight = sum(check_weights[c] for c in enabled_checks)
+        if overall_total_weight > 0:
+            overall_score = (
+                sum(check_scores[c] * check_weights[c] for c in enabled_checks)
+                / overall_total_weight
+            )
+        else:
+            overall_score = sum(check_scores.values()) / len(enabled_checks)
 
     return {
         "overall_score": overall_score,
@@ -164,6 +279,7 @@ def calculate_health_scores(
         "category_scores": category_scores,
         "enabled_checks": enabled_checks,
         "check_findings": check_findings,
+        "check_weights": check_weights,
     }
 
 
@@ -274,7 +390,7 @@ def render_health_report(
     
     # 2. Detailed Breakdown
     if group_by == "domain":
-        _render_health_by_domain(scores, console)
+        _render_health_by_domain(scores, console, config=config)
     else:
         _render_health_by_connascence(scores, enabled_checks, check_scores, check_findings, console)
 
@@ -294,6 +410,7 @@ def _render_health_by_connascence(
     table.add_column(width=22, no_wrap=True)
     table.add_column(no_wrap=True)
 
+    check_weights = scores.get("check_weights", {})
     first_cat = True
     for cat_name, cat_checks in CATEGORIES.items():
         # Only print category if it contains enabled checks
@@ -334,7 +451,9 @@ def _render_health_by_connascence(
                         parts.append(f"{warnings} warning{'s' if warnings != 1 else ''}")
                     violation_text = f"[dim]({', '.join(parts)})[/dim]"
 
-                check_desc = Text.from_markup(f"  {icon} {label}\n    [dim]({check})[/dim]")
+                weight = check_weights.get(check, 1.0)
+                weight_str = f" · weight: {weight:g}" if weight != 1.0 else ""
+                check_desc = Text.from_markup(f"  {icon} {label}\n    [dim]({check}{weight_str})[/dim]")
                 bar = make_progress_bar(score, width=10)
                 score_cell = Text.from_markup(f"{bar} {score_text}")
 
@@ -377,7 +496,9 @@ def _render_health_by_connascence(
                     parts.append(f"{warnings} warning{'s' if warnings != 1 else ''}")
                 violation_text = f"[dim]({', '.join(parts)})[/dim]"
 
-            check_desc = Text.from_markup(f"  {icon} {label}\n    [dim]({check})[/dim]")
+            weight = check_weights.get(check, 1.0)
+            weight_str = f" · weight: {weight:g}" if weight != 1.0 else ""
+            check_desc = Text.from_markup(f"  {icon} {label}\n    [dim]({check}{weight_str})[/dim]")
             bar = make_progress_bar(score, width=10)
             score_cell = Text.from_markup(f"{bar} {score_text}")
 
@@ -422,8 +543,14 @@ def _domain_key(path: str | None) -> str:
 def _render_health_by_domain(
     scores: dict[str, Any],
     console: Console,
+    config: FitnessFunctionsConfig | None = None,
 ) -> None:
     """Render detailed breakdown grouped by domain (path segment after models/)."""
+    penalties = (
+        config.health.penalties
+        if config and hasattr(config, "health")
+        else HealthPenaltiesConfig()
+    )
     check_findings = scores["check_findings"]
     enabled_checks = scores["enabled_checks"]
     check_scores = scores["check_scores"]
@@ -497,7 +624,9 @@ def _render_health_by_domain(
                 warning_models = {f.model for f in cf if f.severity == "warning" and f.model} - error_models
                 E = len(error_models) + sum(1 for f in cf if f.severity == "error" and not f.model)
                 W = len(warning_models) + sum(1 for f in cf if f.severity == "warning" and not f.model)
-                local_score = max(0.0, 100.0 * (1.0 - (E + 0.5 * W) / domain_models_checked))
+                err_mult = penalties.get_check_error_penalty(check, is_project_level=False)
+                warn_mult = penalties.get_check_warning_penalty(check, is_project_level=False)
+                local_score = max(0.0, 100.0 * (1.0 - (err_mult * E + warn_mult * W) / domain_models_checked))
             else:
                 local_score = check_scores.get(check, 100.0)
 

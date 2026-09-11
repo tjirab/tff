@@ -336,3 +336,74 @@ def test_init_fitness_config_force_overwrite(tmp_path: Path):
     assert overwritten_path.read_text(encoding="utf-8") == STARTER_CONFIG_YAML
 
 
+def test_health_config_validation(tmp_path: Path):
+    # Valid configuration
+    valid_yaml = tmp_path / "fitness_functions.yaml"
+    valid_yaml.write_text(
+        """
+health:
+  weights:
+    layer_integrity: 3.0
+    schema_contracts: 2.0
+    column_names: 0.5
+  penalties:
+    error: 1.5
+    warning: 0.25
+    project_error: 40.0
+    project_warning: 15.0
+""",
+        encoding="utf-8",
+    )
+    config = load_fitness_config(tmp_path)
+    assert config.health.weights["layer_integrity"] == 3.0
+    assert config.health.weights["schema_contracts"] == 2.0
+    assert config.health.weights["column_names"] == 0.5
+    assert config.health.penalties.error == 1.5
+    assert config.health.penalties.warning == 0.25
+    assert config.health.penalties.project_error == 40.0
+    assert config.health.penalties.project_warning == 15.0
+
+    # Negative weights rejected
+    with pytest.raises(ValueError, match="Weight for 'layer_integrity' must be non-negative"):
+        FitnessFunctionsConfig.model_validate({
+            "health": {"weights": {"layer_integrity": -1.0}}
+        })
+
+    with pytest.raises(ValueError, match="Weight for 'Dynamic Coupling' must be non-negative"):
+        FitnessFunctionsConfig.model_validate({
+            "health": {"category_weights": {"Dynamic Coupling": -0.5}}
+        })
+
+    # Negative penalty rejected
+    with pytest.raises(ValueError):
+        FitnessFunctionsConfig.model_validate({
+            "health": {"penalties": {"error": -1.0}}
+        })
+
+    # Non-dict weights / category_weights validator coverage
+    health_empty = FitnessFunctionsConfig.model_validate({
+        "health": {"weights": None, "category_weights": None}
+    })
+    assert health_empty.health.weights == {}
+
+    with pytest.raises(Exception):
+        FitnessFunctionsConfig.model_validate({
+            "health": {"weights": "not-a-dict"}
+        })
+
+    # Check penalties with ratio for project-level check
+    ratio_cfg = FitnessFunctionsConfig.model_validate({
+        "health": {
+            "penalties": {
+                "checks": {
+                    "layer_integrity": {"error": 0.25, "warning": 0.10}
+                }
+            }
+        }
+    })
+    assert ratio_cfg.health.penalties.get_check_error_penalty("layer_integrity", is_project_level=True) == 25.0
+    assert ratio_cfg.health.penalties.get_check_warning_penalty("layer_integrity", is_project_level=True) == 10.0
+
+
+
+
