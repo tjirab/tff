@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.12.1](https://github.com/tjirab/tff/compare/tff-core-v0.12.0...tff-core-v0.12.1) (2026-09-11)
+
+
+### Bug Fixes
+
+* **cov:** exclude structural and positional SQL literals from connascence of value check ([#171](https://github.com/tjirab/tff/issues/171)) ([31ddd72](https://github.com/tjirab/tff/commit/31ddd72d3cb662a385422d09b2789efbc9e21ec8))
+
 ## [0.12.0](https://github.com/tjirab/tff/compare/tff-core-v0.11.0...tff-core-v0.12.0) (2026-09-10)
 
 
