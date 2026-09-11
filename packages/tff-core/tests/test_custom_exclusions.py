@@ -106,8 +106,6 @@ def test_custom_exclusions_by_tags_and_meta(tmp_path: Path) -> None:
     assert domain_b == "marketing"
 
     # 2. Test CustomExclusionsConfig rule with tags & meta selectors
-    from tff.core.context import set_ff_config
-
     config = FitnessFunctionsConfig(
         checks=ChecksConfig(
             custom_exclusions=CustomExclusionsCheckConfig(
@@ -178,8 +176,7 @@ def test_custom_exclusions_by_tags_and_meta(tmp_path: Path) -> None:
     violations = checker.check_model(model_a)
     assert len(violations) > 0
 
-    # 3. Test resolve_layer_and_domain without layer_order parameter (uses context config)
-    set_ff_config(config)
+    # 3. Test resolve_layer_and_domain without layer_order parameter (uses default layer order)
     layer_def, domain_def = resolve_layer_and_domain(model_a)
     assert layer_def == "core"
     assert domain_def == "finance"

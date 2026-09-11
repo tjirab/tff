@@ -1,6 +1,5 @@
 from pathlib import Path
 from tff.core.config import FitnessFunctionsConfig
-from tff.core.context import set_ff_config
 from tff.core.model import ModelRepresentation
 from tff.core.rules.environment_agnostic_references import EnvironmentAgnosticReferences
 
@@ -9,9 +8,8 @@ def test_environment_agnostic_references_violations(tmp_path: Path):
     config = FitnessFunctionsConfig()
     config.rules.environment_agnostic_references.enabled = True
     config.rules.environment_agnostic_references.banned_environments = ["prod", "dev", "staging"]
-    set_ff_config(config)
 
-    rule = EnvironmentAgnosticReferences()
+    rule = EnvironmentAgnosticReferences(config=config)
 
     # 1. Banned environment in catalog
     sql_file = tmp_path / "models/marts/my_model.sql"
@@ -101,9 +99,8 @@ def test_jinja_and_macro_handling(tmp_path: Path):
     config = FitnessFunctionsConfig()
     config.rules.environment_agnostic_references.enabled = True
     config.rules.environment_agnostic_references.banned_environments = ["prod", "dev"]
-    set_ff_config(config)
 
-    rule = EnvironmentAgnosticReferences()
+    rule = EnvironmentAgnosticReferences(config=config)
 
     # 1. dbt ref style (uncompiled raw code)
     sql_file_jinja = tmp_path / "models/marts/jinja.sql"
@@ -146,9 +143,8 @@ def test_custom_banned_environments(tmp_path: Path):
     config = FitnessFunctionsConfig()
     config.rules.environment_agnostic_references.enabled = True
     config.rules.environment_agnostic_references.banned_environments = ["custom_env"]
-    set_ff_config(config)
 
-    rule = EnvironmentAgnosticReferences()
+    rule = EnvironmentAgnosticReferences(config=config)
 
     sql_file = tmp_path / "models/marts/custom.sql"
     sql_file.parent.mkdir(parents=True, exist_ok=True)
@@ -168,13 +164,12 @@ def test_custom_banned_environments(tmp_path: Path):
 
 
 def test_environment_agnostic_references_edge_cases(tmp_path: Path):
-    rule = EnvironmentAgnosticReferences()
+    config = FitnessFunctionsConfig()
+    rule = EnvironmentAgnosticReferences(config=config)
 
     # 1. Rule is disabled
-    config = FitnessFunctionsConfig()
     config.rules.environment_agnostic_references.enabled = False
     config.rules.environment_agnostic_references.banned_environments = ["prod"]
-    set_ff_config(config)
 
     model_disabled = ModelRepresentation(
         name="marts.disabled",
@@ -187,7 +182,6 @@ def test_environment_agnostic_references_edge_cases(tmp_path: Path):
 
     # 2. Model is symbolic
     config.rules.environment_agnostic_references.enabled = True
-    set_ff_config(config)
     model_symbolic = ModelRepresentation(
         name="marts.symbolic",
         path="non_existent.sql",
@@ -199,7 +193,6 @@ def test_environment_agnostic_references_edge_cases(tmp_path: Path):
 
     # 3. Skip layer matches
     config.rules.environment_agnostic_references.skip_layers = ["marts"]
-    set_ff_config(config)
     model_skipped = ModelRepresentation(
         name="marts.skipped",
         path=str(tmp_path / "models/marts/skipped.sql"),
@@ -211,7 +204,6 @@ def test_environment_agnostic_references_edge_cases(tmp_path: Path):
 
     # Reset skip layers
     config.rules.environment_agnostic_references.skip_layers = []
-    set_ff_config(config)
 
     # 4. File does not exist and query is None
     model_no_query = ModelRepresentation(
@@ -247,7 +239,6 @@ def test_environment_agnostic_references_edge_cases(tmp_path: Path):
 
     # 7. Empty banned environment
     config.rules.environment_agnostic_references.banned_environments = [""]
-    set_ff_config(config)
     model_empty_env = ModelRepresentation(
         name="marts.empty_env",
         path="non_existent.sql",

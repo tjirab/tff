@@ -241,7 +241,7 @@ allowed_exceptions:
     assert config.allowed_exceptions[0].model == "derived.m1"
 
 
-def test_rule_config_injection_and_deprecation():
+def test_rule_config_injection():
     import warnings
     from tff.core.rules.base import Rule
     from tff.core.config import FitnessFunctionsConfig
@@ -254,17 +254,38 @@ def test_rule_config_injection_and_deprecation():
     rule.config = new_cfg
     assert rule.config is new_cfg
 
-    # Unbound rule should emit DeprecationWarning on .config
+    rule.config = None
+    assert isinstance(rule.config, FitnessFunctionsConfig)
+
+    # Unbound rule should cleanly default to FitnessFunctionsConfig without emitting DeprecationWarning
     unbound_rule = Rule()
     with warnings.catch_warnings(record=True) as w:
         warnings.simplefilter("always")
         fallback_cfg = unbound_rule.config
-        assert fallback_cfg is not None
+        assert isinstance(fallback_cfg, FitnessFunctionsConfig)
         deprecation_warnings = [
             item for item in w if issubclass(item.category, DeprecationWarning)
         ]
-        assert len(deprecation_warnings) >= 1
-        assert "get_ff_config() is deprecated" in str(deprecation_warnings[0].message)
+        assert len(deprecation_warnings) == 0
+
+
+def test_context_deprecation():
+    import warnings
+    from tff.core.config import FitnessFunctionsConfig
+    from tff.core.context import clear_ff_config, get_ff_config, set_ff_config
+
+    with warnings.catch_warnings(record=True) as w:
+        warnings.simplefilter("always")
+        cfg = FitnessFunctionsConfig()
+        set_ff_config(cfg)
+        retrieved = get_ff_config()
+        assert retrieved is cfg
+        clear_ff_config()
+
+        messages = [str(item.message) for item in w if issubclass(item.category, DeprecationWarning)]
+        assert any("set_ff_config() is deprecated" in msg for msg in messages)
+        assert any("get_ff_config() is deprecated" in msg for msg in messages)
+        assert any("clear_ff_config() is deprecated" in msg for msg in messages)
 
 
 def test_default_layer_hierarchy(tmp_path: Path):

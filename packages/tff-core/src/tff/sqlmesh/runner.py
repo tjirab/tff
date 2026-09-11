@@ -9,7 +9,6 @@ from sqlmesh.core.context import Context
 from sqlmesh.core.linter.definition import AnnotatedRuleViolation
 
 from tff.core.config import FitnessFunctionsConfig, load_fitness_config
-from tff.core.context import set_ff_config
 from tff.core.model import ModelRepresentation
 from tff.core.registry import normalize_check_name, registry
 from tff.core.report import LintFinding, format_message, normalize_model_name
@@ -97,7 +96,6 @@ def run_all_checks(
     project_root = project_root or Path.cwd()
     if config is None:
         config = load_fitness_config(project_root)
-    set_ff_config(config)
 
     findings: list[LintFinding] = []
 

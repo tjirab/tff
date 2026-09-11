@@ -17,7 +17,6 @@ from tff.core.config import (
     load_fitness_config,
     resolve_project_path,
 )
-from tff.core.context import set_ff_config
 from tff.core.report import render_lint_report
 
 if TYPE_CHECKING:
@@ -917,7 +916,6 @@ def main(argv: list[str] | None = None) -> int:
         if not getattr(config, "_config_file_found", True) and not getattr(args, "json", False):
             print(MISSING_CONFIG_NOTICE, file=sys.stderr)
 
-        set_ff_config(config)
         if args.command == "lint":
             checks = _parse_checks(args.checks)
         else:

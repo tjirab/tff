@@ -265,6 +265,6 @@ def test_collect_schema_contract_findings(tmp_path: Path) -> None:
     assert any("nonexistent_ref.sql not found" in f.message for f in bad_findings)
     assert any("nonexistent_member.sql not found" in f.message for f in bad_findings)
 
-    # Calling with no arguments (fallback to get_ff_config())
+    # Calling with no arguments (fallback to default FitnessFunctionsConfig)
     empty_findings = collect_schema_contract_findings()
     assert empty_findings == []

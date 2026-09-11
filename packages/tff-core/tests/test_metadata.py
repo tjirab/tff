@@ -1,5 +1,4 @@
 from tff.core.config import FitnessFunctionsConfig
-from tff.core.context import set_ff_config
 from tff.core.model import ModelRepresentation
 from tff.core.rules.metadata import (
     NoMissingOwner,
@@ -13,9 +12,8 @@ from tff.core.rules.metadata import (
 def test_no_missing_not_null_rule():
     config = FitnessFunctionsConfig()
     config.rules.metadata.not_null = True
-    set_ff_config(config)
 
-    rule = NoMissingNotNull()
+    rule = NoMissingNotNull(config=config)
 
     # Model with no audits
     model = ModelRepresentation(
@@ -41,16 +39,14 @@ def test_no_missing_not_null_rule():
 
     # Model with rule disabled in config
     config.rules.metadata.not_null = False
-    set_ff_config(config)
     assert rule.check_model(model) is None
 
 
 def test_no_missing_unique_values_rule():
     config = FitnessFunctionsConfig()
     config.rules.metadata.unique_values = True
-    set_ff_config(config)
 
-    rule = NoMissingUniqueValues()
+    rule = NoMissingUniqueValues(config=config)
 
     # Model with no audits
     model = ModelRepresentation(
@@ -76,16 +72,14 @@ def test_no_missing_unique_values_rule():
 
     # Model with rule disabled in config
     config.rules.metadata.unique_values = False
-    set_ff_config(config)
     assert rule.check_model(model) is None
 
 
 def test_no_missing_owner_rule():
     config = FitnessFunctionsConfig()
     config.rules.metadata.owner = True
-    set_ff_config(config)
 
-    rule = NoMissingOwner()
+    rule = NoMissingOwner(config=config)
 
     # Model with no owner
     model = ModelRepresentation(
@@ -110,16 +104,14 @@ def test_no_missing_owner_rule():
 
     # Disabled
     config.rules.metadata.owner = False
-    set_ff_config(config)
     assert rule.check_model(model) is None
 
 
 def test_no_missing_description_rule():
     config = FitnessFunctionsConfig()
     config.rules.metadata.description = True
-    set_ff_config(config)
 
-    rule = NoMissingDescription()
+    rule = NoMissingDescription(config=config)
 
     # Model with no description
     model = ModelRepresentation(
@@ -144,16 +136,14 @@ def test_no_missing_description_rule():
 
     # Disabled
     config.rules.metadata.description = False
-    set_ff_config(config)
     assert rule.check_model(model) is None
 
 
 def test_no_missing_grain_rule():
     config = FitnessFunctionsConfig()
     config.rules.metadata.grain = True
-    set_ff_config(config)
 
-    rule = NoMissingGrain()
+    rule = NoMissingGrain(config=config)
 
     # Model with no grain
     model = ModelRepresentation(
@@ -179,7 +169,6 @@ def test_no_missing_grain_rule():
 
     # Disabled
     config.rules.metadata.grain = False
-    set_ff_config(config)
     assert rule.check_model(model) is None
 
 
@@ -190,14 +179,13 @@ def test_rules_skip_symbolic_and_external_models():
     config.rules.metadata.grain = True
     config.rules.metadata.not_null = True
     config.rules.metadata.unique_values = True
-    set_ff_config(config)
 
     rules = [
-        NoMissingOwner(),
-        NoMissingDescription(),
-        NoMissingGrain(),
-        NoMissingNotNull(),
-        NoMissingUniqueValues(),
+        NoMissingOwner(config=config),
+        NoMissingDescription(config=config),
+        NoMissingGrain(config=config),
+        NoMissingNotNull(config=config),
+        NoMissingUniqueValues(config=config),
     ]
 
     # Symbolic model

@@ -6,7 +6,6 @@ import logging
 from pathlib import Path
 
 from tff.core.config import FitnessFunctionsConfig, load_fitness_config
-from tff.core.context import set_ff_config
 from tff.core.model import ModelRepresentation
 from tff.core.registry import registry
 from tff.core.report import LintFinding
@@ -46,7 +45,6 @@ def run_all_checks(
     project_root = project_root or Path.cwd()
     if config is None:
         config = load_fitness_config(project_root)
-    set_ff_config(config)
 
     # Parse and load manifest.json if models not already provided
     if models is None:

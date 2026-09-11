@@ -8,7 +8,6 @@ import sys
 from pathlib import Path
 
 from tff.core.config import load_fitness_config
-from tff.core.context import set_ff_config
 from tff.core.report import render_lint_report
 from tff.dbt.runner import run_all_checks
 
@@ -76,7 +75,6 @@ def main(argv: list[str] | None = None) -> int:
             project_root,
             config_path=args.config,
         )
-        set_ff_config(config)
         checks = _parse_checks(args.checks)
 
         findings, models_checked, executed_checks = run_all_checks(

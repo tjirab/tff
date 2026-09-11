@@ -2,7 +2,6 @@ from pathlib import Path
 
 from tff.core.checks.dependency_graph import collect_dependency_graph_findings
 from tff.core.config import FitnessFunctionsConfig, ColumnTypeRuleEntry
-from tff.core.context import set_ff_config
 from tff.core.model import ModelRepresentation
 from tff.core.rules import (
     ClassificationMacros,
@@ -53,8 +52,6 @@ def test_rules_respect_layer_filtering(tmp_path: Path):
     config.rules.ban_select_star.enabled = True
     config.rules.ban_select_star.skip_layers = ["sources"]
 
-    set_ff_config(config)
-
     # Create temporary SQL file for file-reading checks
     sql_file = tmp_path / "models/sources/my_model.sql"
     sql_file.parent.mkdir(parents=True, exist_ok=True)
@@ -74,17 +71,17 @@ def test_rules_respect_layer_filtering(tmp_path: Path):
     )
 
     rules = [
-        ClassificationMacros(),
-        ColumnNames(),
-        ColumnTypes(),
-        FilenameEqualsModelname(),
-        NoMissingOwner(),
-        NoMissingDescription(),
-        NoMissingGrain(),
-        NoMissingNotNull(),
-        NoMissingUniqueValues(),
-        SqlComplexity(),
-        BanSelectStar(),
+        ClassificationMacros(config=config),
+        ColumnNames(config=config),
+        ColumnTypes(config=config),
+        FilenameEqualsModelname(config=config),
+        NoMissingOwner(config=config),
+        NoMissingDescription(config=config),
+        NoMissingGrain(config=config),
+        NoMissingNotNull(config=config),
+        NoMissingUniqueValues(config=config),
+        SqlComplexity(config=config),
+        BanSelectStar(config=config),
     ]
 
     for rule in rules:
@@ -94,7 +91,6 @@ def test_rules_respect_layer_filtering(tmp_path: Path):
     config.rules.filename_equals_modelname.enabled = False
     config.rules.metadata.enabled = False
     config.rules.ban_select_star.enabled = False
-    set_ff_config(config)
 
     # Mart model that would violate rules if enabled
     sql_file_marts = tmp_path / "models/marts/my_model.sql"
@@ -108,9 +104,9 @@ def test_rules_respect_layer_filtering(tmp_path: Path):
         is_symbolic=False,
     )
 
-    assert FilenameEqualsModelname().check_model(model_marts) is None
-    assert NoMissingOwner().check_model(model_marts) is None
-    assert BanSelectStar().check_model(model_marts) is None
+    assert FilenameEqualsModelname(config=config).check_model(model_marts) is None
+    assert NoMissingOwner(config=config).check_model(model_marts) is None
+    assert BanSelectStar(config=config).check_model(model_marts) is None
 
 
 def test_dependency_graph_respects_layer_filtering():
@@ -119,7 +115,6 @@ def test_dependency_graph_respects_layer_filtering():
     config.checks.dependency_graph.skip_layers = ["sources"]
     config.checks.dependency_graph.fan_in_warn = 1
     config.checks.dependency_graph.fan_out_warn = 1
-    set_ff_config(config)
 
     # Mock models
     model1 = ModelRepresentation(

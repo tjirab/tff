@@ -13,6 +13,12 @@ _config_local = threading.local()
 
 
 def set_ff_config(config: FitnessFunctionsConfig) -> None:
+    warnings.warn(
+        "tff.core.context.set_ff_config() is deprecated and will be removed in a future release. "
+        "Pass FitnessFunctionsConfig explicitly instead.",
+        DeprecationWarning,
+        stacklevel=2,
+    )
     _config_local.config = config
 
 
@@ -33,5 +39,10 @@ def get_ff_config() -> FitnessFunctionsConfig:
 
 
 def clear_ff_config() -> None:
+    warnings.warn(
+        "tff.core.context.clear_ff_config() is deprecated and will be removed in a future release.",
+        DeprecationWarning,
+        stacklevel=2,
+    )
     if hasattr(_config_local, "config"):
         del _config_local.config

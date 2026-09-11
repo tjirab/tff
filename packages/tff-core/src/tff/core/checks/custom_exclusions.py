@@ -25,7 +25,7 @@ class CustomExclusionsChecker:
     ):
         self.models = models
         self.exclusions_path = exclusions_path
-        self.config = config
+        self.config = config or FitnessFunctionsConfig()
         self.exclusions = self._load_exclusions()
 
     def _load_exclusions(self) -> dict:
@@ -189,14 +189,8 @@ class CustomExclusionsChecker:
             return []
 
         violations = []
-        from tff.core.context import get_ff_config
-
-        if self.config:
-            layer_order = self.config.layers.order
-            marts_layer = self.config.rules.mart_naming.layer_name
-        else:
-            layer_order = get_ff_config().layers.order
-            marts_layer = get_ff_config().rules.mart_naming.layer_name
+        layer_order = self.config.layers.order
+        marts_layer = self.config.rules.mart_naming.layer_name
 
         model_layer, model_domain = resolve_layer_and_domain(model, layer_order, marts_layer)
         if not model_layer:

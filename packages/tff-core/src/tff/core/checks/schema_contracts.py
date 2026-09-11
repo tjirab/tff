@@ -195,9 +195,7 @@ def collect_schema_contract_findings(
         models = None
 
     if config is None:
-        from tff.core.context import get_ff_config
-
-        config = get_ff_config()
+        config = FitnessFunctionsConfig()
 
     project_root: Path = getattr(config, "_project_root", Path.cwd())
     contract_config = _extract_contract_config(config)

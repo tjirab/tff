@@ -3,7 +3,6 @@ from unittest.mock import MagicMock
 from sqlmesh.core.model import Model as SqlMeshModel
 
 from tff.core.config import load_fitness_config, FitnessFunctionsConfig
-from tff.core.context import set_ff_config
 from tff.core.rules import ALL_RULES
 from tff.sqlmesh.loader import map_sqlmesh_model, wrap_core_rule, FitnessLoader
 
@@ -19,7 +18,6 @@ def test_load_fitness_config_from_fixture(tmp_path: Path) -> None:
     yaml_path = tmp_path / "fitness_functions.yaml"
     yaml_path.write_text("checks:\n  layer_integrity:\n    enabled: false\n", encoding="utf-8")
     config = load_fitness_config(tmp_path, config_path=yaml_path)
-    set_ff_config(config)
     assert config.checks.layer_integrity.enabled is False
 
 
@@ -75,9 +73,8 @@ def test_wrapped_rule_execution() -> None:
 
     config = FitnessFunctionsConfig()
     config.rules.ban_select_star.enabled = True
-    set_ff_config(config)
 
-    WrappedRuleClass = wrap_core_rule(BanSelectStar)
+    WrappedRuleClass = wrap_core_rule(BanSelectStar, config=config)
     rule_instance = WrappedRuleClass(context=MagicMock())
 
     mock_model = MagicMock(spec=SqlMeshModel)

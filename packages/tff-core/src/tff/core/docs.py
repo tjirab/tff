@@ -8,7 +8,6 @@ from pathlib import Path
 from typing import Any
 
 from tff.core.config import load_fitness_config
-from tff.core.context import set_ff_config
 from tff.core.health import calculate_health_scores
 from tff.core.logs import collect_stats, get_health_json_data, save_log
 from tff.core.utils.paths import model_path_relative
@@ -26,7 +25,6 @@ def generate_docs_dashboard(
     """Run checks, compile, and output a standalone interactive HTML dashboard."""
     # 1. Load config
     config = load_fitness_config(project_root, config_path=config_path)
-    set_ff_config(config)
 
     # 2. Get adapter
     from tff.core.cli import _get_adapter

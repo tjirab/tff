@@ -26,12 +26,10 @@ def test_classification_macros_rule_missing_file() -> None:
     from tff.core.rules.classification_macros import ClassificationMacros
     from tff.core.model import ModelRepresentation
     from tff.core.config import FitnessFunctionsConfig
-    from tff.core.context import set_ff_config
 
     config = FitnessFunctionsConfig()
     config.rules.classification_macros.enabled = True
     config.rules.classification_macros.columns = {"product_type": "macro"}
-    set_ff_config(config)
 
     # Path does not exist
     model = ModelRepresentation(
@@ -40,5 +38,5 @@ def test_classification_macros_rule_missing_file() -> None:
         dialect="bigquery",
         query=None,
     )
-    rule = ClassificationMacros()
+    rule = ClassificationMacros(config=config)
     assert rule.check_model(model) is None
