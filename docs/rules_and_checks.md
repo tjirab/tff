@@ -55,9 +55,27 @@ Architectural checks evaluate the structure, dependencies, and layout of your en
 ### Custom Exclusions (`custom_exclusions`)
 
 * **What it checks**:
-  * Enforces custom dependency boundaries defined in a separate JSON file. It blocks defined layer/domain dependencies and supports specifying whitelist exceptions.
+  * Enforces custom dependency boundaries. It blocks defined layer/domain dependencies and supports specifying whitelist exceptions. Exclusions can be defined directly in `fitness_functions.yaml` or in a separate JSON file.
 * **How to configure**:
-  Defined under `checks.custom_exclusions` in `fitness_functions.yaml`.
+  Defined directly under `exclusions` and `allowed_exceptions` (or under `checks.custom_exclusions`) in `fitness_functions.yaml`:
+  ```yaml
+  exclusions:
+    - source_layer: core
+      target_layer: derived
+    - source_layer: core
+      source_domain: finance
+      target_layer: marts
+      target_domain: marketing
+
+  allowed_exceptions:
+    - model: derived.model_name
+      dependency: core.dependency_name
+
+  checks:
+    custom_exclusions:
+      enabled: true
+  ```
+  Alternatively, you can point to an external JSON exclusions file (e.g. `linter_exclusions.json`):
   ```yaml
   exclusions_path: linter_exclusions.json  # Relative to project root
 
@@ -150,9 +168,26 @@ Architectural checks evaluate the structure, dependencies, and layout of your en
 ### Schema Contracts (`schema_contracts`)
 
 * **What it checks**:
-  * Enforces schema structural parity between related models to ensure they stay in sync.
+  * Enforces schema structural parity between related models to ensure they stay in sync. Contracts can be configured directly in `fitness_functions.yaml` or in an external JSON file.
 * **How to configure**:
-  Defined under `checks.schema_contracts` in `fitness_functions.yaml`.
+  Defined under `contract_groups` (or under `checks.schema_contracts`) in `fitness_functions.yaml`:
+  ```yaml
+  contract_groups:
+    column_parity_groups:
+      - reference: models/core/dim_customer_ref.sql
+        exclude_columns: [created_at, updated_at]
+        members:
+          - models/core/dim_customer_replica.sql
+
+    dimension_parity_groups:
+      - left: models/core/fact_sales.sql
+        right: models/core/fact_orders.sql
+
+  checks:
+    schema_contracts:
+      enabled: true
+  ```
+  Alternatively, you can point to an external JSON contract groups file (e.g. `linter_contract_groups.json`):
   ```yaml
   contract_groups_path: linter_contract_groups.json  # Relative to project root
 
@@ -282,7 +317,16 @@ Architectural checks evaluate the structure, dependencies, and layout of your en
 
 * **What it checks**:
   * Identifies "Connascence of Value" by flagging literal values (strings, numbers) duplicated across multiple models.
-  * Only string and numeric literals are checked (excluding boolean literals, NULL, and literals located inside `LIMIT` or `OFFSET` clauses).
+  * Only domain-meaning literals are checked. Structural and technical SQL literals are automatically excluded based on AST context:
+    * Literals inside `LIMIT` or `OFFSET` clauses.
+    * Data type parameters and precision/scale definitions (e.g. `DECIMAL(15, 2)`, `VARCHAR(255)`).
+    * Rounding and truncation precision/scale arguments (e.g. `ROUND(amount, 2)`, `TRUNC(amount, 2)`).
+    * String splitting delimiter and index arguments (e.g. `SPLIT_PART(email, '@', 2)`).
+    * Positional string slicing parameters (e.g. `SUBSTRING(name, 1, 10)`, `LEFT(name, 5)`, `RIGHT(name, 5)`).
+    * String concatenation operators (`||` / `DPipe`) and `CONCAT_WS` separators.
+    * Mathematical divisors in arithmetic division (e.g. `amount / 100.00` cents-to-dollars divisor).
+  * Short punctuation characters (`|`, ` `, `-`, `_`, `/`, `:`) are ignored by default and configurable via `ignored_punctuation`.
+  * Project-specific literal escapes can be added to `ignored_values`.
   * Grouping is case-insensitive for strings, but the original casing is preserved in the findings messages.
 * **How to configure**:
   Defined under `checks.connascence_of_value` in `fitness_functions.yaml`.
@@ -293,6 +337,7 @@ Architectural checks evaluate the structure, dependencies, and layout of your en
       severity: warning               # Severity of finding: 'warning' or 'error'
       min_occurrences: 2             # Minimum number of unique models sharing a literal to trigger (default: 2)
       ignored_values: ["0", "1", ""]  # List of literals to ignore (default: ['0', '1', ''])
+      ignored_punctuation: ["|", " ", "-", "_", "/", ":"] # Punctuation strings to ignore (default: ['|', ' ', '-', '_', '/', ':'])
       skip_layers: [staging]
   ```
 
@@ -336,7 +381,7 @@ For SQLMesh projects, these rules run dynamically inside SQLMesh (e.g., `sqlmesh
 ### Ban SELECT * (`ban_select_star`)
 
 * **What it checks**:
-  * Disallows the use of wildcard `SELECT *` statements. Requires explicit column naming to reduce model coupling.
+  * Disallows the use of wildcard `SELECT *` statements. Requires explicit column naming to reduce model coupling. Aggregate count expressions (e.g., `COUNT(*)`, `COUNT(DISTINCT *)`) are permitted.
 * **How to configure**:
   Defined under `rules.ban_select_star` in `fitness_functions.yaml`.
   ```yaml
@@ -470,7 +515,7 @@ For SQLMesh projects, these rules run dynamically inside SQLMesh (e.g., `sqlmesh
         cust_id: customer_id
   ```
   * **SQLMesh Rule Name**: `columnnames`
-  * `replacements`: A dictionary mapping search regex patterns (deprecated names) to target replacement suggestions.
+  * `replacements`: A dictionary mapping search regex patterns (deprecated names) to target replacement suggestions (applied via `re.sub`).
 
 ---
 
@@ -542,3 +587,70 @@ For SQLMesh projects, these rules run dynamically inside SQLMesh (e.g., `sqlmesh
       enabled: true
   ```
   * **SQLMesh Rule Name**: `filenameequalsmodelname`
+
+---
+
+## 3. Health Scoring Configuration
+
+TFF calculates an overall architecture health score (0–100) aggregated from all executed checks. By default, every check carries equal weight (`1.0`), and failures subtract penalties proportionally (an error penalty of `1.0` and warning penalty of `0.5` per affected model; or `100.0` error and `50.0` warning for project-level checks).
+
+You can configure custom weights and failure penalties under the `health:` section in `fitness_functions.yaml`.
+
+### Check and Category Weights
+
+Assign custom relative weights to prioritize specific quality dimensions. Checks with higher weights have a greater influence on the overall score.
+
+```yaml
+health:
+  weights:
+    layer_integrity: 3.0       # Higher weight for critical architectural boundaries
+    schema_contracts: 2.0
+    column_names: 0.5           # Lower weight for naming conventions
+    metadata: 1.5
+
+  # Optionally set weights by connascence category
+  category_weights:
+    dynamic_coupling: 2.0       # Connascence of Timing / Execution
+    static_coupling: 1.5        # Connascence of Position / Meaning
+    naming: 0.75                # Connascence of Name
+```
+
+* **Check-level weights (`weights`)**: Map check or rule names (e.g. `layer_integrity`, `ban_select_star`) to a positive float weight.
+* **Category weights (`category_weights`)**: Map categories (e.g. `connascence_of_algorithm`, `dynamic_coupling`, `metadata`) to a positive float weight. If both category and check weights are specified, check-level weights take precedence.
+
+### Failure Penalties
+
+Customize the penalty points deducted for errors and warnings:
+
+```yaml
+health:
+  penalties:
+    # Model-level penalties (deducted proportionally to model count)
+    error: 1.0                  # Default: 1.0
+    warning: 0.5                # Default: 0.5
+
+    # Project-level penalties (subtracted directly from the check's 100-point score)
+    project_error: 100.0        # Default: 100.0 (or decimal 1.0)
+    project_warning: 50.0       # Default: 50.0 (or decimal 0.5)
+
+    # Check-specific overrides
+    checks:
+      schema_contracts:
+        error: 2.0              # Strict penalty for schema mismatch
+      column_names:
+        warning: 0.1            # Mild penalty for column name warnings
+```
+
+### Scoring Formula
+
+1. **Model-Level Checks** (e.g. `ban_select_star`, `metadata`):
+   $$\text{penalty points} = (\text{error count} \times \text{penalty}_{\text{error}}) + (\text{warning count} \times \text{penalty}_{\text{warning}})$$
+   $$\text{score} = \max\left(0, 100 \times \left(1 - \frac{\text{penalty points}}{\text{penalty}_{\text{error}} \times \text{total models}}\right)\right)$$
+
+2. **Project-Level Checks** (e.g. `layer_integrity`, `dependency_graph`):
+   $$\text{score} = \max\left(0, 100 - (\text{error count} \times \text{penalty}_{\text{proj\_error}} + \text{warning count} \times \text{penalty}_{\text{proj\_warn}})\right)$$
+
+3. **Overall Health Score**:
+   The weighted average across all active checks:
+   $$\text{Overall Score} = \frac{\sum (\text{score}_i \times \text{weight}_i)}{\sum \text{weight}_i}$$
+

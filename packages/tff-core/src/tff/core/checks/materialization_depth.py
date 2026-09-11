@@ -42,7 +42,7 @@ def collect_materialization_depth_findings(
         if model.is_symbolic or model.is_external:
             continue
 
-        layer = get_layer_from_path(model.path)
+        layer = get_layer_from_path(model.path, layer_order=config.layers.order)
         if not depth_config.should_run(layer):
             continue
 

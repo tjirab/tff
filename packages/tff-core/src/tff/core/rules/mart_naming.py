@@ -6,7 +6,6 @@ from pathlib import Path
 
 from tff.core.model import ModelRepresentation
 from tff.core.rules.base import Rule, RuleViolation
-from tff.core.context import get_ff_config
 
 
 class MartModelNamingConvention(Rule):
@@ -14,7 +13,7 @@ class MartModelNamingConvention(Rule):
     name = "martmodelnamingconvention"
 
     def check_model(self, model: ModelRepresentation) -> RuleViolation | None:
-        rule_config = get_ff_config().rules.mart_naming
+        rule_config = self.config.rules.mart_naming
         if not rule_config.enabled:
             return None
 

@@ -12,112 +12,99 @@ from rich.panel import Panel
 from rich.table import Table
 from rich.text import Text
 
-from tff.core.config import FitnessFunctionsConfig
+from tff.core.config import FitnessFunctionsConfig, HealthPenaltiesConfig
 from tff.core.report import CHECK_LABELS, CONNASCENCE_CATEGORIES, LintFinding
 
-PROJECT_LEVEL_CHECKS = {
-    "layer_integrity",
-    "custom_exclusions",
-    "schema_contracts",
-    "dependency_graph",
-    "materialization_depth",
-}
+from tff.core.registry import normalize_check_name, registry
 
-CATEGORIES = {
-    "Connascence of Name (CoN)": [
-        "banselectstar",
-        "filenameequalsmodelname",
-        "columnnames",
-        "martmodelnamingconvention",
-        "ambiguousorinvalidcolumn",
-        "invalidselectstarexpansion",
-    ],
-    "Connascence of Type (CoT)": [
-        "columntypes",
-        "schema_contracts",
-    ],
-    "Connascence of Position (CoP)": [
-        "nopositionalgroupbyororderby",
-    ],
-    "Connascence of Meaning (CoM)": [
-        "classificationmacros",
-    ],
-    "Connascence of Algorithm (CoA)": [
-        "duplicate_ctes",
-    ],
-    "Connascence of Value (CoV)": [
-        "connascence_of_value",
-    ],
-    "Dynamic Coupling & DAG Structure": [
-        "layer_integrity",
-        "custom_exclusions",
-        "dependency_graph",
-        "materialization_depth",
-        "environmentagnosticreferences",
-    ],
-    "Quality & Metadata (Non-Connascence)": [
-        "nomissingowner",
-        "nomissingdescription",
-        "nomissinggrain",
-        "nomissingnotnull",
-        "nomissinguniquevalues",
-        "sqlcomplexity",
-    ],
+PROJECT_LEVEL_CHECKS: set[str] = registry.get_project_level_check_names()
+CATEGORIES: dict[str, list[str]] = registry.get_categories()
+
+CATEGORY_ALIASES: dict[str, str] = {
+    "con": "Connascence of Name (CoN)",
+    "connascence_of_name": "Connascence of Name (CoN)",
+    "name": "Connascence of Name (CoN)",
+    "cot": "Connascence of Type (CoT)",
+    "connascence_of_type": "Connascence of Type (CoT)",
+    "type": "Connascence of Type (CoT)",
+    "cop": "Connascence of Position (CoP)",
+    "connascence_of_position": "Connascence of Position (CoP)",
+    "position": "Connascence of Position (CoP)",
+    "com": "Connascence of Meaning (CoM)",
+    "connascence_of_meaning": "Connascence of Meaning (CoM)",
+    "meaning": "Connascence of Meaning (CoM)",
+    "coa": "Connascence of Algorithm (CoA)",
+    "connascence_of_algorithm": "Connascence of Algorithm (CoA)",
+    "algorithm": "Connascence of Algorithm (CoA)",
+    "cov": "Connascence of Value (CoV)",
+    "connascence_of_value": "Connascence of Value (CoV)",
+    "value": "Connascence of Value (CoV)",
+    "dynamic_coupling": "Dynamic Coupling & DAG Structure",
+    "coupling": "Dynamic Coupling & DAG Structure",
+    "dag": "Dynamic Coupling & DAG Structure",
+    "dynamic_coupling_dag_structure": "Dynamic Coupling & DAG Structure",
+    "quality": "Quality & Metadata (Non-Connascence)",
+    "metadata": "Quality & Metadata (Non-Connascence)",
+    "quality_metadata": "Quality & Metadata (Non-Connascence)",
 }
 
 
-def is_check_enabled(config: FitnessFunctionsConfig, check_name: str, provider: str) -> bool:
+def normalize_category_name(name: str) -> str:
+    """Normalize category name for lookup."""
+    norm = normalize_check_name(name)
+    alias_match = CATEGORY_ALIASES.get(name.lower().strip()) or CATEGORY_ALIASES.get(norm)
+    if alias_match:
+        return normalize_check_name(alias_match)
+    return norm
+
+
+def get_check_weight(
+    check_name: str,
+    config: FitnessFunctionsConfig,
+) -> float:
+    """Resolve weight for a given check name or category from config."""
+    health_cfg = getattr(config, "health", None)
+    if health_cfg is None:
+        return 1.0
+
+    weights = health_cfg.weights
+    category_weights = health_cfg.category_weights
+    check_def = registry.get(check_name)
+
+    # 1. Direct check weight match
+    candidate_names: list[str] = [check_name]
+    if check_def is not None:
+        candidate_names.append(check_def.id)
+        if check_def.finding_check_id:
+            candidate_names.append(check_def.finding_check_id)
+        candidate_names.extend(check_def.aliases)
+
+    candidate_norms = {normalize_check_name(c) for c in candidate_names}
+
+    for k, w in weights.items():
+        if normalize_check_name(k) in candidate_norms:
+            return w
+
+    # 2. Category weight match
+    category: str | None = check_def.category if check_def is not None else None
+
+    if category is not None:
+        norm_cat = normalize_check_name(category)
+        for k, w in category_weights.items():
+            if normalize_category_name(k) == norm_cat:
+                return w
+        for k, w in weights.items():
+            if normalize_category_name(k) == norm_cat:
+                return w
+
+    return 1.0
+
+
+def is_check_enabled(
+    config: FitnessFunctionsConfig, check_name: str, provider: str
+) -> bool:
     """Determine if a check/rule is enabled in the configuration."""
-    if check_name == "layer_integrity":
-        return config.checks.layer_integrity.enabled
-    if check_name == "custom_exclusions":
-        return config.checks.custom_exclusions.enabled
-    if check_name == "schema_contracts":
-        return config.checks.schema_contracts.enabled
-    if check_name == "dependency_graph":
-        return config.checks.dependency_graph.enabled
-    if check_name == "materialization_depth":
-        return config.checks.materialization_depth.enabled
-    if check_name == "duplicate_ctes":
-        return config.checks.duplicate_ctes.enabled
-    if check_name == "connascence_of_value":
-        return config.checks.connascence_of_value.enabled
-    if check_name == "classificationmacros":
-        return config.rules.classification_macros.enabled
-    if check_name == "sqlcomplexity":
-        return config.rules.sql_complexity.enabled
-    if check_name == "martmodelnamingconvention":
-        return config.rules.mart_naming.enabled
-    if check_name == "columnnames":
-        return config.rules.column_names.enabled
-    if check_name == "columntypes":
-        return config.rules.column_types.enabled
-    if check_name == "filenameequalsmodelname":
-        return config.rules.filename_equals_modelname.enabled
-    if check_name == "banselectstar":
-        return config.rules.ban_select_star.enabled
-    if check_name == "nopositionalgroupbyororderby":
-        return config.rules.no_positional_group_by_or_order_by.enabled
-    if check_name == "environmentagnosticreferences":
-        return config.rules.environment_agnostic_references.enabled
-
-    # Metadata sub-rules
-    if check_name == "nomissingowner":
-        return config.rules.metadata.enabled and config.rules.metadata.owner
-    if check_name == "nomissingdescription":
-        return config.rules.metadata.enabled and config.rules.metadata.description
-    if check_name == "nomissinggrain":
-        return config.rules.metadata.enabled and config.rules.metadata.grain
-    if check_name == "nomissingnotnull":
-        return config.rules.metadata.enabled and config.rules.metadata.not_null
-    if check_name == "nomissinguniquevalues":
-        return config.rules.metadata.enabled and config.rules.metadata.unique_values
-
-    # SQLMesh native rules
-    if check_name in {"ambiguousorinvalidcolumn", "invalidselectstarexpansion"}:
-        return provider == "sqlmesh"
-
-    return False
+    return registry.is_check_enabled(config, check_name, provider)
 
 
 def _matches_scope(finding_path: str | None, scope: list[str]) -> bool:
@@ -139,25 +126,30 @@ def calculate_health_scores(
     provider: str,
     *,
     scope: list[str] | None = None,
+    scoped_models_count: int | None = None,
 ) -> dict[str, Any]:
     """Calculate health scores based on findings and enabled checks.
 
     When *scope* is given (a list of path prefixes such as
     ``["models/sources"]`` or ``["models/marts/marketing"]``), only findings
-    whose ``path`` starts with one of those prefixes are considered and
-    ``models_checked`` is re-derived from the paths that appear in the
+    whose ``path`` starts with one of those prefixes are considered. If
+    *scoped_models_count* is provided, it is used as the denominator;
+    otherwise, ``models_checked`` is re-derived from the paths that appear in the
     filtered findings (so the denominator reflects the scoped subset).
     Project-level checks (which have no path) are always excluded when a
     scope is active.
     """
     if scope:
         findings = [f for f in findings if _matches_scope(f.path, scope)]
-        # Re-derive models_checked from the scoped findings' unique model paths
-        scoped_model_paths: set[str] = set()
-        for f in findings:
-            if f.path:
-                scoped_model_paths.add(f.path)
-        models_checked = len(scoped_model_paths)
+        if scoped_models_count is not None:
+            models_checked = scoped_models_count
+        else:
+            # Re-derive models_checked from the scoped findings' unique model paths
+            scoped_model_paths: set[str] = set()
+            for f in findings:
+                if f.path:
+                    scoped_model_paths.add(f.path)
+            models_checked = len(scoped_model_paths)
     enabled_checks = set()
     all_known_checks = set()
     for cat_checks in CATEGORIES.values():
@@ -173,6 +165,12 @@ def calculate_health_scores(
         if f.check not in all_known_checks:
             enabled_checks.add(f.check)
 
+    penalties = (
+        config.health.penalties
+        if hasattr(config, "health")
+        else HealthPenaltiesConfig()
+    )
+
     check_scores: dict[str, float] = {}
     check_findings: dict[str, list[LintFinding]] = defaultdict(list)
     for f in findings:
@@ -187,10 +185,12 @@ def calculate_health_scores(
 
         if check in PROJECT_LEVEL_CHECKS:
             # Project level check
+            err_penalty = penalties.get_check_error_penalty(check, is_project_level=True)
+            warn_penalty = penalties.get_check_warning_penalty(check, is_project_level=True)
             if any(f.severity == "error" for f in cf):
-                check_scores[check] = 0.0
+                check_scores[check] = max(0.0, 100.0 - err_penalty)
             elif any(f.severity == "warning" for f in cf):
-                check_scores[check] = 50.0
+                check_scores[check] = max(0.0, 100.0 - warn_penalty)
             else:
                 check_scores[check] = 100.0
         else:
@@ -220,8 +220,15 @@ def calculate_health_scores(
             if M <= 0:
                 check_scores[check] = 100.0
             else:
-                score = 100.0 * (1.0 - (E + 0.5 * W) / M)
+                err_mult = penalties.get_check_error_penalty(check, is_project_level=False)
+                warn_mult = penalties.get_check_warning_penalty(check, is_project_level=False)
+                score = 100.0 * (1.0 - (err_mult * E + warn_mult * W) / M)
                 check_scores[check] = max(0.0, score)
+
+    # Collect weights for enabled checks
+    check_weights: dict[str, float] = {
+        check: get_check_weight(check, config) for check in enabled_checks
+    }
 
     # Calculate category scores
     category_scores: dict[str, float | None] = {}
@@ -230,12 +237,26 @@ def calculate_health_scores(
         if not enabled_cat_checks:
             category_scores[cat_name] = None
         else:
-            category_scores[cat_name] = sum(check_scores[c] for c in enabled_cat_checks) / len(enabled_cat_checks)
+            cat_total_weight = sum(check_weights[c] for c in enabled_cat_checks)
+            if cat_total_weight > 0:
+                category_scores[cat_name] = (
+                    sum(check_scores[c] * check_weights[c] for c in enabled_cat_checks)
+                    / cat_total_weight
+                )
+            else:
+                category_scores[cat_name] = sum(check_scores[c] for c in enabled_cat_checks) / len(enabled_cat_checks)
 
     # Handle "Other Checks" category if findings exist for unknown checks
     unknown_enabled = [c for c in enabled_checks if c not in all_known_checks]
     if unknown_enabled:
-        category_scores["Other Checks"] = sum(check_scores[c] for c in unknown_enabled) / len(unknown_enabled)
+        unknown_total_weight = sum(check_weights[c] for c in unknown_enabled)
+        if unknown_total_weight > 0:
+            category_scores["Other Checks"] = (
+                sum(check_scores[c] * check_weights[c] for c in unknown_enabled)
+                / unknown_total_weight
+            )
+        else:
+            category_scores["Other Checks"] = sum(check_scores[c] for c in unknown_enabled) / len(unknown_enabled)
     else:
         category_scores["Other Checks"] = None
 
@@ -243,7 +264,14 @@ def calculate_health_scores(
     if not enabled_checks:
         overall_score = 100.0
     else:
-        overall_score = sum(check_scores.values()) / len(enabled_checks)
+        overall_total_weight = sum(check_weights[c] for c in enabled_checks)
+        if overall_total_weight > 0:
+            overall_score = (
+                sum(check_scores[c] * check_weights[c] for c in enabled_checks)
+                / overall_total_weight
+            )
+        else:
+            overall_score = sum(check_scores.values()) / len(enabled_checks)
 
     return {
         "overall_score": overall_score,
@@ -251,6 +279,7 @@ def calculate_health_scores(
         "category_scores": category_scores,
         "enabled_checks": enabled_checks,
         "check_findings": check_findings,
+        "check_weights": check_weights,
     }
 
 
@@ -361,7 +390,7 @@ def render_health_report(
     
     # 2. Detailed Breakdown
     if group_by == "domain":
-        _render_health_by_domain(scores, console)
+        _render_health_by_domain(scores, console, config=config)
     else:
         _render_health_by_connascence(scores, enabled_checks, check_scores, check_findings, console)
 
@@ -381,6 +410,7 @@ def _render_health_by_connascence(
     table.add_column(width=22, no_wrap=True)
     table.add_column(no_wrap=True)
 
+    check_weights = scores.get("check_weights", {})
     first_cat = True
     for cat_name, cat_checks in CATEGORIES.items():
         # Only print category if it contains enabled checks
@@ -421,7 +451,9 @@ def _render_health_by_connascence(
                         parts.append(f"{warnings} warning{'s' if warnings != 1 else ''}")
                     violation_text = f"[dim]({', '.join(parts)})[/dim]"
 
-                check_desc = Text.from_markup(f"  {icon} {label}\n    [dim]({check})[/dim]")
+                weight = check_weights.get(check, 1.0)
+                weight_str = f" · weight: {weight:g}" if weight != 1.0 else ""
+                check_desc = Text.from_markup(f"  {icon} {label}\n    [dim]({check}{weight_str})[/dim]")
                 bar = make_progress_bar(score, width=10)
                 score_cell = Text.from_markup(f"{bar} {score_text}")
 
@@ -464,7 +496,9 @@ def _render_health_by_connascence(
                     parts.append(f"{warnings} warning{'s' if warnings != 1 else ''}")
                 violation_text = f"[dim]({', '.join(parts)})[/dim]"
 
-            check_desc = Text.from_markup(f"  {icon} {label}\n    [dim]({check})[/dim]")
+            weight = check_weights.get(check, 1.0)
+            weight_str = f" · weight: {weight:g}" if weight != 1.0 else ""
+            check_desc = Text.from_markup(f"  {icon} {label}\n    [dim]({check}{weight_str})[/dim]")
             bar = make_progress_bar(score, width=10)
             score_cell = Text.from_markup(f"{bar} {score_text}")
 
@@ -485,27 +519,38 @@ def _domain_key(path: str | None) -> str:
     if path is None:
         return "Project-level"
     parts = Path(path).parts
-    try:
-        models_index = parts.index("models")
-    except ValueError:
+    base_folder = None
+    models_index = None
+    for base in ("models", "definitions"):
+        if base in parts:
+            base_folder = base
+            models_index = parts.index(base)
+            break
+    if models_index is None:
         return path
     if len(parts) <= models_index + 1:
         return path
     layer = parts[models_index + 1]
-    # Check whether the third component is a subdirectory (domain) or a .sql file
+    # Check whether the third component is a subdirectory (domain) or a model file
     if len(parts) > models_index + 2:
         third = parts[models_index + 2]
-        if not third.endswith(".sql"):
-            return f"models/{layer}/{third}"
-    return f"models/{layer}"
+        if not third.endswith((".sql", ".sqlx")):
+            return f"{base_folder}/{layer}/{third}"
+    return f"{base_folder}/{layer}"
 
 
 
 def _render_health_by_domain(
     scores: dict[str, Any],
     console: Console,
+    config: FitnessFunctionsConfig | None = None,
 ) -> None:
     """Render detailed breakdown grouped by domain (path segment after models/)."""
+    penalties = (
+        config.health.penalties
+        if config and hasattr(config, "health")
+        else HealthPenaltiesConfig()
+    )
     check_findings = scores["check_findings"]
     enabled_checks = scores["enabled_checks"]
     check_scores = scores["check_scores"]
@@ -579,7 +624,9 @@ def _render_health_by_domain(
                 warning_models = {f.model for f in cf if f.severity == "warning" and f.model} - error_models
                 E = len(error_models) + sum(1 for f in cf if f.severity == "error" and not f.model)
                 W = len(warning_models) + sum(1 for f in cf if f.severity == "warning" and not f.model)
-                local_score = max(0.0, 100.0 * (1.0 - (E + 0.5 * W) / domain_models_checked))
+                err_mult = penalties.get_check_error_penalty(check, is_project_level=False)
+                warn_mult = penalties.get_check_warning_penalty(check, is_project_level=False)
+                local_score = max(0.0, 100.0 * (1.0 - (err_mult * E + warn_mult * W) / domain_models_checked))
             else:
                 local_score = check_scores.get(check, 100.0)
 

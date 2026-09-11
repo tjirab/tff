@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import time
 from datetime import date, datetime, timedelta
 from pathlib import Path
@@ -13,13 +14,16 @@ from tff.core.report import LintFinding
 
 def serialize_finding(f: LintFinding) -> dict[str, Any]:
     """Serialize a LintFinding dataclass into a standard dictionary."""
-    return {
+    data: dict[str, Any] = {
         "check": f.check,
         "severity": f.severity,
         "message": f.message,
         "model": f.model,
         "path": f.path,
     }
+    if getattr(f, "line", None) is not None:
+        data["line"] = f.line
+    return data
 
 
 def get_lint_json_data(
@@ -69,7 +73,7 @@ def get_health_json_data(
     # Sort findings by model, check, severity for deterministic output
     flat_findings.sort(key=lambda x: (x["model"] or "", x["check"], x["severity"]))
 
-    return {
+    data: dict[str, Any] = {
         "timestamp": datetime.now().astimezone().isoformat(),
         "command": "health",
         "overall_score": overall_score,
@@ -79,10 +83,26 @@ def get_health_json_data(
         "enabled_checks": sorted(enabled_checks),
         "findings": flat_findings,
     }
+    if "check_weights" in scores:
+        data["check_weights"] = scores["check_weights"]
+    return data
 
 
-def save_log(project_root: Path, command: str, data: dict[str, Any]) -> Path:
-    """Save execution JSON to .tff_logs/<command>/<timestamp>.log and clean up logs older than 60 days."""
+def is_logging_disabled() -> bool:
+    """Return True if disk logging is disabled via environment variable."""
+    return os.environ.get("TFF_NO_LOG", "").strip().lower() in ("1", "true", "yes")
+
+
+def save_log(
+    project_root: Path, command: str, data: dict[str, Any], no_log: bool = False
+) -> Path | None:
+    """Save execution JSON to .tff_logs/<command>/<timestamp>.log and clean up logs older than 60 days.
+
+    If no_log is True or TFF_NO_LOG=1 is set, logging is bypassed and returns None.
+    """
+    if no_log or is_logging_disabled():
+        return None
+
     log_dir = project_root / ".tff_logs" / command
     log_dir.mkdir(parents=True, exist_ok=True)
 

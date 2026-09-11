@@ -20,7 +20,7 @@ class CustomExclusionsChecker:
     def __init__(
         self,
         models: dict[str, ModelRepresentation],
-        exclusions_path: Path,
+        exclusions_path: Path | None = None,
         config: FitnessFunctionsConfig | None = None,
     ):
         self.models = models
@@ -29,11 +29,7 @@ class CustomExclusionsChecker:
         self.exclusions = self._load_exclusions()
 
     def _load_exclusions(self) -> dict:
-        if not self.exclusions_path.exists():
-            logger.warning(
-                "Config file %s not found. No exclusions will be enforced.",
-                self.exclusions_path,
-            )
+        if self.exclusions_path is None or not self.exclusions_path.exists():
             return {}
 
         try:
@@ -64,15 +60,18 @@ class CustomExclusionsChecker:
             ):
                 return True
 
-        if self.config and self.config.checks.custom_exclusions:
-            config_exclusions = self.config.checks.custom_exclusions
-            if hasattr(config_exclusions, "allowed_exceptions") and config_exclusions.allowed_exceptions:
-                for exception in config_exclusions.allowed_exceptions:
-                    if (
-                        self._normalize_model_name(exception.model) == normalized_model
-                        and self._normalize_model_name(exception.dependency) == normalized_dependency
-                    ):
-                        return True
+        if self.config:
+            allowed = []
+            if self.config.checks.custom_exclusions and hasattr(self.config.checks.custom_exclusions, "allowed_exceptions"):
+                allowed.extend(self.config.checks.custom_exclusions.allowed_exceptions)
+            if hasattr(self.config, "allowed_exceptions") and self.config.allowed_exceptions:
+                allowed.extend(self.config.allowed_exceptions)
+            for exception in allowed:
+                if (
+                    self._normalize_model_name(exception.model) == normalized_model
+                    and self._normalize_model_name(exception.dependency) == normalized_dependency
+                ):
+                    return True
 
         return False
 
@@ -126,58 +125,62 @@ class CustomExclusionsChecker:
                 return True
 
         # 2. Config exclusions (fitness_functions.yaml)
-        if self.config and self.config.checks.custom_exclusions:
-            config_exclusions = self.config.checks.custom_exclusions
-            if hasattr(config_exclusions, "exclusions") and config_exclusions.exclusions:
-                for exclusion in config_exclusions.exclusions:
-                    source_match = True
-                    if exclusion.source_layer is not None and exclusion.source_layer != source_layer:
-                        source_match = False
-                    if exclusion.source_domain is not None and exclusion.source_domain != source_domain:
-                        source_match = False
-                    
-                    if source_model:
-                        if exclusion.source_tag is not None and exclusion.source_tag not in (source_model.tags or []):
-                            source_match = False
-                        if exclusion.source_tags:
-                            for tag in exclusion.source_tags:
-                                if tag not in (source_model.tags or []):
-                                    source_match = False
-                                    break
-                        if exclusion.source_meta:
-                            for k, v in exclusion.source_meta.items():
-                                if not source_model.meta or source_model.meta.get(k) != v:
-                                    source_match = False
-                                    break
-                    else:
-                        if exclusion.source_tag or exclusion.source_tags or exclusion.source_meta:
-                            source_match = False
+        config_rules = []
+        if self.config:
+            if self.config.checks.custom_exclusions and hasattr(self.config.checks.custom_exclusions, "exclusions"):
+                config_rules.extend(self.config.checks.custom_exclusions.exclusions)
+            if hasattr(self.config, "exclusions") and self.config.exclusions:
+                config_rules.extend(self.config.exclusions)
 
-                    target_match = True
-                    if exclusion.target_layer is not None and exclusion.target_layer != target_layer:
-                        target_match = False
-                    if exclusion.target_domain is not None and exclusion.target_domain != target_domain:
-                        target_match = False
-                    
-                    if target_model:
-                        if exclusion.target_tag is not None and exclusion.target_tag not in (target_model.tags or []):
-                            target_match = False
-                        if exclusion.target_tags:
-                            for tag in exclusion.target_tags:
-                                if tag not in (target_model.tags or []):
-                                    target_match = False
-                                    break
-                        if exclusion.target_meta:
-                            for k, v in exclusion.target_meta.items():
-                                if not target_model.meta or target_model.meta.get(k) != v:
-                                    target_match = False
-                                    break
-                    else:
-                        if exclusion.target_tag or exclusion.target_tags or exclusion.target_meta:
-                            target_match = False
+        for exclusion in config_rules:
+            source_match = True
+            if exclusion.source_layer is not None and exclusion.source_layer != source_layer:
+                source_match = False
+            if exclusion.source_domain is not None and exclusion.source_domain != source_domain:
+                source_match = False
 
-                    if source_match and target_match:
-                        return True
+            if source_model:
+                if exclusion.source_tag is not None and exclusion.source_tag not in (source_model.tags or []):
+                    source_match = False
+                if exclusion.source_tags:
+                    for tag in exclusion.source_tags:
+                        if tag not in (source_model.tags or []):
+                            source_match = False
+                            break
+                if exclusion.source_meta:
+                    for k, v in exclusion.source_meta.items():
+                        if not source_model.meta or source_model.meta.get(k) != v:
+                            source_match = False
+                            break
+            else:
+                if exclusion.source_tag or exclusion.source_tags or exclusion.source_meta:
+                    source_match = False
+
+            target_match = True
+            if exclusion.target_layer is not None and exclusion.target_layer != target_layer:
+                target_match = False
+            if exclusion.target_domain is not None and exclusion.target_domain != target_domain:
+                target_match = False
+
+            if target_model:
+                if exclusion.target_tag is not None and exclusion.target_tag not in (target_model.tags or []):
+                    target_match = False
+                if exclusion.target_tags:
+                    for tag in exclusion.target_tags:
+                        if tag not in (target_model.tags or []):
+                            target_match = False
+                            break
+                if exclusion.target_meta:
+                    for k, v in exclusion.target_meta.items():
+                        if not target_model.meta or target_model.meta.get(k) != v:
+                            target_match = False
+                            break
+            else:
+                if exclusion.target_tag or exclusion.target_tags or exclusion.target_meta:
+                    target_match = False
+
+            if source_match and target_match:
+                return True
 
         return False
 
@@ -242,7 +245,11 @@ class CustomExclusionsChecker:
 def collect_custom_exclusion_findings(
     models: dict[str, ModelRepresentation], config: FitnessFunctionsConfig
 ) -> list[LintFinding]:
-    exclusions_path = resolve_project_path(config, config.exclusions_path)
+    exclusions_path: Path | None = None
+    if config.exclusions_path:
+        p = resolve_project_path(config, config.exclusions_path)
+        if p.exists():
+            exclusions_path = p
     checker = CustomExclusionsChecker(models, exclusions_path, config=config)
     findings: list[LintFinding] = []
 

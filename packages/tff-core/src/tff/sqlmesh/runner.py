@@ -8,32 +8,21 @@ from pathlib import Path
 from sqlmesh.core.context import Context
 from sqlmesh.core.linter.definition import AnnotatedRuleViolation
 
-from tff.core.checks.custom_exclusions import collect_custom_exclusion_findings
-from tff.core.checks.dependency_graph import collect_dependency_graph_findings
-from tff.core.checks.layer_integrity import collect_layer_integrity_findings
-from tff.core.checks.schema_contracts import collect_schema_contract_findings
-from tff.core.checks.materialization_depth import collect_materialization_depth_findings
-from tff.core.checks.duplicate_ctes import collect_duplicate_cte_findings
-from tff.core.checks.connascence_of_value import collect_connascence_of_value_findings
 from tff.core.config import FitnessFunctionsConfig, load_fitness_config
 from tff.core.context import set_ff_config
+from tff.core.model import ModelRepresentation
+from tff.core.registry import normalize_check_name, registry
 from tff.core.report import LintFinding, format_message, normalize_model_name
 from tff.core.utils.paths import model_path_relative
-from tff.core.model import ModelRepresentation
 from tff.sqlmesh.loader import FitnessLoader, map_sqlmesh_model
 
 logger = logging.getLogger(__name__)
 
 CHECK_COLLECTORS = {
-    "layer_integrity": lambda models, cfg: collect_layer_integrity_findings(models, cfg),
-    "custom_exclusions": lambda models, cfg: collect_custom_exclusion_findings(models, cfg),
-    "schema_contracts": lambda _models, cfg: collect_schema_contract_findings(cfg),
-    "dependency_graph": lambda models, cfg: collect_dependency_graph_findings(models, cfg),
-    "materialization_depth": lambda models, cfg: collect_materialization_depth_findings(models, cfg),
-    "duplicate_ctes": lambda models, cfg: collect_duplicate_cte_findings(models, cfg),
-    "connascence_of_value": lambda models, cfg: collect_connascence_of_value_findings(models, cfg),
+    c.finding_id: c.get_collector_fn()
+    for c in registry.dag_checks()
+    if c.get_collector_fn() is not None
 }
-
 
 
 class _SilentLinterConsole:
@@ -84,14 +73,11 @@ def collect_sqlmesh_findings(context: Context) -> list[LintFinding]:
 
 
 def count_models_checked(context: Context) -> int:
-    return sum(
-        1 for model in context.models.values() if not model.kind.is_symbolic
-    )
+    return sum(1 for model in context.models.values() if not model.kind.is_symbolic)
 
 
 def _check_enabled(config: FitnessFunctionsConfig, check_name: str) -> bool:
-    check = getattr(config.checks, check_name, None)
-    return bool(getattr(check, "enabled", False))
+    return registry.is_check_enabled(config, check_name, provider="sqlmesh")
 
 
 def map_sqlmesh_context_models(context: Context) -> dict[str, ModelRepresentation]:
@@ -106,38 +92,100 @@ def run_all_checks(
     context: Context | None = None,
     config: FitnessFunctionsConfig | None = None,
     checks: list[str] | None = None,
+    models: dict[str, ModelRepresentation] | None = None,
 ) -> tuple[list[LintFinding], int, list[str]]:
     project_root = project_root or Path.cwd()
     if config is None:
         config = load_fitness_config(project_root)
     set_ff_config(config)
 
-    context = context or Context(
-        paths=[str(project_root)],
-        loader=FitnessLoader,
-    )
+    findings: list[LintFinding] = []
 
     if checks is None:
         selected = ["sqlmesh"] + [
-            name
-            for name in CHECK_COLLECTORS
-            if _check_enabled(config, name)
+            name for name in CHECK_COLLECTORS if _check_enabled(config, name)
         ]
+        if context is None and models is None:
+            context = Context(
+                paths=[str(project_root)],
+                loader=FitnessLoader,
+            )
+
+        if context is not None:
+            findings.extend(collect_sqlmesh_findings(context))
+
+        mapped_models = (
+            models if models is not None else map_sqlmesh_context_models(context)
+        )
+
+        for check_name, collector in CHECK_COLLECTORS.items():
+            if _check_enabled(config, check_name) and collector is not None:
+                findings.extend(collector(mapped_models, config))
     else:
         selected = checks
+        # Validate checks or raise ValueError
+        for chk in checks:
+            norm = normalize_check_name(chk)
+            if norm not in ("sqlmesh", "rules"):
+                registry.get_or_raise(chk)
 
-    findings: list[LintFinding] = []
+        model_rules_requested = any(
+            normalize_check_name(c) == "rules"
+            or (registry.get(c) is not None and registry.get(c).scope == "model")
+            for c in checks
+        )
 
-    if "sqlmesh" in selected:
-        findings.extend(collect_sqlmesh_findings(context))
+        if context is None and (models is None or "sqlmesh" in selected):
+            context = Context(
+                paths=[str(project_root)],
+                loader=FitnessLoader,
+            )
 
-    mapped_models = map_sqlmesh_context_models(context)
+        mapped_models = (
+            models
+            if models is not None
+            else (map_sqlmesh_context_models(context) if context is not None else {})
+        )
 
-    for check_name, collector in CHECK_COLLECTORS.items():
-        if check_name not in selected:
-            continue
-        if checks is None and not _check_enabled(config, check_name):
-            continue
-        findings.extend(collector(mapped_models, config))
+        # Run SQLMesh linter / model rules
+        if "sqlmesh" in selected:
+            if context is not None:
+                findings.extend(collect_sqlmesh_findings(context))
+        elif model_rules_requested:
+            if context is not None:
+                all_sqlmesh_findings = collect_sqlmesh_findings(context)
+                if any(normalize_check_name(c) == "rules" for c in checks):
+                    findings.extend(all_sqlmesh_findings)
+                else:
+                    target_norms: set[str] = set()
+                    for chk in checks:
+                        c_def = registry.get(chk)
+                        if c_def is not None and c_def.scope == "model":
+                            target_norms.add(normalize_check_name(c_def.id))
+                            target_norms.add(normalize_check_name(c_def.finding_id))
+                            for alias in c_def.aliases:
+                                target_norms.add(normalize_check_name(alias))
+                    findings.extend(
+                        [f for f in all_sqlmesh_findings if normalize_check_name(f.check) in target_norms]
+                    )
+            elif mapped_models:
+                for chk in checks:
+                    c_def = registry.get(chk)
+                    if c_def is not None and c_def.scope == "model":
+                        findings.extend(c_def.run(mapped_models, config))
 
-    return findings, count_models_checked(context), selected
+        # Run DAG checks
+        for chk in checks:
+            c_def = registry.get(chk)
+            if c_def is not None and c_def.scope == "dag":
+                collector = c_def.get_collector_fn()
+                if collector is not None:
+                    findings.extend(collector(mapped_models, config))
+
+    checked_count = (
+        count_models_checked(context)
+        if context is not None
+        else sum(1 for m in mapped_models.values() if not m.is_symbolic)
+    )
+
+    return findings, checked_count, selected

@@ -81,6 +81,31 @@ def test_ban_select_star_violations(tmp_path: Path):
     violation_symbolic = rule.check_model(model_symbolic)
     assert violation_symbolic is None
 
+    # 6. COUNT(*) and COUNT(DISTINCT *) should NOT trigger violation
+    sql_file_count = tmp_path / "models/marts/count_model.sql"
+    sql_file_count.parent.mkdir(parents=True, exist_ok=True)
+    sql_file_count.write_text(
+        "SELECT COUNT(*), COUNT(DISTINCT *) FROM table GROUP BY col1", encoding="utf-8"
+    )
+    model_count = ModelRepresentation(
+        name="marts.count_model",
+        path=str(sql_file_count),
+        dialect="bigquery",
+        is_symbolic=False,
+    )
+    assert rule.check_model(model_count) is None
+
+    # 7. Subquery with SELECT * inside COUNT should still trigger violation
+    sql_file_sub = tmp_path / "models/marts/sub_star_model.sql"
+    sql_file_sub.write_text("SELECT COUNT((SELECT * FROM table))", encoding="utf-8")
+    model_sub = ModelRepresentation(
+        name="marts.sub_star_model",
+        path=str(sql_file_sub),
+        dialect="bigquery",
+        is_symbolic=False,
+    )
+    assert rule.check_model(model_sub) is not None
+
 
 def test_ban_select_star_error_paths(tmp_path: Path):
     config = FitnessFunctionsConfig()

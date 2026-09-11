@@ -1,8 +1,0 @@
-{
-  "group_name": "CoreBusinessData",
-  "description": "Defines the core set of tables required for business intelligence.",
-  "contracts": [
-    {"table": "dim_user", "columns": ["user_id", "created_at"]},
-    {"table": "fact_order", "columns": ["order_id", "user_id"]}
-  ]
-}

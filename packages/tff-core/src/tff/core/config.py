@@ -6,12 +6,125 @@ from pathlib import Path
 from typing import Any
 
 import yaml
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, PrivateAttr, field_validator, model_validator
+
+DEFAULT_LAYER_ORDER: list[str] = ["staging", "intermediate", "core", "marts"]
+
+MISSING_CONFIG_NOTICE: str = (
+    "Notice: No fitness_functions.yaml found. Running with default layer conventions (staging -> intermediate -> core -> marts).\n"
+    "Run 'tff init' to generate a project configuration file."
+)
+
+STARTER_CONFIG_YAML: str = """# =============================================================================
+# Transformation Fitness Functions (TFF) Configuration
+# Documentation: https://github.com/tjirab/tff
+# =============================================================================
+
+# Define the architectural layer hierarchy (upstream -> downstream).
+# Models in an upstream layer cannot depend on models in a downstream layer.
+layers:
+  order:
+    - staging
+    - intermediate
+    - core
+    - marts
+
+# Project-level architectural and DAG checks
+checks:
+  # Enforce unidirectional dependencies between layers and domain boundaries in marts
+  layer_integrity:
+    enabled: true
+
+  # Flag models with excessive fan-in (dependents) or fan-out (dependencies)
+  dependency_graph:
+    enabled: true
+    fan_out_warn: 15
+    fan_out_fail: 25
+    fan_in_warn: 10
+
+  # Warn on excessively deep chains of views / non-table materializations
+  materialization_depth:
+    enabled: true
+    max_depth_warn: 3
+    max_depth_fail: 5
+
+  # Detect identical or duplicate CTEs across models
+  duplicate_ctes:
+    enabled: true
+    severity: warning
+    min_ast_nodes: 12
+
+  # Detect repeated hardcoded literals and magic values across models
+  connascence_of_value:
+    enabled: true
+    severity: warning
+    min_occurrences: 2
+    ignored_values: ["0", "1", ""]
+    ignored_punctuation: ["|", " ", "-", "_", "/", ":"]
+
+# Model-level SQL rules
+rules:
+  # Prohibit 'SELECT *' to avoid silent breakage from upstream schema drift
+  ban_select_star:
+    enabled: true
+    skip_layers: [sources]
+
+  # Require explicit column names instead of positional references (e.g. GROUP BY 1, 2)
+  no_positional_group_by_or_order_by:
+    enabled: true
+    skip_layers: [sources]
+
+  # Prevent hardcoded environment prefixes/databases (e.g. prod, dev, uat)
+  environment_agnostic_references:
+    enabled: true
+    banned_environments: [prod, dev, staging, uat, qa]
+
+  # Enforce model documentation and metadata requirements
+  metadata:
+    enabled: true
+    owner: true
+    description: true
+    grain: true
+    not_null: true
+    unique_values: true
+
+  # Monitor SQL complexity (cyclomatic decision points, join count, line count)
+  sql_complexity:
+    enabled: true
+    warn_only: true
+    thresholds:
+      decision_points: [15, 25]
+      cte_count: [8, 12]
+      join_count: [8, 12]
+      line_count: [250, 400]
+
+  # Require SQL model filename to match model name
+  filename_equals_modelname:
+    enabled: true
+
+  # Mart model naming convention (e.g. prefix with subdirectory)
+  mart_naming:
+    enabled: true
+    layer_name: marts
+    rule: prefix_with_subdirectory
+
+# Health scoring configuration (weights and penalties)
+# health:
+#   weights:
+#     layer_integrity: 3.0
+#     schema_contracts: 2.0
+#     column_names: 0.5
+#   penalties:
+#     error: 1.0
+#     warning: 0.5
+#     project_error: 100.0
+#     project_warning: 50.0
+"""
 
 
 class LayersConfig(BaseModel):
     order: list[str] = Field(
-        default_factory=lambda: ["sources", "derived", "core", "marts", "export"]
+        default_factory=lambda: list(DEFAULT_LAYER_ORDER)
     )
 
 
@@ -54,6 +167,9 @@ class ConnascenceOfValueCheckConfig(LayerFilterConfig):
     severity: str = "warning"
     min_occurrences: int = 2
     ignored_values: list[str] = Field(default_factory=lambda: ["0", "1", ""])
+    ignored_punctuation: list[str] = Field(
+        default_factory=lambda: ["|", " ", "-", "_", "/", ":"]
+    )
 
 
 class CustomExclusionRule(BaseModel):
@@ -79,12 +195,73 @@ class CustomExclusionsCheckConfig(LayerFilterConfig):
     allowed_exceptions: list[AllowedExceptionRule] = Field(default_factory=list)
 
 
+class ColumnParityMember(BaseModel):
+    file: str
+    substitutions: dict[str, str] = Field(default_factory=dict)
+
+    @field_validator("file", mode="before")
+    @classmethod
+    def validate_file(cls, v: Any) -> str:
+        return str(v)
+
+
+class ColumnParityGroup(BaseModel):
+    models_dir: str = ""
+    reference: str
+    members: list[ColumnParityMember] = Field(default_factory=list)
+    exclude_columns: list[str] = Field(default_factory=list)
+    reference_substitutions: dict[str, str] = Field(default_factory=dict)
+
+    @field_validator("members", mode="before")
+    @classmethod
+    def validate_members(cls, v: Any) -> Any:
+        if isinstance(v, list):
+            result = []
+            for item in v:
+                if isinstance(item, str):
+                    result.append({"file": item})
+                else:
+                    result.append(item)
+            return result
+        return v
+
+
+class DimensionParityTarget(BaseModel):
+    file: str
+    exclude_columns: list[str] = Field(default_factory=list)
+
+
+class DimensionParityGroup(BaseModel):
+    models_dir: str = ""
+    left: DimensionParityTarget
+    right: DimensionParityTarget
+
+    @field_validator("left", "right", mode="before")
+    @classmethod
+    def validate_target(cls, v: Any) -> Any:
+        if isinstance(v, str):
+            return {"file": v}
+        return v
+
+
+class ContractGroupsConfig(BaseModel):
+    column_parity_groups: list[ColumnParityGroup] = Field(default_factory=list)
+    dimension_parity_groups: list[DimensionParityGroup] = Field(default_factory=list)
+
+
+class SchemaContractsCheckConfig(LayerFilterConfig):
+    column_parity_groups: list[ColumnParityGroup] = Field(default_factory=list)
+    dimension_parity_groups: list[DimensionParityGroup] = Field(default_factory=list)
+
+
 class ChecksConfig(BaseModel):
     layer_integrity: CheckEnabled = Field(default_factory=CheckEnabled)
     custom_exclusions: CustomExclusionsCheckConfig = Field(
         default_factory=CustomExclusionsCheckConfig
     )
-    schema_contracts: CheckEnabled = Field(default_factory=CheckEnabled)
+    schema_contracts: SchemaContractsCheckConfig = Field(
+        default_factory=SchemaContractsCheckConfig
+    )
     dependency_graph: DependencyGraphCheckConfig = Field(
         default_factory=DependencyGraphCheckConfig
     )
@@ -197,12 +374,113 @@ class RulesConfig(BaseModel):
     )
 
 
+class HealthCheckPenaltyConfig(BaseModel):
+    error: float | None = Field(default=None, ge=0.0)
+    warning: float | None = Field(default=None, ge=0.0)
+
+
+class HealthPenaltiesConfig(BaseModel):
+    error: float = Field(default=1.0, ge=0.0)
+    warning: float = Field(default=0.5, ge=0.0)
+    project_error: float = Field(default=100.0, ge=0.0)
+    project_warning: float = Field(default=50.0, ge=0.0)
+    checks: dict[str, HealthCheckPenaltyConfig] = Field(default_factory=dict)
+
+    @model_validator(mode="before")
+    @classmethod
+    def _normalize_penalties(cls, data: Any) -> Any:
+        if isinstance(data, dict):
+            data = dict(data)
+            if "model" in data and isinstance(data["model"], dict):
+                model_data = data.pop("model")
+                if "error" in model_data and "error" not in data:
+                    data["error"] = model_data["error"]
+                if "warning" in model_data and "warning" not in data:
+                    data["warning"] = model_data["warning"]
+            if "project" in data and isinstance(data["project"], dict):
+                proj_data = data.pop("project")
+                if "error" in proj_data and "project_error" not in data:
+                    data["project_error"] = proj_data["error"]
+                if "warning" in proj_data and "project_warning" not in data:
+                    data["project_warning"] = proj_data["warning"]
+        return data
+
+    def get_project_error_penalty(self) -> float:
+        val = self.project_error
+        if 0.0 < val <= 1.0:
+            return val * 100.0
+        return val
+
+    def get_project_warning_penalty(self) -> float:
+        val = self.project_warning
+        if 0.0 < val <= 1.0:
+            return val * 100.0
+        return val
+
+    def get_check_error_penalty(self, check: str, is_project_level: bool) -> float:
+        norm = check.lower().replace("-", "").replace("_", "").replace(" ", "")
+        for k, v in self.checks.items():
+            if k.lower().replace("-", "").replace("_", "").replace(" ", "") == norm and v.error is not None:
+                val = v.error
+                if is_project_level and 0.0 < val <= 1.0:
+                    return val * 100.0
+                return val
+        if is_project_level:
+            return self.get_project_error_penalty()
+        return self.error
+
+    def get_check_warning_penalty(self, check: str, is_project_level: bool) -> float:
+        norm = check.lower().replace("-", "").replace("_", "").replace(" ", "")
+        for k, v in self.checks.items():
+            if k.lower().replace("-", "").replace("_", "").replace(" ", "") == norm and v.warning is not None:
+                val = v.warning
+                if is_project_level and 0.0 < val <= 1.0:
+                    return val * 100.0
+                return val
+        if is_project_level:
+            return self.get_project_warning_penalty()
+        return self.warning
+
+
+class HealthConfig(BaseModel):
+    weights: dict[str, float] = Field(default_factory=dict)
+    category_weights: dict[str, float] = Field(default_factory=dict)
+    penalties: HealthPenaltiesConfig = Field(default_factory=HealthPenaltiesConfig)
+
+    @field_validator("weights", "category_weights", mode="before")
+    @classmethod
+    def _validate_weights(cls, v: Any) -> Any:
+        if v is None:
+            return {}
+        if isinstance(v, dict):
+            validated: dict[str, float] = {}
+            for k, val in v.items():
+                flt_val = float(val)
+                if flt_val < 0.0:
+                    raise ValueError(
+                        f"Weight for '{k}' must be non-negative, got {flt_val}"
+                    )
+                validated[str(k)] = flt_val
+            return validated
+        return v
+
+
 class FitnessFunctionsConfig(BaseModel):
+    _project_root: Path = PrivateAttr(default_factory=Path.cwd)
+    _config_file_found: bool = PrivateAttr(default=True)
     contract_groups_path: str = "linter_contract_groups.json"
     exclusions_path: str = "linter_exclusions.json"
     layers: LayersConfig = Field(default_factory=LayersConfig)
     checks: ChecksConfig = Field(default_factory=ChecksConfig)
     rules: RulesConfig = Field(default_factory=RulesConfig)
+    health: HealthConfig = Field(default_factory=HealthConfig)
+    contract_groups: ContractGroupsConfig | None = None
+    exclusions: list[CustomExclusionRule] | None = None
+    allowed_exceptions: list[AllowedExceptionRule] | None = None
+
+    @property
+    def config_file_found(self) -> bool:
+        return self._config_file_found
 
 
 def _deep_merge(base: dict[str, Any], override: dict[str, Any]) -> dict[str, Any]:
@@ -222,12 +500,14 @@ def load_fitness_config(
 ) -> FitnessFunctionsConfig:
     """Load fitness config with defaults, yaml file, and optional overrides."""
     data: dict[str, Any] = {}
+    config_found = False
 
     if config_path is not None:
         yaml_path = Path(config_path)
         if not yaml_path.is_absolute():
             yaml_path = project_root / yaml_path
         if yaml_path.exists():
+            config_found = True
             loaded = yaml.safe_load(yaml_path.read_text(encoding="utf-8")) or {}
             if not isinstance(loaded, dict):
                 raise ValueError(f"Expected mapping in {yaml_path}")
@@ -237,8 +517,25 @@ def load_fitness_config(
         data = _deep_merge(data, overrides)
 
     config = FitnessFunctionsConfig.model_validate(data)
-    config._project_root = project_root  # type: ignore[attr-defined]
+    config._project_root = project_root
+    config._config_file_found = config_found
     return config
+
+
+def init_fitness_config(
+    project_root: Path,
+    filename: str = "fitness_functions.yaml",
+    force: bool = False,
+) -> Path:
+    """Scaffold an annotated starter fitness_functions.yaml configuration file."""
+    target = project_root / filename
+    if target.exists() and not force:
+        raise FileExistsError(
+            f"'{target.name}' already exists in {project_root}. Use --force to overwrite."
+        )
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text(STARTER_CONFIG_YAML, encoding="utf-8")
+    return target
 
 
 def _ensure_under_root(path: Path, root: Path) -> Path:

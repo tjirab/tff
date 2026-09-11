@@ -20,14 +20,17 @@ pip install "tff-core[dbt]"
 
 ## Quick Start
 
-1. Add `fitness_functions.yaml` to your dbt project root.
-2. Compile your dbt project to generate the manifest file:
+1. Compile your dbt project to generate the manifest file:
    ```bash
    dbt compile
    ```
-3. Run the linter CLI:
+2. Run the linter CLI (runs out of the box with zero configuration!):
    ```bash
    tff lint
+   ```
+3. (Optional) Scaffold an annotated starter configuration to customize layer conventions or rules:
+   ```bash
+   tff init
    ```
 
 ---
@@ -64,12 +67,13 @@ This layer and domain structure is evaluated against your `layers.order` configu
 ### `tff lint`
 
 ```bash
-tff lint [--project PATH] [--config PATH] [--provider PROVIDER] [--checks CHECK,...] [--fail-level error|warning] [--group-by connascence|model] [--dialect DIALECT]
+tff lint [--project PATH] [--config PATH] [--provider PROVIDER] [--manifest PATH] [--checks CHECK,...] [--fail-level error|warning] [--group-by connascence|model] [--dialect DIALECT]
 ```
 
 * **`--project`**: Path to your project root (default: current directory).
 * **`--config`**: Path to `fitness_functions.yaml` (default: `fitness_functions.yaml`).
-* **`--provider`**: The pipeline engine provider: `auto`, `dbt`, or `sqlmesh` (default: `auto`).
+* **`--provider`**: The pipeline engine provider: `auto`, `dbt`, `sqlmesh`, or `dataform` (default: `auto`).
+* **`--manifest`**: Path to precompiled dbt `manifest.json` (default: auto-detected under `target/manifest.json`).
 * **`--dialect`**: The SQL dialect used by your data warehouse, used for SQL parsing checks (dbt only; default: auto-inferred).
 * **`--checks`**: Comma-separated list of active checks to execute.
 * **`--fail-level`**: Exit non-zero when findings at or above this severity exist (`error` or `warning`, default: `error`).
@@ -78,12 +82,13 @@ tff lint [--project PATH] [--config PATH] [--provider PROVIDER] [--checks CHECK,
 ### `tff health`
 
 ```bash
-tff health [--project PATH] [--config PATH] [--provider PROVIDER] [--dialect DIALECT] [--fail-under SCORE] [--scope PATH_PREFIX ...] [--group-by connascence|domain]
+tff health [--project PATH] [--config PATH] [--provider PROVIDER] [--manifest PATH] [--dialect DIALECT] [--fail-under SCORE] [--scope PATH_PREFIX ...] [--group-by connascence|domain]
 ```
 
 * **`--project`**: Path to your project root (default: current directory).
 * **`--config`**: Path to `fitness_functions.yaml` (default: `fitness_functions.yaml`).
-* **`--provider`**: The pipeline engine provider: `auto`, `dbt`, or `sqlmesh` (default: `auto`).
+* **`--provider`**: The pipeline engine provider: `auto`, `dbt`, `sqlmesh`, or `dataform` (default: `auto`).
+* **`--manifest`**: Path to precompiled dbt `manifest.json` (default: auto-detected under `target/manifest.json`).
 * **`--dialect`**: SQL dialect for parsing (dbt only; default: auto-inferred).
 * **`--fail-under`**: Exit non-zero when the overall health score (0–100) is below this threshold (default: `0.0`).
 * **`--scope`**: Restrict the report to models whose path starts with one or more given prefixes. Multiple prefixes are supported. Examples:
@@ -99,4 +104,40 @@ tff health [--project PATH] [--config PATH] [--provider PROVIDER] [--dialect DIA
   tff health --group-by domain
   tff health --scope models/marts --group-by domain
   ```
+* **Weights & Penalties**: Scoring weights and severity penalties can be configured under `health:` in `fitness_functions.yaml`. See [Health Scoring Configuration](rules_and_checks.md#3-health-scoring-configuration).
 
+---
+
+## Pre-commit Integration
+
+Enforce TFF fitness functions automatically on git commit using [pre-commit](https://pre-commit.com/):
+
+```yaml
+# .pre-commit-config.yaml
+repos:
+  - repo: https://github.com/tjirab/tff
+    rev: v0.11.0
+    hooks:
+      - id: tff-lint
+
+      # Or automatically fix simple violations like positional GROUP BY/ORDER BY
+      # - id: tff-lint-fix
+```
+
+Both `tff-lint` and `tff-lint-fix` default to bare `tff-core`, which supports dbt projects out of the box (as dbt manifest parsing requires no heavy external Python packages). If you prefer explicit adapter dependencies in your configuration, you can declare `additional_dependencies: ["tff-core[dbt]"]`:
+
+```yaml
+# .pre-commit-config.yaml
+repos:
+  - repo: https://github.com/tjirab/tff
+    rev: v0.11.0
+    hooks:
+      - id: tff-lint
+        additional_dependencies: ["tff-core[dbt]"]
+```
+
+---
+
+## Real-World Case Study
+
+See the [GitLab Architectural Audit Case Study](case_study_gitlab.md) to explore how TFF analyzed GitLab's 2,213-model Snowflake dbt repository in ~13 seconds with 100% static analysis, uncovering 54 duplicated CTE algorithms and 111 layer violations.

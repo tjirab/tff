@@ -5,7 +5,7 @@
 
 Configurable fitness functions engine and linter for transformation projects. 
 
-TFF allows you to enforce architectural layout boundaries, layer structure policies, schema contracts, and code formatting rules across data pipelines. It ships with dedicated plugins for **SQLMesh** and **dbt** and outputs clean, color-coded lint reports to the terminal.
+TFF allows you to enforce architectural layout boundaries, layer structure policies, schema contracts, and code formatting rules across data pipelines. It ships with dedicated plugins for **SQLMesh**, **dbt**, and **Google Cloud Dataform**, outputting clean, color-coded lint reports to the terminal.
 
 <img width="1280" height="708" alt="20260629_tff-health" src="https://github.com/user-attachments/assets/2302a3dc-595f-4726-94ba-6c2aaf838bd4" />
 
@@ -31,7 +31,9 @@ Setup and usage details differ depending on your pipeline engine. Refer to the c
 
 * 📐 **SQLMesh Integration**: See [docs/sqlmesh.md](docs/sqlmesh.md)
 * ⚡ **dbt Integration**: See [docs/dbt.md](docs/dbt.md)
+* ☁️ **Dataform Integration**: See [docs/dataform.md](docs/dataform.md)
 * 🔍 **Rules & Checks Reference**: See [docs/rules_and_checks.md](docs/rules_and_checks.md)
+* 📊 **Case Study: GitLab dbt Audit (2,200+ models)**: See [docs/case_study_gitlab.md](docs/case_study_gitlab.md)
 * 🏗️ **Architecture & Contributor Guide**: See [docs/contributing.md](docs/contributing.md)
 
 ---
@@ -58,6 +60,16 @@ uv add "tff-core[dbt]"
 pip install "tff-core[dbt]"
 ```
 
+### ☁️ For Dataform projects:
+```bash
+# With uv:
+uv add "tff-core[dataform]"
+# (or simply: uv add tff-core)
+
+# Or pip:
+pip install "tff-core[dataform]"
+```
+
 
 ---
 
@@ -75,49 +87,95 @@ tff [command] [options]
 * **`health`**: Calculate and report overall project fitness health scores.
 * **`docs`**: Generate a standalone, interactive HTML documentation and health dashboard containing lineage graphs and historical trends.
 * **`info`**: Show diagnostic information about the project environment, configuration files, and adapter versions.
+* **`stats`**: Show history and trends of fitness checks.
+* **`init`**: Scaffold an annotated starter `fitness_functions.yaml` configuration file.
 * **`help`**: Print help information for the CLI or specific subcommands.
 
 ### Common Options
 
 For detailed option explanations, run `tff help <command>` or `tff <command> --help`.
 
+#### `tff init`
+* `--project PATH`: Path to the project root directory (default: current directory).
+* `--force`, `-f`: Overwrite existing `fitness_functions.yaml` if present.
+
 #### `tff lint`
 * `--project PATH`: Path to the project root directory (default: current directory).
 * `--config PATH`: Path to `fitness_functions.yaml` relative to project root (default: `fitness_functions.yaml`).
-* `--provider {auto,dbt,sqlmesh}`: Pipeline engine provider (default: auto-detected).
+* `--provider {auto,dbt,sqlmesh,dataform}`: Pipeline engine provider (default: auto-detected).
+* `--manifest PATH`: Path to precompiled manifest or compilation result (dbt or Dataform).
 * `--checks CHECKS`: Comma-separated list of specific checks to run (default: all enabled).
 * `--fail-level {error,warning}`: Exit non-zero when findings at or above this severity exist (default: `error`).
 * `--group-by {connascence,model}`: How to group violations in the report (default: `model`).
-* `--dialect DIALECT`: SQL dialect of models (dbt only; auto-inferred by default).
-* `--json`: Output results in JSON format to stdout.
+* `--dialect DIALECT`: SQL dialect of models (dbt and Dataform; auto-inferred by default).
+* `--format {text,json,sarif,github}`: Output format to stdout (default: `text`). `sarif` outputs OASIS SARIF v2.1.0 JSON format for GitHub Code Scanning; `github` outputs pure workflow command annotations (`::error` / `::warning`) without tables or banners.
+* `--json`: Output results in JSON format to stdout (shorthand for `--format json`).
+* `--github-annotations`: Emit GitHub Actions workflow command annotations alongside console report (automatically enabled when `GITHUB_ACTIONS=true` in environment; safely routed to `stderr` when combined with `--format json` or `--format sarif` to keep `stdout` pure JSON).
+* `--junit-xml PATH`: Write JUnit XML test results to the specified file path for CI/CD test results tab rendering (GitLab CI, Azure DevOps, Bitbucket).
 * `--fix`: Automatically fix simple linting violations if possible (e.g. rewriting positional `GROUP BY`/`ORDER BY` and auto-scaffolding missing metadata).
+* `--no-log`: Bypass writing execution logs to `.tff_logs/` (can also be enabled via `TFF_NO_LOG=1`).
 
 #### `tff health`
-* `--project PATH`, `--config PATH`, `--provider {auto,dbt,sqlmesh}`, `--dialect DIALECT`: (Same as above)
+* `--project PATH`, `--config PATH`, `--provider {auto,dbt,sqlmesh,dataform}`, `--dialect DIALECT`, `--manifest PATH`: (Same as above)
 * `--fail-under SCORE`: Exit non-zero when overall health score (0.0 - 100.0) is below this threshold (default: `0.0`).
-* `--scope PATH_PREFIX [...]`: Restrict the health report to models whose path starts with one of the given prefixes (e.g. `models/sources` or `models/marts/marketing`). Multiple prefixes can be provided.
-* `--group-by {connascence,domain}`: How to group the detailed health breakdown. `connascence` (default) groups by connascence category; `domain` groups by path segment under `models/` (e.g. `models/sources`, `models/marts/marketing`).
+* `--scope PATH_PREFIX [...]`: Restrict the health report to models whose path starts with one of the given prefixes (e.g. `models/sources`, `definitions/staging`, or `models/marts/marketing`). Multiple prefixes can be provided.
+* `--group-by {connascence,domain}`: How to group the detailed health breakdown. `connascence` (default) groups by connascence category; `domain` groups by path segment under model directory (`models/` or `definitions/`).
 * `--json`: Output results in JSON format to stdout.
+* `--no-log`: Bypass writing execution logs to `.tff_logs/` (can also be enabled via `TFF_NO_LOG=1`).
+* *Weights & Penalties*: Check weights, category weights, and error/warning penalties can be customized under `health:` in `fitness_functions.yaml` (see [Health Scoring Configuration](docs/rules_and_checks.md#3-health-scoring-configuration)).
 
 #### `tff docs`
-* `--project PATH`, `--config PATH`, `--provider {auto,dbt,sqlmesh}`, `--dialect DIALECT`: (Same as above)
+* `--project PATH`, `--config PATH`, `--provider {auto,dbt,sqlmesh,dataform}`, `--dialect DIALECT`, `--manifest PATH`: (Same as above)
 * `--output PATH`, `-o PATH`: Path where the output HTML dashboard file will be generated (default: `tff_report.html` in the project root).
+* `--no-log`: Bypass writing execution logs to `.tff_logs/` (can also be enabled via `TFF_NO_LOG=1`).
 
 #### `tff info`
 * `--project PATH`: Path to the project root directory (default: current directory).
 * `--config PATH`: Path to `fitness_functions.yaml` relative to project root (default: `fitness_functions.yaml`).
-* `--provider {auto,dbt,sqlmesh}`: Pipeline engine provider (default: auto-detected).
+* `--provider {auto,dbt,sqlmesh,dataform}`: Pipeline engine provider (default: auto-detected).
+
+### Zero-Config Default Execution
+
+TFF requires zero initial configuration to run. If no `fitness_functions.yaml` file exists in the project root:
+* `tff lint` and `tff health` automatically fall back to standard layer conventions (`staging -> intermediate -> core -> marts`).
+* Core rules (such as `ban_select_star`, `layer_integrity`, `duplicate_ctes`, `no_positional_group_by_or_order_by`, `environment_agnostic_references`, `metadata`) are enabled out of the box with sensible thresholds.
+* Run `tff init` whenever you want to generate an annotated starter `fitness_functions.yaml` configuration to customize for your project.
 
 ### Quick Start Examples
 
-Run linting on the current project:
+Scaffold an annotated configuration file:
+```bash
+tff init
+```
+
+Run linting on the current project (zero-config out of the box):
 ```bash
 tff lint
+```
+
+Run specific fitness checks or rules:
+```bash
+tff lint --checks no_missing_owner,ban_select_star
 ```
 
 Automatically fix simple linting violations (positional GROUP BY/ORDER BY, missing owner/description metadata):
 ```bash
 tff lint --fix
+```
+
+Output SARIF v2.1.0 report for GitHub Advanced Security / Code Scanning:
+```bash
+tff lint --format sarif > results.sarif
+```
+
+Output pure GitHub Actions annotations directly to stdout (no tables or banners):
+```bash
+tff lint --format github
+```
+
+Export JUnit XML test results for CI/CD test results tab (GitLab CI, Azure DevOps, Bitbucket):
+```bash
+tff lint --junit-xml reports/junit.xml
 ```
 
 Show project health report and require a score of at least 80% to pass:
@@ -176,6 +234,58 @@ tff health --json
 
 ---
 
+## Pre-commit Integration
+
+TFF can be integrated as a native [pre-commit](https://pre-commit.com/) hook to automatically run fitness function checks or auto-fix violations when SQL, YAML, or JSON files are committed.
+
+Add the following to your project's `.pre-commit-config.yaml`:
+
+```yaml
+repos:
+  - repo: https://github.com/tjirab/tff
+    rev: v0.11.0  # Use the latest release or tag
+    hooks:
+      - id: tff-lint
+```
+
+### Available Hooks
+
+| Hook ID | Description | Default Dependencies |
+| :--- | :--- | :--- |
+| `tff-lint` | Run Transformation Fitness Functions architectural and styling linter | `tff-core` |
+| `tff-lint-fix` | Automatically fix simple TFF violations (positional `GROUP BY`/`ORDER BY`, missing metadata) | `tff-core` |
+
+### Customizing Adapter Dependencies
+
+The pre-commit hooks default to bare `tff-core`, which out of the box provides support for **dbt** and **Dataform** projects without requiring additional dependencies.
+
+If your project uses **SQLMesh**, the SQLMesh engine package is required; declare `additional_dependencies: ["tff-core[sqlmesh]"]` in your `.pre-commit-config.yaml`:
+
+```yaml
+  # For SQLMesh projects:
+  - repo: https://github.com/tjirab/tff
+    rev: v0.11.0
+    hooks:
+      - id: tff-lint
+        additional_dependencies: ["tff-core[sqlmesh]"]
+
+  # For dbt projects (optional explicit declaration):
+  # - repo: https://github.com/tjirab/tff
+  #   rev: v0.11.0
+  #   hooks:
+  #     - id: tff-lint
+  #       additional_dependencies: ["tff-core[dbt]"]
+
+  # For Dataform projects (optional explicit declaration):
+  # - repo: https://github.com/tjirab/tff
+  #   rev: v0.11.0
+  #   hooks:
+  #     - id: tff-lint
+  #       additional_dependencies: ["tff-core[dataform]"]
+```
+
+---
+
 
 ## Core Features
 
@@ -188,6 +298,7 @@ TFF runs two categories of quality guardrails (for full configuration details, s
 * **[Dependency graph](docs/rules_and_checks.md#dependency-graph-dependency_graph)**: Track DAG metrics and fail if model fan-in or fan-out exceeds defined thresholds.
 * **[Materialization depth](docs/rules_and_checks.md#materialization-depth-materialization_depth)**: Prevent deep nesting of views that degrades query performance.
 * **[Duplicate CTEs](docs/rules_and_checks.md#duplicate-ctes-duplicate_ctes)**: Detect duplicate complex transformation logic in CTEs across different models (Connascence of Algorithm).
+* **[Connascence of Value](docs/rules_and_checks.md#connascence-of-value-connascence_of_value)**: Identify duplicated domain-meaning literal values (strings, numbers) across multiple models (Connascence of Value).
 
 ### 2. Linter Rules
 * **[Ban `SELECT *`](docs/rules_and_checks.md#ban-select-ban_select_star)**: Require explicit columns to reduce upstream coupling.
@@ -208,8 +319,16 @@ TFF runs two categories of quality guardrails (for full configuration details, s
 All adapters use a shared `fitness_functions.yaml` config file located in the root of your project:
 
 ```yaml
-contract_groups_path: linter_contract_groups.json
-exclusions_path: linter_exclusions.json
+# Schema contracts and custom exclusions can be configured directly in YAML
+# (or loaded from external JSON files via contract_groups_path / exclusions_path)
+exclusions:
+  - source_layer: core
+    target_layer: derived
+
+contract_groups:
+  column_parity_groups:
+    - reference: models/core/dim_customer_ref.sql
+      members: [models/core/dim_customer_replica.sql]
 
 layers:
   order: [staging, core, marts]  # Configured bottom-to-top hierarchy
@@ -227,6 +346,10 @@ checks:
     enabled: true
     severity: warning
     min_ast_nodes: 12
+  connascence_of_value:
+    enabled: true
+    severity: warning
+    min_occurrences: 2
 
 rules:
   ban_select_star:
@@ -270,6 +393,18 @@ rules:
     not_null: true
   filename_equals_modelname:
     enabled: true
+
+# Configurable health scoring weights and failure penalties
+health:
+  weights:
+    layer_integrity: 3.0
+    schema_contracts: 2.0
+    column_names: 0.5
+  penalties:
+    error: 1.0
+    warning: 0.5
+    project_error: 100.0
+    project_warning: 50.0
 ```
 
 ---

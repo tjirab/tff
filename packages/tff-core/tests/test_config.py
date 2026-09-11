@@ -5,7 +5,11 @@ from pathlib import Path
 import pytest
 
 from tff.core.config import (
+    DEFAULT_LAYER_ORDER,
+    MISSING_CONFIG_NOTICE,
+    STARTER_CONFIG_YAML,
     FitnessFunctionsConfig,
+    init_fitness_config,
     load_fitness_config,
     resolve_project_path,
 )
@@ -154,5 +158,252 @@ rules:
     assert rule_config.should_run("core") is True
     assert rule_config.should_run("sources") is False
     assert rule_config.should_run("derived") is False
+
+
+def test_schema_contract_models_parsing():
+    from tff.core.config import (
+        ColumnParityMember,
+        ColumnParityGroup,
+        DimensionParityTarget,
+        DimensionParityGroup,
+        ContractGroupsConfig,
+    )
+
+    # ColumnParityMember
+    member = ColumnParityMember(file="models/dim_a.sql")
+    assert member.file == "models/dim_a.sql"
+
+    target = DimensionParityTarget(file="models/dim_b.sql")
+    assert target.file == "models/dim_b.sql"
+
+    # ColumnParityGroup with string shorthand members
+    group = ColumnParityGroup(
+        reference="models/ref.sql",
+        members=["models/m1.sql", {"file": "models/m2.sql", "substitutions": {"x": "y"}}],
+    )
+    assert len(group.members) == 2
+    assert group.members[0].file == "models/m1.sql"
+    assert group.members[1].file == "models/m2.sql"
+    assert group.members[1].substitutions == {"x": "y"}
+
+    # DimensionParityGroup with string shorthand targets
+    dim_group = DimensionParityGroup(
+        left="models/left.sql",
+        right={"file": "models/right.sql", "exclude_columns": ["col1"]},
+    )
+    assert dim_group.left.file == "models/left.sql"
+    assert dim_group.right.file == "models/right.sql"
+    assert dim_group.right.exclude_columns == ["col1"]
+
+    # ContractGroupsConfig
+    cg = ContractGroupsConfig(
+        column_parity_groups=[group],
+        dimension_parity_groups=[dim_group],
+    )
+    assert len(cg.column_parity_groups) == 1
+    assert len(cg.dimension_parity_groups) == 1
+
+    # Validator branch coverage
+    assert ColumnParityGroup.validate_members(None) is None
+    assert DimensionParityGroup.validate_target({"file": "m.sql"}) == {"file": "m.sql"}
+
+
+def test_yaml_config_with_contract_groups_and_exclusions(tmp_path: Path):
+    yaml_path = tmp_path / "fitness_functions.yaml"
+    yaml_path.write_text(
+        """
+contract_groups:
+  column_parity_groups:
+    - reference: models/ref.sql
+      members:
+        - models/m1.sql
+  dimension_parity_groups:
+    - left: models/left.sql
+      right: models/right.sql
+
+exclusions:
+  - source_layer: core
+    target_layer: derived
+
+allowed_exceptions:
+  - model: derived.m1
+    dependency: core.m2
+""",
+        encoding="utf-8",
+    )
+    config = load_fitness_config(tmp_path)
+    assert config.contract_groups is not None
+    assert len(config.contract_groups.column_parity_groups) == 1
+    assert len(config.contract_groups.dimension_parity_groups) == 1
+    assert len(config.exclusions) == 1
+    assert config.exclusions[0].source_layer == "core"
+    assert len(config.allowed_exceptions) == 1
+    assert config.allowed_exceptions[0].model == "derived.m1"
+
+
+def test_rule_config_injection_and_deprecation():
+    import warnings
+    from tff.core.rules.base import Rule
+    from tff.core.config import FitnessFunctionsConfig
+
+    cfg = FitnessFunctionsConfig()
+    rule = Rule(config=cfg)
+    assert rule.config is cfg
+
+    new_cfg = FitnessFunctionsConfig()
+    rule.config = new_cfg
+    assert rule.config is new_cfg
+
+    # Unbound rule should emit DeprecationWarning on .config
+    unbound_rule = Rule()
+    with warnings.catch_warnings(record=True) as w:
+        warnings.simplefilter("always")
+        fallback_cfg = unbound_rule.config
+        assert fallback_cfg is not None
+        deprecation_warnings = [
+            item for item in w if issubclass(item.category, DeprecationWarning)
+        ]
+        assert len(deprecation_warnings) >= 1
+        assert "get_ff_config() is deprecated" in str(deprecation_warnings[0].message)
+
+
+def test_default_layer_hierarchy(tmp_path: Path):
+    from tff.core.config import LayersConfig
+
+    assert DEFAULT_LAYER_ORDER == ["staging", "intermediate", "core", "marts"]
+    assert LayersConfig().order == ["staging", "intermediate", "core", "marts"]
+    assert "No fitness_functions.yaml found" in MISSING_CONFIG_NOTICE
+    assert "tff init" in MISSING_CONFIG_NOTICE
+
+    # Loading without a config file falls back to defaults
+    config = load_fitness_config(tmp_path, config_path="missing.yaml")
+    assert config.layers.order == ["staging", "intermediate", "core", "marts"]
+    assert config.config_file_found is False
+
+    # Check core rules enabled by default
+    assert config.rules.ban_select_star.enabled is True
+    assert config.checks.layer_integrity.enabled is True
+    assert config.checks.duplicate_ctes.enabled is True
+    assert config.rules.no_positional_group_by_or_order_by.enabled is True
+    assert config.rules.environment_agnostic_references.enabled is True
+    assert config.rules.metadata.enabled is True
+    assert config.rules.metadata.owner is True
+    assert config.rules.metadata.description is True
+    assert config.rules.metadata.grain is True
+    assert config.rules.metadata.not_null is True
+    assert config.rules.metadata.unique_values is True
+
+
+def test_config_file_found_flag(tmp_path: Path):
+    config_file = tmp_path / "fitness_functions.yaml"
+    config_file.write_text("layers:\n  order: [staging, marts]\n", encoding="utf-8")
+
+    config = load_fitness_config(tmp_path)
+    assert config.config_file_found is True
+    assert config.layers.order == ["staging", "marts"]
+
+
+def test_init_fitness_config_success(tmp_path: Path):
+    created_path = init_fitness_config(tmp_path)
+    assert created_path.exists()
+    assert created_path == tmp_path / "fitness_functions.yaml"
+    assert created_path.read_text(encoding="utf-8") == STARTER_CONFIG_YAML
+
+    # Verify that the generated YAML loads and validates cleanly
+    loaded_config = load_fitness_config(tmp_path)
+    assert loaded_config.config_file_found is True
+    assert loaded_config.layers.order == ["staging", "intermediate", "core", "marts"]
+    assert loaded_config.checks.layer_integrity.enabled is True
+    assert loaded_config.rules.ban_select_star.enabled is True
+    assert loaded_config.rules.no_positional_group_by_or_order_by.enabled is True
+    assert loaded_config.rules.environment_agnostic_references.enabled is True
+
+
+def test_init_fitness_config_already_exists(tmp_path: Path):
+    init_fitness_config(tmp_path)
+    assert (tmp_path / "fitness_functions.yaml").exists()
+
+    with pytest.raises(FileExistsError, match="already exists"):
+        init_fitness_config(tmp_path, force=False)
+
+
+def test_init_fitness_config_force_overwrite(tmp_path: Path):
+    config_path = init_fitness_config(tmp_path)
+    config_path.write_text("modified: true\n", encoding="utf-8")
+    assert "modified: true" in config_path.read_text(encoding="utf-8")
+
+    overwritten_path = init_fitness_config(tmp_path, force=True)
+    assert overwritten_path.read_text(encoding="utf-8") == STARTER_CONFIG_YAML
+
+
+def test_health_config_validation(tmp_path: Path):
+    # Valid configuration
+    valid_yaml = tmp_path / "fitness_functions.yaml"
+    valid_yaml.write_text(
+        """
+health:
+  weights:
+    layer_integrity: 3.0
+    schema_contracts: 2.0
+    column_names: 0.5
+  penalties:
+    error: 1.5
+    warning: 0.25
+    project_error: 40.0
+    project_warning: 15.0
+""",
+        encoding="utf-8",
+    )
+    config = load_fitness_config(tmp_path)
+    assert config.health.weights["layer_integrity"] == 3.0
+    assert config.health.weights["schema_contracts"] == 2.0
+    assert config.health.weights["column_names"] == 0.5
+    assert config.health.penalties.error == 1.5
+    assert config.health.penalties.warning == 0.25
+    assert config.health.penalties.project_error == 40.0
+    assert config.health.penalties.project_warning == 15.0
+
+    # Negative weights rejected
+    with pytest.raises(ValueError, match="Weight for 'layer_integrity' must be non-negative"):
+        FitnessFunctionsConfig.model_validate({
+            "health": {"weights": {"layer_integrity": -1.0}}
+        })
+
+    with pytest.raises(ValueError, match="Weight for 'Dynamic Coupling' must be non-negative"):
+        FitnessFunctionsConfig.model_validate({
+            "health": {"category_weights": {"Dynamic Coupling": -0.5}}
+        })
+
+    # Negative penalty rejected
+    with pytest.raises(ValueError):
+        FitnessFunctionsConfig.model_validate({
+            "health": {"penalties": {"error": -1.0}}
+        })
+
+    # Non-dict weights / category_weights validator coverage
+    health_empty = FitnessFunctionsConfig.model_validate({
+        "health": {"weights": None, "category_weights": None}
+    })
+    assert health_empty.health.weights == {}
+
+    with pytest.raises(Exception):
+        FitnessFunctionsConfig.model_validate({
+            "health": {"weights": "not-a-dict"}
+        })
+
+    # Check penalties with ratio for project-level check
+    ratio_cfg = FitnessFunctionsConfig.model_validate({
+        "health": {
+            "penalties": {
+                "checks": {
+                    "layer_integrity": {"error": 0.25, "warning": 0.10}
+                }
+            }
+        }
+    })
+    assert ratio_cfg.health.penalties.get_check_error_penalty("layer_integrity", is_project_level=True) == 25.0
+    assert ratio_cfg.health.penalties.get_check_warning_penalty("layer_integrity", is_project_level=True) == 10.0
+
+
 
 

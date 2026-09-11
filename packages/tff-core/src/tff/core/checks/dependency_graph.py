@@ -27,7 +27,7 @@ def collect_dependency_graph_findings(
             continue
 
         from tff.core.utils.paths import get_layer_from_path
-        layer = get_layer_from_path(model.path)
+        layer = get_layer_from_path(model.path, layer_order=graph_config.order if hasattr(graph_config, "order") else config.layers.order)
         if not graph_config.should_run(layer):
             continue
 

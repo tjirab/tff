@@ -40,11 +40,11 @@ tff lint
 
 | File | Role | You edit this? |
 |------|------|----------------|
-| `fitness_functions.yaml` | Toggles, thresholds, and parameters for all checks and rules. | **Yes** — main fitness config. |
+| `fitness_functions.yaml` | Toggles, thresholds, rules, schema contracts, and exclusions. | **Yes** — main fitness config (fully consolidated). |
 | `settings.yaml` | SQLMesh specific settings, including active linter rules. | **Yes** — normal SQLMesh config. |
 | `config.py` | Python file in project root that imports `FitnessLoader` to register the adapter. | **Rarely** — simple ~10 lines of boilerplate. |
-| `linter_contract_groups.json` | Parity group definitions for schema contracts. | **Yes** — project specific schema data. |
-| `linter_exclusions.json` | Exclusions for layer boundaries or custom exceptions. | **Yes** — project specific exclusions. |
+| `linter_contract_groups.json` *(optional)* | Legacy external parity definitions for schema contracts (can be defined directly in `fitness_functions.yaml`). | Optional — backwards compatibility. |
+| `linter_exclusions.json` *(optional)* | Legacy external exclusions for layer boundaries (can be defined directly in `fitness_functions.yaml`). | Optional — backwards compatibility. |
 
 ---
 
@@ -98,7 +98,7 @@ tff lint [--project PATH] [--config PATH] [--provider PROVIDER] [--checks CHECK,
 
 * **`--project`**: Path to your project root (default: current directory).
 * **`--config`**: Path to `fitness_functions.yaml` (default: `fitness_functions.yaml`).
-* **`--provider`**: The pipeline engine provider: `auto`, `dbt`, or `sqlmesh` (default: `auto`).
+* **`--provider`**: The pipeline engine provider: `auto`, `dbt`, `sqlmesh`, or `dataform` (default: `auto`).
 * **`--checks`**: Comma-separated list of checks (e.g., `layer_integrity,custom_exclusions`).
 * **`--fail-level`**: Exit non-zero when findings at or above this severity exist (`error` or `warning`, default: `error`).
 * **`--group-by`**: Changes report grouping format (`connascence` or `model`, default: `model`).
@@ -111,7 +111,7 @@ tff health [--project PATH] [--config PATH] [--provider PROVIDER] [--fail-under 
 
 * **`--project`**: Path to your project root (default: current directory).
 * **`--config`**: Path to `fitness_functions.yaml` (default: `fitness_functions.yaml`).
-* **`--provider`**: The pipeline engine provider: `auto`, `dbt`, or `sqlmesh` (default: `auto`).
+* **`--provider`**: The pipeline engine provider: `auto`, `dbt`, `sqlmesh`, or `dataform` (default: `auto`).
 * **`--fail-under`**: Exit non-zero when the overall health score (0–100) is below this threshold (default: `0.0`).
 * **`--scope`**: Restrict the report to models whose path starts with one or more given prefixes. Multiple prefixes are supported. Examples:
   ```bash
@@ -126,4 +126,24 @@ tff health [--project PATH] [--config PATH] [--provider PROVIDER] [--fail-under 
   tff health --group-by domain
   tff health --scope models/marts --group-by domain
   ```
+* **Weights & Penalties**: Scoring weights and severity penalties can be configured under `health:` in `fitness_functions.yaml`. See [Health Scoring Configuration](rules_and_checks.md#3-health-scoring-configuration).
+
+---
+
+## Pre-commit Integration
+
+Enforce TFF fitness functions automatically on git commit using [pre-commit](https://pre-commit.com/):
+
+```yaml
+# .pre-commit-config.yaml
+repos:
+  - repo: https://github.com/tjirab/tff
+    rev: v0.11.0
+    hooks:
+      - id: tff-lint
+        additional_dependencies: ["tff-core[sqlmesh]"]
+```
+
+Because SQLMesh projects require the `sqlmesh` Python engine to load and evaluate models, specify `additional_dependencies: ["tff-core[sqlmesh]"]` so pre-commit installs SQLMesh into the hook's isolated virtual environment.
+
 

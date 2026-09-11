@@ -1,4 +1,4 @@
-name: SQLMesh PR Linting
+name: TFF PR Linting
 
 on:
   pull_request:
@@ -14,13 +14,13 @@ jobs:
       - name: Set up Python Environment
         uses: actions/setup-python@v5
         with:
-          python-version: '3.10'
+          python-version: '3.12'
           
       - name: Install Dependencies
         run: |
           pip install --upgrade pip
-          pip install .
+          pip install "tff-core[sqlmesh]"
 
-      - name: Run SQLMesh Fitness Functions Linter
+      - name: Run TFF Linter
         run: |
-          sqlmesh-ff lint --project examples/minimal-sqlmesh-project
+          tff lint --project examples/minimal-sqlmesh-project --no-log

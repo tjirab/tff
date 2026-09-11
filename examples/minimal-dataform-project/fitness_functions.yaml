@@ -1,0 +1,18 @@
+version: 1
+project_name: minimal-dataform-project
+
+layers:
+  order: [sources, staging, marts]
+
+checks:
+  layer_integrity:
+    enabled: true
+  dependency_graph:
+    enabled: true
+
+rules:
+  no_positional_group_by_or_order_by:
+    enabled: true
+  metadata:
+    owner: true
+    description: true

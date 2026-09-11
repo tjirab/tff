@@ -1,8 +1,0 @@
-{
-  "exclude": [
-    ".env",
-    "legacy_data_table",
-    "temp_staging_column"
-  ],
-  "description": "Tables or columns that are intentionally excluded from linting checks."
-}

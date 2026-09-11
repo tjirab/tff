@@ -3,7 +3,7 @@ from pathlib import Path
 
 from tff.dbt.manifest import load_dbt_models
 from tff.dbt.runner import run_all_checks
-from tff.core.config import FitnessFunctionsConfig
+from tff.core.config import FitnessFunctionsConfig, load_fitness_config
 
 
 def test_load_dbt_models(tmp_path: Path):
@@ -422,5 +422,31 @@ def test_dbt_metadata_checks_coverage(tmp_path: Path):
     assert findings_by_model["model_missing_grain"] == ["nomissinggrain"]
     assert findings_by_model["model_missing_not_null"] == ["nomissingnotnull"]
     assert findings_by_model["model_missing_unique"] == ["nomissinguniquevalues"]
+
+
+def test_example_minimal_dbt_project_zero_config():
+    example_root = Path(__file__).resolve().parents[3] / "examples" / "minimal-dbt-project"
+    assert (example_root / "dbt_project.yml").exists()
+    assert not (example_root / "fitness_functions.yaml").exists()
+
+    findings, models_checked, selected = run_all_checks(project_root=example_root)
+    assert models_checked == 4
+    # Ensure layer_integrity passes (zero violations) under default staging -> intermediate -> core -> marts conventions
+    layer_violations = [f for f in findings if f.check == "layer_integrity"]
+    assert len(layer_violations) == 0
+
+
+def test_example_minimal_dbt_project_with_example_config():
+    example_root = Path(__file__).resolve().parents[3] / "examples" / "minimal-dbt-project"
+    assert (example_root / "dbt_project.yml").exists()
+    example_config = example_root / "fitness_functions.yaml.example"
+    assert example_config.exists()
+
+    config = load_fitness_config(example_root, config_path=example_config)
+    findings, models_checked, selected = run_all_checks(project_root=example_root, config=config)
+    assert models_checked == 4
+    layer_violations = [f for f in findings if f.check == "layer_integrity"]
+    assert len(layer_violations) == 0
+
 
 

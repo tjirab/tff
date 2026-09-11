@@ -4,13 +4,15 @@ from __future__ import annotations
 
 import re
 from collections import defaultdict
+from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import TYPE_CHECKING
-import yaml
+from ruamel.yaml import YAML
 import sqlglot
 from sqlglot import exp
 
 if TYPE_CHECKING:
+    from tff.core.adapter import PipelineAdapter
     from tff.core.model import ModelRepresentation
     from tff.core.report import LintFinding
 
@@ -23,7 +25,7 @@ def parse_model_block_args(block_text: str) -> list[tuple[str, str]]:
     current = []
     in_quotes = None
     depth = 0
-    
+
     # Split by top-level commas
     for char in block_text:
         if char in ("'", '"'):
@@ -45,7 +47,7 @@ def parse_model_block_args(block_text: str) -> list[tuple[str, str]]:
             current.append(char)
     if current:
         pairs.append("".join(current).strip())
-        
+
     parsed_pairs = []
     for pair in pairs:
         if not pair:
@@ -61,6 +63,7 @@ def parse_model_block_args(block_text: str) -> list[tuple[str, str]]:
 def fix_positional_clauses(sql: str, dialect: str) -> str:
     """Rewrite positional GROUP BY and ORDER BY integers to explicit columns."""
     from sqlglot.dialects.dialect import Dialect
+
     resolved_dialect = None
     if dialect:
         try:
@@ -69,15 +72,47 @@ def fix_positional_clauses(sql: str, dialect: str) -> str:
         except ValueError:
             pass
 
-    # 1. Extract the SQLMesh MODEL block if present
-    model_block_match = re.match(r"^\s*(MODEL\s*\(.*?\)\s*;)", sql, flags=re.DOTALL | re.IGNORECASE)
+    # 1. Extract the SQLMesh MODEL or Dataform config block if present
+    model_block_match = re.match(
+        r"^\s*(MODEL\s*\(.*?\)\s*;)", sql, flags=re.DOTALL | re.IGNORECASE
+    )
+    config_match = re.search(
+        r"^\s*config\s*\{", sql, flags=re.MULTILINE | re.IGNORECASE
+    )
     if model_block_match:
         model_block = model_block_match.group(1)
-        query_part = sql[model_block_match.end():]
+        query_part = sql[model_block_match.end() :]
+    elif config_match:
+        brace_start = config_match.end() - 1
+        depth = 0
+        in_quote = None
+        end = -1
+        for i in range(brace_start, len(sql)):
+            ch = sql[i]
+            if in_quote:
+                if ch == "\\" and i + 1 < len(sql):
+                    continue
+                if ch == in_quote:
+                    in_quote = None
+            elif ch in ('"', "'", "`"):
+                in_quote = ch
+            elif ch == "{":
+                depth += 1
+            elif ch == "}":
+                depth -= 1
+                if depth == 0:
+                    end = i + 1
+                    break
+        if end != -1:
+            model_block = sql[:end].strip()
+            query_part = sql[end:]
+        else:
+            model_block = ""
+            query_part = sql
     else:
         model_block = ""
         query_part = sql
-        
+
     # 2. Extract macros/Jinja to placeholders to prevent parsing errors
     patterns = [
         r"\{#.*?#\}",
@@ -85,30 +120,31 @@ def fix_positional_clauses(sql: str, dialect: str) -> str:
         r"\{%.*?%\}",
         r"@\w+\([^)]*\)",
         r"@\w+",
+        r"\$\{.*?\}",
     ]
     combined_pattern = re.compile("|".join(patterns), re.DOTALL)
     placeholders = {}
-    
+
     def repl(match):
         idx = len(placeholders)
         ph = f"__TFF_MACRO_PH_{idx}__"
         placeholders[ph] = match.group(0)
         return ph
-        
+
     temp_query = combined_pattern.sub(repl, query_part)
-    
+
     # 3. Parse with sqlglot
     try:
         parsed = sqlglot.parse_one(temp_query, read=resolved_dialect)
     except Exception:
         # If parsing fails, we cannot auto-fix this file
         return sql
-        
+
     # 4. AST modification
     modified = False
     for select in parsed.find_all(exp.Select):
         selects = select.selects
-        
+
         group = select.args.get("group")
         if group:
             new_group_expressions = []
@@ -127,7 +163,7 @@ def fix_positional_clauses(sql: str, dialect: str) -> str:
                 else:
                     new_group_expressions.append(expr)
             group.set("expressions", new_group_expressions)
-            
+
         order = select.args.get("order")
         if order:
             for ordered in order.expressions:
@@ -140,35 +176,37 @@ def fix_positional_clauses(sql: str, dialect: str) -> str:
                             ordered.set("this", exp.column(select_expr.alias))
                         else:
                             ordered.set("this", select_expr.copy())
-                            
+
     if not modified:
         return sql
-        
+
     # 5. Format back and restore placeholders
     modified_query = parsed.sql(dialect=resolved_dialect)
     for ph, orig in placeholders.items():
         modified_query = modified_query.replace(ph, orig)
-        
+
     if model_block:
         return model_block + "\n\n" + modified_query
     return modified_query
 
 
-def fix_sqlmesh_metadata(abs_path: Path, missing_owner: bool, missing_description: bool) -> str | None:
+def fix_sqlmesh_metadata(
+    abs_path: Path, missing_owner: bool, missing_description: bool
+) -> str | None:
     """Update metadata fields inside a SQLMesh MODEL block."""
     try:
         sql = abs_path.read_text(encoding="utf-8")
     except Exception:
         return None
-        
+
     model_block_match = re.search(r"MODEL\s*\((.*?)\)", sql, re.DOTALL | re.IGNORECASE)
     if not model_block_match:
         return None
-        
+
     args_str = model_block_match.group(1)
     args = parse_model_block_args(args_str)
     keys = {k.lower() for k, v in args}
-    
+
     modified = False
     if missing_owner and "owner" not in keys:
         args.append(("owner", "'TODO: Add owner'"))
@@ -176,14 +214,14 @@ def fix_sqlmesh_metadata(abs_path: Path, missing_owner: bool, missing_descriptio
     if missing_description and "description" not in keys:
         args.append(("description", "'TODO: Add description'"))
         modified = True
-        
+
     if not modified:
         return None
-        
+
     formatted_args = [f"{k} {v}" for k, v in args]
     new_block = "MODEL (\n  " + ",\n  ".join(formatted_args) + "\n)"
     new_sql = sql.replace(model_block_match.group(0), new_block, 1)
-    
+
     try:
         abs_path.write_text(new_sql, encoding="utf-8")
         return f"Added missing metadata to MODEL block in {abs_path.name}"
@@ -191,44 +229,69 @@ def fix_sqlmesh_metadata(abs_path: Path, missing_owner: bool, missing_descriptio
         return f"Failed to write SQLMesh metadata for {abs_path.name}: {e}"
 
 
-def fix_dbt_metadata(abs_path: Path, model_name: str, missing_owner: bool, missing_description: bool) -> str | None:
-    """Scaffold or update metadata fields for a dbt model in its directory's schema file."""
+def _get_roundtrip_yaml() -> YAML:
+    yaml_rt = YAML()
+    yaml_rt.preserve_quotes = True
+    yaml_rt.indent(mapping=2, sequence=4, offset=2)
+    return yaml_rt
+
+
+def fix_dbt_metadata(
+    abs_path: Path, model_name: str, missing_owner: bool, missing_description: bool
+) -> str | None:
+    """Scaffold or update metadata fields for a dbt model in its directory's schema file,
+    preserving comments, indentation, and key order using ruamel.yaml.
+    """
+    yaml_rt = _get_roundtrip_yaml()
     # Find any existing .yml/.yaml files in the same directory
-    yaml_files = list(abs_path.parent.glob("*.yml")) + list(abs_path.parent.glob("*.yaml"))
-    
+    yaml_files = list(abs_path.parent.glob("*.yml")) + list(
+        abs_path.parent.glob("*.yaml")
+    )
+
     for yf in yaml_files:
         try:
             with open(yf, encoding="utf-8") as f:
-                data = yaml.safe_load(f)
+                data = yaml_rt.load(f)
         except Exception:
             continue
-            
-        if not isinstance(data, dict) or "models" not in data or not isinstance(data["models"], list):
+
+        if (
+            not isinstance(data, (dict, Mapping))
+            or "models" not in data
+            or not isinstance(data["models"], (list, Sequence))
+        ):
             continue
-            
+
         # Look for the model entry
         model_entry = None
         for m in data["models"]:
-            if isinstance(m, dict) and m.get("name") == model_name:
+            if isinstance(m, (dict, Mapping)) and m.get("name") == model_name:
                 model_entry = m
                 break
-                
+
         if model_entry is not None:
             modified = False
-            if missing_description and ("description" not in model_entry or not model_entry["description"]):
+            if missing_description and (
+                "description" not in model_entry or not model_entry["description"]
+            ):
                 model_entry["description"] = "TODO: Add description"
                 modified = True
             if missing_owner:
-                if "meta" not in model_entry or not isinstance(model_entry["meta"], dict):
+                if "meta" not in model_entry or not isinstance(
+                    model_entry["meta"], (dict, Mapping)
+                ):
                     model_entry["meta"] = {}
-                if "owner" not in model_entry["meta"] or not model_entry["meta"]["owner"]:
+                if (
+                    "owner" not in model_entry["meta"]
+                    or not model_entry["meta"]["owner"]
+                ):
                     model_entry["meta"]["owner"] = "TODO: Add owner"
                     modified = True
-                    
+
             if modified:
                 try:
                     with open(yf, "w", encoding="utf-8") as f:
-                        yaml.safe_dump(data, f, default_flow_style=False, sort_keys=False)
+                        yaml_rt.dump(data, f)
                     return f"Updated metadata for model {model_name} in {yf.name}"
                 except Exception as e:
                     return f"Failed to write dbt metadata to {yf.name}: {e}"
@@ -237,33 +300,33 @@ def fix_dbt_metadata(abs_path: Path, model_name: str, missing_owner: bool, missi
     # If the model entry was not found in any existing file, we append to schema.yml (or create it)
     schema_path = abs_path.parent / "schema.yml"
     is_new = not schema_path.exists()
-    data = {}
+    data = None
     if not is_new:
         try:
             with open(schema_path, encoding="utf-8") as f:
-                data = yaml.safe_load(f) or {}
+                data = yaml_rt.load(f)
         except Exception:
             pass
-            
-    if not isinstance(data, dict):
-        data = {}
-        
+
+    if not isinstance(data, (dict, Mapping)):
+        data = {"version": 2, "models": []}
+
     if "version" not in data:
         data["version"] = 2
-    if "models" not in data or not isinstance(data["models"], list):
+    if "models" not in data or not isinstance(data["models"], (list, Sequence)):
         data["models"] = []
-        
+
     model_entry = {"name": model_name}
     if missing_description:
         model_entry["description"] = "TODO: Add description"
     if missing_owner:
         model_entry["meta"] = {"owner": "TODO: Add owner"}
-        
+
     data["models"].append(model_entry)
-    
+
     try:
         with open(schema_path, "w", encoding="utf-8") as f:
-            yaml.safe_dump(data, f, default_flow_style=False, sort_keys=False)
+            yaml_rt.dump(data, f)
         if is_new:
             return f"Scaffolded schema.yml for model {model_name}"
         return f"Appended metadata for model {model_name} to schema.yml"
@@ -273,57 +336,73 @@ def fix_dbt_metadata(abs_path: Path, model_name: str, missing_owner: bool, missi
 
 def apply_autofixes(
     project_root: Path,
-    provider: str,
+    provider: str | PipelineAdapter,
     findings: list[LintFinding],
-    models: dict[str, ModelRepresentation]
+    models: dict[str, ModelRepresentation],
 ) -> list[str]:
     """Identify auto-fixable violations from findings and apply modifications to source files."""
+    from tff.core.adapter import get_adapter
+
+    if isinstance(provider, str):
+        adapter = get_adapter(provider)
+    else:
+        adapter = provider
+
     # Group findings by file path
     grouped = defaultdict(list)
     for f in findings:
         if f.path:
             abs_path = (project_root / f.path).resolve()
             grouped[abs_path].append(f)
-            
+
     applied_logs = []
-    
+
     for abs_path, file_findings in grouped.items():
         if not abs_path.exists():
             continue
-            
+
         # 1. Fix positional group by / order by
-        pos_findings = [f for f in file_findings if f.check == "nopositionalgroupbyororderby"]
-        if pos_findings and abs_path.suffix == ".sql":
+        pos_findings = [
+            f for f in file_findings if f.check == "nopositionalgroupbyororderby"
+        ]
+        if pos_findings and abs_path.suffix in (".sql", ".sqlx"):
             # Lookup dialect from models dictionary
             dialect = "ansi"
             for model in models.values():
                 if Path(model.path).resolve() == abs_path:
                     dialect = model.dialect
                     break
-                    
+
             try:
                 sql = abs_path.read_text(encoding="utf-8")
                 fixed_sql = fix_positional_clauses(sql, dialect)
                 if fixed_sql != sql:
                     abs_path.write_text(fixed_sql, encoding="utf-8")
-                    applied_logs.append(f"Fixed positional GROUP BY/ORDER BY in {abs_path.name}")
+                    applied_logs.append(
+                        f"Fixed positional GROUP BY/ORDER BY in {abs_path.name}"
+                    )
             except Exception as e:
-                applied_logs.append(f"Failed to fix positional references in {abs_path.name}: {e}")
-                
+                applied_logs.append(
+                    f"Failed to fix positional references in {abs_path.name}: {e}"
+                )
+
         # 2. Fix metadata issues (owner, description)
         missing_owner = any(f.check == "nomissingowner" for f in file_findings)
-        missing_description = any(f.check == "nomissingdescription" for f in file_findings)
-        
+        missing_description = any(
+            f.check == "nomissingdescription" for f in file_findings
+        )
+
         if missing_owner or missing_description:
             model_name = file_findings[0].model
             if model_name:
-                if provider == "sqlmesh":
-                    log = fix_sqlmesh_metadata(abs_path, missing_owner, missing_description)
-                    if log:
-                        applied_logs.append(log)
-                elif provider == "dbt":
-                    log = fix_dbt_metadata(abs_path, model_name, missing_owner, missing_description)
-                    if log:
-                        applied_logs.append(log)
-                        
+                log = adapter.apply_metadata_fix(
+                    project_root=project_root,
+                    abs_path=abs_path,
+                    model_name=model_name,
+                    missing_owner=missing_owner,
+                    missing_description=missing_description,
+                )
+                if log:
+                    applied_logs.append(log)
+
     return applied_logs

@@ -8,11 +8,22 @@ import importlib.metadata
 import logging
 import sys
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
-from tff.core.config import load_fitness_config, resolve_project_path
+from tff.core.adapter import PipelineAdapter, detect_provider, get_adapter
+from tff.core.config import (
+    MISSING_CONFIG_NOTICE,
+    init_fitness_config,
+    load_fitness_config,
+    resolve_project_path,
+)
 from tff.core.context import set_ff_config
 from tff.core.report import render_lint_report
+
+if TYPE_CHECKING:
+    from tff.core.config import FitnessFunctionsConfig
+    from tff.core.model import ModelRepresentation
+    from tff.core.report import LintFinding
 
 try:
     __version__ = importlib.metadata.version("tff-core")
@@ -21,32 +32,8 @@ except Exception:
 
 
 def _detect_provider(project_root: Path) -> str:
-    """Detect whether a project is dbt or SQLMesh."""
-    # Check for dbt signature file
-    is_dbt = (project_root / "dbt_project.yml").exists()
-
-    # Check for SQLMesh signature files
-    is_sqlmesh = (
-        (project_root / ".sqlmesh").exists()
-        or (project_root / "config.py").exists()
-        or (project_root / "config.yaml").exists()
-        or (project_root / "config.yml").exists()
-    )
-
-    if is_dbt and is_sqlmesh:
-        raise ValueError(
-            "Both dbt and SQLMesh configuration files were detected in the project root.\n"
-            "Please specify the provider explicitly using the --provider option (e.g. '--provider dbt' or '--provider sqlmesh')."
-        )
-    if is_dbt:
-        return "dbt"
-    if is_sqlmesh:
-        return "sqlmesh"
-
-    raise ValueError(
-        "Could not detect project type (neither dbt_project.yml nor SQLMesh config was found).\n"
-        "Please run this command from your project root, or specify the provider explicitly using the --provider option."
-    )
+    """Detect whether a project is dbt, SQLMesh, or Dataform."""
+    return detect_provider(project_root)
 
 
 def _get_runner(provider: str) -> Any:
@@ -67,8 +54,152 @@ def _get_runner(provider: str) -> Any:
                 "SQLMesh project detected, but tff is not installed with sqlmesh support.\n"
                 'Please install it using: pip install "tff-core[sqlmesh]" or uv add "tff-core[sqlmesh]"'
             ) from e
+    elif provider == "dataform":
+        try:
+            return importlib.import_module("tff.dataform.runner")
+        except ImportError as e:
+            raise ImportError(
+                "Dataform project detected, but tff is not installed with dataform support.\n"
+                'Please install it using: pip install "tff-core[dataform]" or uv add "tff-core[dataform]"'
+            ) from e
     else:
         raise ValueError(f"Unknown provider: {provider}")
+
+
+class _MockRunnerAdapter(PipelineAdapter):
+    """Fallback adapter wrapping a mock runner for backwards-compatibility with existing tests."""
+
+    def __init__(self, provider: str, mock_runner: Any) -> None:
+        self._provider = provider
+        self._runner = mock_runner
+
+    @property
+    def provider_name(self) -> str:
+        return self._provider
+
+    def is_applicable(self, project_root: Path) -> bool:
+        return True
+
+    def load_models(
+        self,
+        project_root: Path,
+        dialect: str | None = None,
+        manifest_path: str | Path | None = None,
+    ) -> dict[str, Any]:
+        if self._provider == "dbt":
+            from tff.dbt.manifest import load_dbt_models
+
+            return load_dbt_models(project_root, dialect=dialect)
+        elif self._provider == "dataform":
+            from tff.dataform.manifest import load_dataform_models
+
+            return load_dataform_models(
+                project_root, manifest_path=manifest_path, dialect=dialect
+            )
+        elif self._provider == "sqlmesh":
+            from sqlmesh.core.context import Context
+            from tff.sqlmesh.loader import FitnessLoader
+            from tff.sqlmesh.runner import map_sqlmesh_context_models
+
+            context = Context(paths=[str(project_root)], loader=FitnessLoader)
+            return map_sqlmesh_context_models(context)
+        return {}
+
+    def run_checks(
+        self,
+        project_root: Path,
+        config: FitnessFunctionsConfig,
+        checks: list[str] | None = None,
+        dialect: str | None = None,
+        manifest_path: str | Path | None = None,
+        models: dict[str, ModelRepresentation] | None = None,
+    ) -> tuple[list[LintFinding], int, list[str]]:
+        kwargs: dict[str, Any] = {
+            "project_root": project_root,
+            "config": config,
+            "checks": checks,
+        }
+        if self._provider == "dbt":
+            kwargs["dialect"] = dialect
+            if models is not None:
+                kwargs["models"] = models
+        elif self._provider == "dataform":
+            kwargs["dialect"] = dialect
+            kwargs["manifest_path"] = manifest_path
+            if models is not None:
+                kwargs["models"] = models
+        elif self._provider == "sqlmesh":
+            if models is not None:
+                kwargs["models"] = models
+        return self._runner.run_all_checks(**kwargs)
+
+    def apply_metadata_fix(
+        self,
+        project_root: Path,
+        abs_path: Path,
+        model_name: str,
+        missing_owner: bool,
+        missing_description: bool,
+    ) -> str | None:
+        if self._provider == "dbt":
+            from tff.core.autofix import fix_dbt_metadata
+
+            return fix_dbt_metadata(
+                abs_path=abs_path,
+                model_name=model_name,
+                missing_owner=missing_owner,
+                missing_description=missing_description,
+            )
+        elif self._provider == "sqlmesh":
+            from tff.core.autofix import fix_sqlmesh_metadata
+
+            return fix_sqlmesh_metadata(
+                abs_path=abs_path,
+                missing_owner=missing_owner,
+                missing_description=missing_description,
+            )
+        return None
+
+    def get_diagnostic_files(self, project_root: Path) -> list[tuple[str, str]]:
+        if self._provider == "dbt":
+            dbt_project = project_root / "dbt_project.yml"
+            manifest = project_root / "target" / "manifest.json"
+            dbt_project_status = (
+                "[green]found[/green]" if dbt_project.exists() else "[red]missing[/red]"
+            )
+            manifest_status = (
+                "[green]found[/green]" if manifest.exists() else "[red]missing[/red]"
+            )
+            return [
+                ("dbt_project.yml", f"{dbt_project} ({dbt_project_status})"),
+                ("manifest.json", f"{manifest} ({manifest_status})"),
+            ]
+        elif self._provider == "sqlmesh":
+            config_py = project_root / "config.py"
+            settings_yaml = project_root / "settings.yaml"
+            config_py_status = (
+                "[green]found[/green]" if config_py.exists() else "[red]missing[/red]"
+            )
+            settings_yaml_status = (
+                "[green]found[/green]"
+                if settings_yaml.exists()
+                else "[red]missing[/red]"
+            )
+            return [
+                ("config.py", f"{config_py} ({config_py_status})"),
+                ("settings.yaml", f"{settings_yaml} ({settings_yaml_status})"),
+            ]
+        return []
+
+
+def _get_adapter(provider: str) -> PipelineAdapter:
+    """Load and return the adapter instance for the specified provider, wrapping test mocks if present."""
+    runner = _get_runner(provider)
+    from unittest.mock import Mock
+
+    if isinstance(runner, Mock):
+        return _MockRunnerAdapter(provider, runner)
+    return get_adapter(provider)
 
 
 def _parse_checks(value: str | None) -> list[str] | None:
@@ -88,12 +219,12 @@ class TFFArgumentParser(argparse.ArgumentParser):
         # If the prog is already subcommand-specific (e.g. 'tff lint'), use it.
         # Otherwise, check the arguments to see if a subcommand was targetted.
         if hint_cmd == "tff" and TFFArgumentParser._current_argv is not None:
-            for sub in ("lint", "health", "info", "help", "stats"):
+            for sub in ("lint", "health", "info", "help", "stats", "docs", "init"):
                 if sub in TFFArgumentParser._current_argv:
                     hint_cmd = f"tff {sub}"
                     break
         elif hint_cmd == "tff":
-            for sub in ("lint", "health", "info", "help", "stats"):
+            for sub in ("lint", "health", "info", "help", "stats", "docs", "init"):
                 if sub in sys.argv:
                     hint_cmd = f"tff {sub}"
                     break
@@ -158,14 +289,20 @@ def main(argv: list[str] | None = None) -> int:
     )
     lint_parser.add_argument(
         "--provider",
-        choices=["auto", "dbt", "sqlmesh"],
+        choices=["auto", "dbt", "sqlmesh", "dataform"],
         default="auto",
         help="Pipeline engine provider (default: auto-detected)",
     )
     lint_parser.add_argument(
         "--dialect",
         default=None,
-        help="SQL dialect of models (dbt only; auto-inferred by default)",
+        help="SQL dialect of models (dbt and Dataform; auto-inferred by default)",
+    )
+    lint_parser.add_argument(
+        "--manifest",
+        type=Path,
+        default=None,
+        help="Path to precompiled Dataform compilation_result.json or manifest",
     )
     lint_parser.add_argument(
         "--json",
@@ -173,9 +310,32 @@ def main(argv: list[str] | None = None) -> int:
         help="Output results in JSON format to stdout",
     )
     lint_parser.add_argument(
+        "--format",
+        choices=["text", "json", "sarif", "github"],
+        default=None,
+        help="Output format to stdout (text, json, sarif, github; default: text)",
+    )
+    lint_parser.add_argument(
+        "--github-annotations",
+        action="store_true",
+        help="Emit GitHub Actions workflow command annotations alongside console report",
+    )
+    lint_parser.add_argument(
+        "--junit-xml",
+        type=Path,
+        default=None,
+        metavar="PATH",
+        help="Write JUnit XML test results to the specified file path",
+    )
+    lint_parser.add_argument(
         "--fix",
         action="store_true",
         help="Automatically fix simple linting violations if possible",
+    )
+    lint_parser.add_argument(
+        "--no-log",
+        action="store_true",
+        help="Disable saving run execution logs to .tff_logs/",
     )
 
     health_parser = subparsers.add_parser(
@@ -194,14 +354,20 @@ def main(argv: list[str] | None = None) -> int:
     )
     health_parser.add_argument(
         "--provider",
-        choices=["auto", "dbt", "sqlmesh"],
+        choices=["auto", "dbt", "sqlmesh", "dataform"],
         default="auto",
         help="Pipeline engine provider (default: auto-detected)",
     )
     health_parser.add_argument(
         "--dialect",
         default=None,
-        help="SQL dialect of models (dbt only; auto-inferred by default)",
+        help="SQL dialect of models (dbt and Dataform; auto-inferred by default)",
+    )
+    health_parser.add_argument(
+        "--manifest",
+        type=Path,
+        default=None,
+        help="Path to precompiled Dataform compilation_result.json or manifest",
     )
     health_parser.add_argument(
         "--fail-under",
@@ -231,6 +397,11 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="Output results in JSON format to stdout",
     )
+    health_parser.add_argument(
+        "--no-log",
+        action="store_true",
+        help="Disable saving run execution logs to .tff_logs/",
+    )
 
     # Info subcommand
     info_parser = subparsers.add_parser(
@@ -251,7 +422,7 @@ def main(argv: list[str] | None = None) -> int:
     )
     info_parser.add_argument(
         "--provider",
-        choices=["auto", "dbt", "sqlmesh"],
+        choices=["auto", "dbt", "sqlmesh", "dataform"],
         default="auto",
         help="Pipeline engine provider (default: auto-detected)",
     )
@@ -299,14 +470,20 @@ def main(argv: list[str] | None = None) -> int:
     )
     docs_parser.add_argument(
         "--provider",
-        choices=["auto", "dbt", "sqlmesh"],
+        choices=["auto", "dbt", "sqlmesh", "dataform"],
         default="auto",
         help="Pipeline engine provider (default: auto-detected)",
     )
     docs_parser.add_argument(
         "--dialect",
         default=None,
-        help="SQL dialect of models (dbt only; auto-inferred by default)",
+        help="SQL dialect of models (dbt and Dataform; auto-inferred by default)",
+    )
+    docs_parser.add_argument(
+        "--manifest",
+        type=Path,
+        default=None,
+        help="Path to precompiled Dataform compilation_result.json or manifest",
     )
     docs_parser.add_argument(
         "--output",
@@ -315,12 +492,36 @@ def main(argv: list[str] | None = None) -> int:
         default=None,
         help="Output HTML path (default: project_root / tff_report.html)",
     )
+    docs_parser.add_argument(
+        "--no-log",
+        action="store_true",
+        help="Disable saving run execution logs to .tff_logs/",
+    )
+
+    # Init subcommand
+    init_parser = subparsers.add_parser(
+        "init",
+        help="Scaffold an annotated starter fitness_functions.yaml configuration file",
+        description="Scaffold an annotated starter fitness_functions.yaml configuration file in the project directory",
+    )
+    init_parser.add_argument(
+        "--project",
+        type=Path,
+        default=Path.cwd(),
+        help="Project root directory (default: current directory)",
+    )
+    init_parser.add_argument(
+        "--force",
+        "-f",
+        action="store_true",
+        help="Overwrite existing fitness_functions.yaml if present",
+    )
 
     help_parser = subparsers.add_parser("help", help="Show help details for a command")
     help_parser.add_argument(
         "subcommand",
         nargs="?",
-        choices=["lint", "health", "info", "stats", "docs"],
+        choices=["lint", "health", "info", "stats", "docs", "init"],
         help="Specific command to get help for",
     )
 
@@ -337,6 +538,8 @@ def main(argv: list[str] | None = None) -> int:
             stats_parser.print_help()
         elif args.subcommand == "docs":
             docs_parser.print_help()
+        elif args.subcommand == "init":
+            init_parser.print_help()
         else:
             parser.print_help()
         return 0
@@ -488,48 +691,23 @@ def main(argv: list[str] | None = None) -> int:
         ver_table.add_row(
             "  [bold]dbt integration[/bold]", f"{tff_ver} [dim](core)[/dim]"
         )
+        ver_table.add_row(
+            "  [bold]dataform integration[/bold]", f"{tff_ver} [dim](core)[/dim]"
+        )
         console.print(ver_table)
+
+        try:
+            adapter = _get_adapter(provider)
+        except (ImportError, ValueError) as e:
+            console.print(f"[red]Error loading adapter: {e}[/red]")
+            return 1
 
         prov_table = Table(show_header=False, box=None, padding=(0, 2, 0, 0))
         prov_table.add_column()
         prov_table.add_column()
 
-        if provider == "dbt":
-            dbt_project = project_root / "dbt_project.yml"
-            manifest = project_root / "target" / "manifest.json"
-            dbt_project_status = (
-                "[green]found[/green]" if dbt_project.exists() else "[red]missing[/red]"
-            )
-            manifest_status = (
-                "[green]found[/green]" if manifest.exists() else "[red]missing[/red]"
-            )
-            prov_table.add_row(
-                "  [bold]dbt_project.yml[/bold]",
-                f"{dbt_project} ({dbt_project_status})",
-            )
-            prov_table.add_row(
-                "  [bold]manifest.json[/bold]",
-                f"{manifest} ({manifest_status})",
-            )
-        elif provider == "sqlmesh":
-            config_py = project_root / "config.py"
-            settings_yaml = project_root / "settings.yaml"
-            config_py_status = (
-                "[green]found[/green]" if config_py.exists() else "[red]missing[/red]"
-            )
-            settings_yaml_status = (
-                "[green]found[/green]"
-                if settings_yaml.exists()
-                else "[red]missing[/red]"
-            )
-            prov_table.add_row(
-                "  [bold]config.py[/bold]",
-                f"{config_py} ({config_py_status})",
-            )
-            prov_table.add_row(
-                "  [bold]settings.yaml[/bold]",
-                f"{settings_yaml} ({settings_yaml_status})",
-            )
+        for label, val in adapter.get_diagnostic_files(project_root):
+            prov_table.add_row(f"  [bold]{label}[/bold]", val)
         if prov_table.row_count > 0:
             console.print("\n[bold cyan]● Provider Files[/bold cyan]")
             console.print(prov_table)
@@ -670,18 +848,40 @@ def main(argv: list[str] | None = None) -> int:
                 return 1
 
         from tff.core.docs import generate_docs_dashboard
+
+        docs_kwargs: dict[str, Any] = {
+            "project_root": project_root,
+            "output_path": args.output,
+            "provider": provider,
+            "dialect": args.dialect,
+            "config_path": args.config,
+        }
+        if getattr(args, "no_log", False):
+            docs_kwargs["no_log"] = True
+        if getattr(args, "manifest", None) is not None:
+            docs_kwargs["manifest_path"] = args.manifest
         try:
-            output_file = generate_docs_dashboard(
-                project_root=project_root,
-                output_path=args.output,
-                provider=provider,
-                dialect=args.dialect,
-                config_path=args.config,
-            )
+            output_file = generate_docs_dashboard(**docs_kwargs)
             print(f"Successfully generated HTML dashboard at: {output_file}")
             return 0
         except Exception as e:
             print(f"Error generating dashboard: {e}", file=sys.stderr)
+            return 1
+
+    if args.command == "init":
+        project_root = args.project.resolve()
+        target_path = project_root / "fitness_functions.yaml"
+        file_existed = target_path.exists()
+        try:
+            init_fitness_config(project_root, force=getattr(args, "force", False))
+            action = "Overwrote" if file_existed else "Created"
+            print(f"{action} {target_path.name} in {project_root}")
+            return 0
+        except FileExistsError as e:
+            print(f"Error: {e}", file=sys.stderr)
+            return 1
+        except Exception as e:
+            print(f"Error creating configuration file: {e}", file=sys.stderr)
             return 1
 
     if args.command in ("lint", "health"):
@@ -697,9 +897,9 @@ def main(argv: list[str] | None = None) -> int:
                 print(f"Error: {e}", file=sys.stderr)
                 return 1
 
-        # 2. Get runner (checks adapter availability)
+        # 2. Get adapter (checks adapter availability)
         try:
-            runner_module = _get_runner(provider)
+            adapter = _get_adapter(provider)
         except (ImportError, ValueError) as e:
             print(f"Error: {e}", file=sys.stderr)
             return 1
@@ -714,6 +914,9 @@ def main(argv: list[str] | None = None) -> int:
             print(f"Error loading configuration: {e}", file=sys.stderr)
             return 1
 
+        if not getattr(config, "_config_file_found", True) and not getattr(args, "json", False):
+            print(MISSING_CONFIG_NOTICE, file=sys.stderr)
+
         set_ff_config(config)
         if args.command == "lint":
             checks = _parse_checks(args.checks)
@@ -721,93 +924,127 @@ def main(argv: list[str] | None = None) -> int:
             checks = None  # Always run all checks for health report
 
         # 4. Run checks
+        if provider == "sqlmesh" and args.dialect is not None:
+            print(
+                "Warning: --dialect is ignored for SQLMesh projects (dialects are defined directly on models).",
+                file=sys.stderr,
+            )
+
+        manifest_path = getattr(args, "manifest", None)
         try:
-            if provider == "dbt":
-                findings, models_checked, executed_checks = (
-                    runner_module.run_all_checks(
-                        project_root=project_root,
-                        config=config,
-                        checks=checks,
-                        dialect=args.dialect,
-                    )
-                )
-            else:
-                if args.dialect is not None:
-                    print(
-                        "Warning: --dialect is ignored for SQLMesh projects (dialects are defined directly on models).",
-                        file=sys.stderr,
-                    )
-                findings, models_checked, executed_checks = (
-                    runner_module.run_all_checks(
-                        project_root=project_root,
-                        config=config,
-                        checks=checks,
-                    )
-                )
+            findings, models_checked, executed_checks = adapter.run_checks(
+                project_root=project_root,
+                config=config,
+                checks=checks,
+                dialect=args.dialect,
+                manifest_path=manifest_path,
+            )
         except Exception as e:
             print(f"Error executing checks: {e}", file=sys.stderr)
             return 1
 
         # Apply auto-fixes if --fix is set
         if args.command == "lint" and getattr(args, "fix", False) and findings:
-            models = {}
             try:
-                if provider == "dbt":
-                    from tff.dbt.manifest import load_dbt_models
-                    models = load_dbt_models(project_root, dialect=args.dialect)
-                else:
-                    from sqlmesh.core.context import Context
-                    from tff.sqlmesh.loader import FitnessLoader
-                    from tff.sqlmesh.runner import map_sqlmesh_context_models
-                    context = Context(
-                        paths=[str(project_root)],
-                        loader=FitnessLoader,
-                    )
-                    models = map_sqlmesh_context_models(context)
+                models = adapter.load_models(
+                    project_root=project_root,
+                    dialect=args.dialect,
+                    manifest_path=manifest_path,
+                )
             except Exception as e:
-                print(f"Warning: Could not load models for autofix: {e}", file=sys.stderr)
+                models = {}
+                print(
+                    f"Warning: Could not load models for autofix: {e}", file=sys.stderr
+                )
 
             if models:
                 from tff.core.autofix import apply_autofixes
-                fix_logs = apply_autofixes(project_root, provider, findings, models)
+
+                fix_logs = apply_autofixes(project_root, adapter, findings, models)
                 if fix_logs:
                     if not args.json:
                         from rich.console import Console
+
                         console = Console(stderr=True)
                         for log in fix_logs:
                             console.print(f"[green]✓[/green] {log}")
                     # Re-run checks to get the final state of the files
                     try:
-                        if provider == "dbt":
-                            findings, models_checked, executed_checks = (
-                                runner_module.run_all_checks(
-                                    project_root=project_root,
-                                    config=config,
-                                    checks=checks,
-                                    dialect=args.dialect,
-                                )
-                            )
-                        else:
-                            findings, models_checked, executed_checks = (
-                                runner_module.run_all_checks(
-                                    project_root=project_root,
-                                    config=config,
-                                    checks=checks,
-                                )
-                            )
+                        findings, models_checked, executed_checks = adapter.run_checks(
+                            project_root=project_root,
+                            config=config,
+                            checks=checks,
+                            dialect=args.dialect,
+                            manifest_path=manifest_path,
+                        )
                     except Exception as e:
-                        print(f"Error executing checks after autofix: {e}", file=sys.stderr)
+                        print(
+                            f"Error executing checks after autofix: {e}",
+                            file=sys.stderr,
+                        )
                         return 1
 
         if args.command == "lint":
             # 5. Render report
             from tff.core.logs import get_lint_json_data, save_log
+            from tff.core.formatters import (
+                emit_github_annotations,
+                generate_junit_xml,
+                generate_sarif_report,
+            )
             import json
+            import os
 
             json_data = get_lint_json_data(findings, models_checked, args.fail_level)
-            save_log(project_root, "lint", json_data)
+            save_log(
+                project_root,
+                "lint",
+                json_data,
+                no_log=getattr(args, "no_log", False),
+            )
 
-            if args.json:
+            # Write JUnit XML if requested
+            if getattr(args, "junit_xml", None):
+                xml_path = Path(args.junit_xml).resolve()
+                xml_path.parent.mkdir(parents=True, exist_ok=True)
+                xml_content = generate_junit_xml(
+                    findings,
+                    project_root=project_root,
+                    fail_level=args.fail_level,
+                )
+                xml_path.write_text(xml_content, encoding="utf-8")
+
+            output_format = args.format or ("json" if args.json else "text")
+
+            # Determine whether and where to emit GitHub Actions workflow command annotations
+            is_github_actions = os.environ.get("GITHUB_ACTIONS") == "true"
+            github_annotations_requested = getattr(args, "github_annotations", False)
+
+            if output_format == "github":
+                # Pure annotations mode directly to stdout (no tables or banners)
+                if findings:
+                    emit_github_annotations(findings, project_root=project_root, stream=sys.stdout)
+                passed = json_data["passed"]
+                return 0 if passed else 1
+
+            # For text format: emit annotations to stdout (explicitly requested or auto-detected in CI)
+            # For structured formats (sarif/json): if explicitly requested, route to stderr to keep stdout JSON clean
+            if output_format == "text":
+                if (github_annotations_requested or is_github_actions) and findings:
+                    emit_github_annotations(findings, project_root=project_root, stream=sys.stdout)
+            elif output_format in ("sarif", "json"):
+                if github_annotations_requested and findings:
+                    emit_github_annotations(findings, project_root=project_root, stream=sys.stderr)
+
+            if output_format == "sarif":
+                sarif_data = generate_sarif_report(
+                    findings,
+                    project_root=project_root,
+                    tool_version=__version__,
+                )
+                print(json.dumps(sarif_data, indent=2))
+                passed = json_data["passed"]
+            elif output_format == "json":
                 print(json.dumps(json_data, indent=2))
                 passed = json_data["passed"]
             else:
@@ -828,12 +1065,41 @@ def main(argv: list[str] | None = None) -> int:
             scope: list[str] | None = getattr(args, "scope", None)
             group_by: str = getattr(args, "group_by", "connascence")
 
+            scoped_models_count = None
+            if scope:
+                scoped_files: set[Path] = set()
+                for sc in scope:
+                    sc_path = (project_root / sc).resolve()
+                    if sc_path.is_file():
+                        scoped_files.add(sc_path)
+                    elif sc_path.is_dir():
+                        for p in sc_path.rglob("*"):
+                            if p.is_file() and p.suffix in (".sql", ".sqlx"):
+                                scoped_files.add(p.resolve())
+                if scoped_files:
+                    scoped_models_count = len(scoped_files)
+
             scores = calculate_health_scores(
-                findings, models_checked, config, provider, scope=scope
+                findings,
+                models_checked,
+                config,
+                provider,
+                scope=scope,
+                scoped_models_count=scoped_models_count,
             )
 
-            json_data = get_health_json_data(scores, models_checked)
-            save_log(project_root, "health", json_data)
+            effective_models_checked = (
+                scoped_models_count
+                if scoped_models_count is not None
+                else models_checked
+            )
+            json_data = get_health_json_data(scores, effective_models_checked)
+            save_log(
+                project_root,
+                "health",
+                json_data,
+                no_log=getattr(args, "no_log", False),
+            )
 
             if args.json:
                 print(json.dumps(json_data, indent=2))

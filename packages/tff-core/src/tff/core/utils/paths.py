@@ -5,10 +5,17 @@ from __future__ import annotations
 from pathlib import Path
 
 
+def _find_base_index(parts: tuple[str, ...]) -> int:
+    for base in ("models", "definitions"):
+        if base in parts:
+            return parts.index(base)
+    raise ValueError("Neither 'models' nor 'definitions' found in path")
+
+
 def get_layer_from_path(path: str, layer_order: list[str] | None = None) -> str | None:
     parts = Path(path).parts
     try:
-        models_index = parts.index("models")
+        models_index = _find_base_index(parts)
         if layer_order is None:
             from tff.core.context import get_ff_config
             layer_order = get_ff_config().layers.order
@@ -26,7 +33,7 @@ def get_layer_from_path(path: str, layer_order: list[str] | None = None) -> str 
 def get_marts_domain_from_path(path: str, layer_name: str = "marts") -> str | None:
     parts = Path(path).parts
     try:
-        models_index = parts.index("models")
+        models_index = _find_base_index(parts)
         layer_index = None
         for i, part in enumerate(parts[models_index + 1:], start=models_index + 1):
             if part == layer_name:
@@ -44,12 +51,15 @@ def get_marts_domain_from_path(path: str, layer_name: str = "marts") -> str | No
         return None
 
 
-def get_layer_and_domain(path: str) -> tuple[str | None, str | None]:
+def get_layer_and_domain(
+    path: str, layer_order: list[str] | None = None
+) -> tuple[str | None, str | None]:
     parts = Path(path).parts
     try:
-        models_index = parts.index("models")
-        from tff.core.context import get_ff_config
-        layer_order = get_ff_config().layers.order
+        models_index = _find_base_index(parts)
+        if layer_order is None:
+            from tff.core.context import get_ff_config
+            layer_order = get_ff_config().layers.order
 
         layer = None
         layer_index = None
@@ -72,8 +82,11 @@ def get_layer_and_domain(path: str) -> tuple[str | None, str | None]:
         else:
             domain = parts[models_index + 1]
 
-        if domain and domain.endswith(".sql"):
-            domain = domain[:-4]
+        if domain:
+            for ext in (".sql", ".sqlx"):
+                if domain.endswith(ext):
+                    domain = domain[:-len(ext)]
+                    break
 
         return layer, domain
     except (ValueError, IndexError):
@@ -81,12 +94,17 @@ def get_layer_and_domain(path: str) -> tuple[str | None, str | None]:
 
 
 def model_path_relative(model) -> str | None:
-    path = getattr(model, "path", getattr(model, "_path", None))
+    if isinstance(model, dict):
+        path = model.get("path") or model.get("_path")
+    elif isinstance(model, (str, Path)):
+        path = str(model)
+    else:
+        path = getattr(model, "path", getattr(model, "_path", None))
     if not path:
         return None
     try:
         parts = Path(path).parts
-        idx = parts.index("models")
+        idx = _find_base_index(parts)
         return str(Path(*parts[idx:]))
     except ValueError:
         return str(path)
@@ -104,7 +122,7 @@ def resolve_layer_and_domain(
     domain = None
     path = getattr(model, "path", getattr(model, "_path", None))
     if path:
-        layer, domain = get_layer_and_domain(path)
+        layer, domain = get_layer_and_domain(path, layer_order=layer_order)
 
     # Check if the resolved layer is actually a valid layer in layer_order
     if not layer or (layer_order and layer not in layer_order):

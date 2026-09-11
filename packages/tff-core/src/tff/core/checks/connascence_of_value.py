@@ -14,17 +14,59 @@ from tff.core.utils.paths import model_path_relative, get_layer_from_path
 
 def get_literal_value(node: exp.Literal) -> str:
     val = node.this
-    if isinstance(node.parent, exp.Neg):
+    p = node.parent
+    while isinstance(p, exp.Paren):
+        p = p.parent
+    if isinstance(p, exp.Neg):
         return f"-{val}"
     return val
 
 
 def is_ignored_literal(node: exp.Literal) -> bool:
+    # 1. Skip literals in LIMIT or OFFSET clauses
     p = node.parent
     while p:
         if isinstance(p, (exp.Limit, exp.Offset)):
             return True
         p = p.parent
+
+    # 2. Skip data type definitions/parameters, e.g. decimal(15, 2), varchar(255)
+    if node.find_ancestor(exp.DataTypeParam, exp.DataType):
+        return True
+
+    target = node
+    while isinstance(target.parent, (exp.Paren, exp.Neg)):
+        target = target.parent
+    parent = target.parent
+    if not parent:
+        return False
+
+    # 3. Round / Trunc precision/decimals argument, e.g. round(val, 2)
+    if isinstance(parent, (exp.Round, exp.Trunc)) and target == parent.args.get("decimals"):
+        return True
+
+    # 4. SplitPart delimiter or part index, e.g. split_part(email, '@', 2)
+    if isinstance(parent, exp.SplitPart) and target != parent.this:
+        return True
+
+    # 5. Positional slicing/substring functions
+    if isinstance(parent, exp.Substring) and target != parent.this:
+        return True
+    if isinstance(parent, (exp.Left, exp.Right)) and target == parent.args.get("expression"):
+        return True
+
+    # 6. String concatenation operator (||)
+    if isinstance(parent, exp.DPipe):
+        return True
+
+    # 7. Separator in concat_ws
+    if isinstance(parent, exp.ConcatWs) and target == parent.expressions[0]:
+        return True
+
+    # 8. Divisor in arithmetic division, e.g. amount / 100.00 (cents to dollars divisor)
+    if isinstance(parent, (exp.Div, exp.IntDiv)) and target == parent.args.get("expression"):
+        return True
+
     return False
 
 
@@ -38,11 +80,15 @@ def collect_connascence_of_value_findings(
     # Map: lowercased_val -> list of occurrences (unique per model)
     value_occurrences: dict[str, list[dict]] = defaultdict(list)
 
+    ignored_values_lower = {v.lower() for v in rule_config.ignored_values}
+    ignored_punctuation_set = set(rule_config.ignored_punctuation)
+    ignored_punctuation_chars = "".join(rule_config.ignored_punctuation)
+
     for model_name, model in models.items():
         if model.is_external or model.is_symbolic:
             continue
 
-        layer = get_layer_from_path(model.path)
+        layer = get_layer_from_path(model.path, layer_order=config.layers.order)
         if not rule_config.should_run(layer):
             continue
 
@@ -59,7 +105,18 @@ def collect_connascence_of_value_findings(
                 val = get_literal_value(node)
                 val_lower = val.lower()
 
-                if val_lower in [v.lower() for v in rule_config.ignored_values]:
+                if val_lower in ignored_values_lower:
+                    continue
+
+                if (
+                    val in ignored_punctuation_set
+                    or val_lower in {p.lower() for p in ignored_punctuation_set}
+                    or (
+                        ignored_punctuation_chars
+                        and val.strip() in ignored_punctuation_set
+                        and all(c in ignored_punctuation_chars for c in val)
+                    )
+                ):
                     continue
 
                 if val_lower in seen_in_model:
