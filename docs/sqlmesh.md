@@ -126,6 +126,7 @@ tff health [--project PATH] [--config PATH] [--provider PROVIDER] [--fail-under 
   tff health --group-by domain
   tff health --scope models/marts --group-by domain
   ```
+* **Weights & Penalties**: Scoring weights and severity penalties can be configured under `health:` in `fitness_functions.yaml`. See [Health Scoring Configuration](rules_and_checks.md#3-health-scoring-configuration).
 
 ---
 

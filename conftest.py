@@ -1,5 +1,8 @@
+import os
 import sys
 import pytest
+
+os.environ.setdefault("MAX_FORK_WORKERS", "1")
 
 
 @pytest.fixture(autouse=True)

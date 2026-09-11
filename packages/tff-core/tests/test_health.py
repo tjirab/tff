@@ -654,3 +654,409 @@ def test_cli_health_group_by_domain(tmp_path, monkeypatch) -> None:
     ])
     assert exit_code == 0
 
+
+def test_configurable_weights_scoring() -> None:
+    """Validate weighted category and overall health scores."""
+    config = FitnessFunctionsConfig.model_validate({
+        "checks": {
+            "layer_integrity": {"enabled": True},
+            "schema_contracts": {"enabled": True},
+            "custom_exclusions": {"enabled": False},
+            "dependency_graph": {"enabled": False},
+            "materialization_depth": {"enabled": False},
+            "duplicate_ctes": {"enabled": False},
+            "connascence_of_value": {"enabled": False},
+        },
+        "rules": {
+            "ban_select_star": {"enabled": True},
+            "column_names": {"enabled": True},
+            "filename_equals_modelname": {"enabled": False},
+            "column_types": {"enabled": False},
+            "mart_naming": {"enabled": False},
+            "classification_macros": {"enabled": False},
+            "sql_complexity": {"enabled": False},
+            "environment_agnostic_references": {"enabled": False},
+            "metadata": {"enabled": False},
+            "no_positional_group_by_or_order_by": {"enabled": False},
+        },
+        "health": {
+            "weights": {
+                "layer_integrity": 3.0,
+                "schema_contracts": 2.0,
+                "column_names": 0.5,
+            }
+        }
+    })
+
+    findings = [
+        LintFinding(check="layer_integrity", severity="warning", message="warn"),
+        LintFinding(check="columnnames", severity="error", message="col error", model="model_a"),
+        LintFinding(check="banselectstar", severity="error", message="star error 1", model="model_b"),
+        LintFinding(check="banselectstar", severity="error", message="star error 2", model="model_c"),
+    ]
+
+    scores = calculate_health_scores(findings, models_checked=10, config=config, provider="dbt")
+
+    # Verify check weights resolved correctly
+    assert scores["check_weights"]["layer_integrity"] == 3.0
+    assert scores["check_weights"]["schema_contracts"] == 2.0
+    assert scores["check_weights"]["columnnames"] == 0.5
+    assert scores["check_weights"]["banselectstar"] == 1.0  # default
+
+    # Verify individual check scores
+    assert scores["check_scores"]["layer_integrity"] == 50.0
+    assert scores["check_scores"]["schema_contracts"] == 100.0
+    assert scores["check_scores"]["columnnames"] == 90.0
+    assert scores["check_scores"]["banselectstar"] == 80.0
+
+    # Overall score: (3.0*50 + 2.0*100 + 0.5*90 + 1.0*80) / (3.0 + 2.0 + 0.5 + 1.0)
+    # = (150 + 200 + 45 + 80) / 6.5 = 475.0 / 6.5 = 73.0769%
+    assert abs(scores["overall_score"] - (475.0 / 6.5)) < 0.001
+
+    # Connascence of Name category score:
+    # checks: columnnames (w=0.5, score=90.0), banselectstar (w=1.0, score=80.0)
+    # = (0.5*90 + 1.0*80) / (0.5 + 1.0) = 125.0 / 1.5 = 83.333%
+    assert abs(scores["category_scores"]["Connascence of Name (CoN)"] - (125.0 / 1.5)) < 0.001
+
+    # Single check categories
+    assert scores["category_scores"]["Dynamic Coupling & DAG Structure"] == 50.0
+    assert scores["category_scores"]["Connascence of Type (CoT)"] == 100.0
+
+
+def test_category_weights_and_overrides() -> None:
+    """Validate category-level weights and individual check overrides."""
+    config = FitnessFunctionsConfig.model_validate({
+        "checks": {
+            "layer_integrity": {"enabled": True},
+            "dependency_graph": {"enabled": True},
+            "custom_exclusions": {"enabled": False},
+            "schema_contracts": {"enabled": False},
+            "materialization_depth": {"enabled": False},
+            "duplicate_ctes": {"enabled": False},
+            "connascence_of_value": {"enabled": False},
+        },
+        "rules": {
+            "ban_select_star": {"enabled": True},
+            "filename_equals_modelname": {"enabled": False},
+            "column_names": {"enabled": False},
+            "column_types": {"enabled": False},
+            "mart_naming": {"enabled": False},
+            "classification_macros": {"enabled": False},
+            "sql_complexity": {"enabled": False},
+            "environment_agnostic_references": {"enabled": False},
+            "metadata": {"enabled": False},
+            "no_positional_group_by_or_order_by": {"enabled": False},
+        },
+        "health": {
+            "weights": {
+                # Category weight via exact name
+                "Dynamic Coupling & DAG Structure": 2.0,
+                # Check override inside the same category
+                "layer_integrity": 4.0,
+            }
+        }
+    })
+
+    scores = calculate_health_scores([], models_checked=5, config=config, provider="dbt")
+    # layer_integrity gets check override: 4.0
+    assert scores["check_weights"]["layer_integrity"] == 4.0
+    # dependency_graph gets category weight: 2.0
+    assert scores["check_weights"]["dependency_graph"] == 2.0
+    # banselectstar gets default: 1.0
+    assert scores["check_weights"]["banselectstar"] == 1.0
+
+
+def test_category_weight_aliases_and_category_weights_field() -> None:
+    """Validate category aliases (e.g. dynamic_coupling, con) and category_weights field."""
+    config = FitnessFunctionsConfig.model_validate({
+        "checks": {
+            "dependency_graph": {"enabled": True},
+            "layer_integrity": {"enabled": False},
+            "custom_exclusions": {"enabled": False},
+            "schema_contracts": {"enabled": False},
+            "materialization_depth": {"enabled": False},
+            "duplicate_ctes": {"enabled": False},
+            "connascence_of_value": {"enabled": False},
+        },
+        "rules": {
+            "ban_select_star": {"enabled": True},
+            "filename_equals_modelname": {"enabled": False},
+            "column_names": {"enabled": False},
+            "column_types": {"enabled": False},
+            "mart_naming": {"enabled": False},
+            "classification_macros": {"enabled": False},
+            "sql_complexity": {"enabled": False},
+            "environment_agnostic_references": {"enabled": False},
+            "metadata": {"enabled": False},
+            "no_positional_group_by_or_order_by": {"enabled": False},
+        },
+        "health": {
+            "category_weights": {
+                "dynamic_coupling": 2.5,
+                "con": 1.5,
+            }
+        }
+    })
+
+    scores = calculate_health_scores([], models_checked=5, config=config, provider="dbt")
+    assert scores["check_weights"]["dependency_graph"] == 2.5
+    assert scores["check_weights"]["banselectstar"] == 1.5
+
+
+def test_weights_edge_cases() -> None:
+    """Validate edge cases such as all weights zero, custom unknown checks, and fallback."""
+    config_zero = FitnessFunctionsConfig.model_validate({
+        "checks": {
+            "layer_integrity": {"enabled": True},
+            "custom_exclusions": {"enabled": False},
+            "schema_contracts": {"enabled": False},
+            "dependency_graph": {"enabled": False},
+            "materialization_depth": {"enabled": False},
+            "duplicate_ctes": {"enabled": False},
+            "connascence_of_value": {"enabled": False},
+        },
+        "rules": {
+            "ban_select_star": {"enabled": True},
+            "filename_equals_modelname": {"enabled": False},
+            "column_names": {"enabled": False},
+            "column_types": {"enabled": False},
+            "mart_naming": {"enabled": False},
+            "classification_macros": {"enabled": False},
+            "sql_complexity": {"enabled": False},
+            "environment_agnostic_references": {"enabled": False},
+            "metadata": {"enabled": False},
+            "no_positional_group_by_or_order_by": {"enabled": False},
+        },
+        "health": {
+            "weights": {
+                "layer_integrity": 0.0,
+                "ban_select_star": 0.0,
+            }
+        }
+    })
+    findings = [
+        LintFinding(check="layer_integrity", severity="warning", message="w"),
+        LintFinding(check="banselectstar", severity="error", message="e", model="m1"),
+    ]
+    scores_zero = calculate_health_scores(findings, models_checked=10, config=config_zero, provider="dbt")
+    assert scores_zero["check_scores"]["layer_integrity"] == 50.0
+    assert scores_zero["check_scores"]["banselectstar"] == 90.0
+    # Fallback to unweighted category and overall average
+    assert scores_zero["category_scores"]["Connascence of Name (CoN)"] == 90.0
+    assert scores_zero["overall_score"] == 70.0
+
+    # 2. Unknown check with custom weight
+    config_unknown = FitnessFunctionsConfig.model_validate({
+        "health": {
+            "weights": {
+                "custom_unknown_check": 3.0,
+            }
+        }
+    })
+    findings_unknown = [
+        LintFinding(check="custom_unknown_check", severity="warning", message="w", model="m1"),
+    ]
+    scores_unknown = calculate_health_scores(findings_unknown, models_checked=10, config=config_unknown, provider="dbt")
+    assert scores_unknown["check_weights"]["custom_unknown_check"] == 3.0
+    assert scores_unknown["category_scores"]["Other Checks"] == 95.0
+
+    # 3. Unknown check with weight 0.0 (tests unweighted fallback in Other Checks)
+    config_unknown_zero = FitnessFunctionsConfig.model_validate({
+        "health": {
+            "weights": {
+                "custom_unknown_check": 0.0,
+            }
+        }
+    })
+    scores_unknown_zero = calculate_health_scores(findings_unknown, models_checked=10, config=config_unknown_zero, provider="dbt")
+    assert scores_unknown_zero["category_scores"]["Other Checks"] == 95.0
+
+    # 4. Config without health attribute (tests fallback)
+    from tff.core.health import get_check_weight
+    assert get_check_weight("banselectstar", object()) == 1.0  # type: ignore[arg-type]
+
+
+def test_configurable_penalties_project_level() -> None:
+    """Validate configurable severity penalties for project-level checks."""
+    # Custom percentage penalties
+    config_pct = FitnessFunctionsConfig.model_validate({
+        "checks": {"layer_integrity": {"enabled": True}},
+        "health": {
+            "penalties": {
+                "project_error": 25.0,
+                "project_warning": 10.0,
+            }
+        }
+    })
+
+    findings_err = [LintFinding(check="layer_integrity", severity="error", message="err")]
+    scores_err = calculate_health_scores(findings_err, models_checked=5, config=config_pct, provider="dbt")
+    # Score is 100 - 25 = 75%
+    assert scores_err["check_scores"]["layer_integrity"] == 75.0
+
+    findings_warn = [LintFinding(check="layer_integrity", severity="warning", message="warn")]
+    scores_warn = calculate_health_scores(findings_warn, models_checked=5, config=config_pct, provider="dbt")
+    # Score is 100 - 10 = 90%
+    assert scores_warn["check_scores"]["layer_integrity"] == 90.0
+
+    # Custom ratio penalties (0.30 -> 30%, 0.15 -> 15%)
+    config_ratio = FitnessFunctionsConfig.model_validate({
+        "checks": {"layer_integrity": {"enabled": True}},
+        "health": {
+            "penalties": {
+                "project_error": 0.30,
+                "project_warning": 0.15,
+            }
+        }
+    })
+    scores_ratio_err = calculate_health_scores(findings_err, models_checked=5, config=config_ratio, provider="dbt")
+    assert scores_ratio_err["check_scores"]["layer_integrity"] == 70.0
+    scores_ratio_warn = calculate_health_scores(findings_warn, models_checked=5, config=config_ratio, provider="dbt")
+    assert scores_ratio_warn["check_scores"]["layer_integrity"] == 85.0
+
+
+def test_configurable_penalties_model_level() -> None:
+    """Validate configurable error and warning multipliers for model-level checks."""
+    config = FitnessFunctionsConfig.model_validate({
+        "rules": {"ban_select_star": {"enabled": True}},
+        "health": {
+            "penalties": {
+                "error": 2.0,
+                "warning": 0.1,
+            }
+        }
+    })
+
+    # 10 models checked:
+    # 1 error -> 100 * (1 - 2.0 * 1 / 10) = 80%
+    findings_err = [LintFinding(check="banselectstar", severity="error", message="err", model="m1")]
+    scores_err = calculate_health_scores(findings_err, models_checked=10, config=config, provider="dbt")
+    assert scores_err["check_scores"]["banselectstar"] == 80.0
+
+    # 1 warning -> 100 * (1 - 0.1 * 1 / 10) = 99%
+    findings_warn = [LintFinding(check="banselectstar", severity="warning", message="warn", model="m1")]
+    scores_warn = calculate_health_scores(findings_warn, models_checked=10, config=config, provider="dbt")
+    assert scores_warn["check_scores"]["banselectstar"] == 99.0
+
+
+def test_nested_penalties_and_check_specific_overrides() -> None:
+    """Validate nested model/project syntax and check-specific penalty overrides."""
+    config = FitnessFunctionsConfig.model_validate({
+        "checks": {
+            "layer_integrity": {"enabled": True},
+            "dependency_graph": {"enabled": True},
+        },
+        "rules": {
+            "ban_select_star": {"enabled": True},
+            "column_names": {"enabled": True},
+        },
+        "health": {
+            "penalties": {
+                "model": {"error": 1.0, "warning": 0.5},
+                "project": {"error": 40.0, "warning": 20.0},
+                "checks": {
+                    "layer_integrity": {"error": 15.0, "warning": 5.0},
+                    "ban_select_star": {"error": 0.5, "warning": 0.1},
+                }
+            }
+        }
+    })
+
+    findings = [
+        LintFinding(check="layer_integrity", severity="error", message="err"),
+        LintFinding(check="dependency_graph", severity="error", message="err"),
+        LintFinding(check="banselectstar", severity="error", message="err", model="m1"),
+        LintFinding(check="columnnames", severity="error", message="err", model="m1"),
+    ]
+    scores = calculate_health_scores(findings, models_checked=10, config=config, provider="dbt")
+
+    # layer_integrity gets check override: 100 - 15 = 85%
+    assert scores["check_scores"]["layer_integrity"] == 85.0
+    # dependency_graph gets default project error: 100 - 40 = 60%
+    assert scores["check_scores"]["dependency_graph"] == 60.0
+    # banselectstar gets check override: 100 * (1 - 0.5 * 1 / 10) = 95%
+    assert scores["check_scores"]["banselectstar"] == 95.0
+    # columnnames gets default model error: 100 * (1 - 1.0 * 1 / 10) = 90%
+    assert scores["check_scores"]["columnnames"] == 90.0
+
+
+def test_render_health_report_custom_weights() -> None:
+    """Validate that render_health_report prints custom weights when configured."""
+    config = FitnessFunctionsConfig.model_validate({
+        "checks": {
+            "layer_integrity": {"enabled": True},
+        },
+        "rules": {
+            "ban_select_star": {"enabled": True},
+        },
+        "health": {
+            "weights": {
+                "layer_integrity": 3.0,
+                # ban_select_star left at default 1.0
+            }
+        }
+    })
+
+    findings = [
+        LintFinding(check="layer_integrity", severity="warning", message="w"),
+        LintFinding(check="banselectstar", severity="warning", message="w", model="m1"),
+    ]
+    scores = calculate_health_scores(findings, models_checked=10, config=config, provider="dbt")
+
+    console = Console(record=True, width=120)
+    render_health_report(scores, config, provider="dbt", console=console)
+    output = console.export_text()
+
+    # layer_integrity has weight 3.0 -> should display weight
+    assert "layer_integrity · weight: 3" in output
+    # banselectstar has weight 1.0 -> should display without weight string
+    assert "banselectstar" in output
+    assert "banselectstar · weight" not in output
+
+
+def test_render_health_report_domain_custom_penalties() -> None:
+    """Validate that domain breakdown rendering respects custom penalties."""
+    config = FitnessFunctionsConfig.model_validate({
+        "rules": {"ban_select_star": {"enabled": True}},
+        "health": {
+            "penalties": {
+                "warning": 0.1,
+            }
+        }
+    })
+    findings = [
+        LintFinding(
+            check="banselectstar", severity="warning", message="warn",
+            model="model_a", path="models/sources/model_a.sql",
+        ),
+    ]
+    scores = calculate_health_scores(findings, models_checked=10, config=config, provider="dbt")
+
+    console = Console(record=True, width=120)
+    render_health_report(scores, config, provider="dbt", console=console, group_by="domain")
+    output = console.export_text()
+
+    assert "Detailed Breakdown by Domain" in output
+    assert "models/sources" in output
+    # With 1 warning and penalty 0.1 on 1 domain model, score is 100 * (1 - 0.1/1) = 90.0%
+    assert "90.0%" in output
+
+
+def test_get_health_json_data_includes_weights() -> None:
+    """Validate that get_health_json_data includes check_weights in JSON output."""
+    from tff.core.logs import get_health_json_data
+
+    config = FitnessFunctionsConfig.model_validate({
+        "checks": {"layer_integrity": {"enabled": True}},
+        "health": {
+            "weights": {
+                "layer_integrity": 3.0,
+            }
+        }
+    })
+    scores = calculate_health_scores([], models_checked=5, config=config, provider="dbt")
+    data = get_health_json_data(scores, models_checked=5)
+    assert "check_weights" in data
+    assert data["check_weights"]["layer_integrity"] == 3.0
+
+

@@ -23,7 +23,7 @@ fi
 
 # 3. Run tests with coverage XML generation
 echo "Running unit tests with coverage..."
-uv run pytest --cov=packages --cov-report=xml
+MAX_FORK_WORKERS=1 uv run pytest --cov=packages --cov-report=xml
 if [ $? -ne 0 ]; then
     echo "❌ Error: Unit tests failed. Push aborted."
     exit 1

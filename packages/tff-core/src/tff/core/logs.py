@@ -73,7 +73,7 @@ def get_health_json_data(
     # Sort findings by model, check, severity for deterministic output
     flat_findings.sort(key=lambda x: (x["model"] or "", x["check"], x["severity"]))
 
-    return {
+    data: dict[str, Any] = {
         "timestamp": datetime.now().astimezone().isoformat(),
         "command": "health",
         "overall_score": overall_score,
@@ -83,6 +83,9 @@ def get_health_json_data(
         "enabled_checks": sorted(enabled_checks),
         "findings": flat_findings,
     }
+    if "check_weights" in scores:
+        data["check_weights"] = scores["check_weights"]
+    return data
 
 
 def is_logging_disabled() -> bool:

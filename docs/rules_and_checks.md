@@ -587,3 +587,70 @@ For SQLMesh projects, these rules run dynamically inside SQLMesh (e.g., `sqlmesh
       enabled: true
   ```
   * **SQLMesh Rule Name**: `filenameequalsmodelname`
+
+---
+
+## 3. Health Scoring Configuration
+
+TFF calculates an overall architecture health score (0–100) aggregated from all executed checks. By default, every check carries equal weight (`1.0`), and failures subtract penalties proportionally (an error penalty of `1.0` and warning penalty of `0.5` per affected model; or `100.0` error and `50.0` warning for project-level checks).
+
+You can configure custom weights and failure penalties under the `health:` section in `fitness_functions.yaml`.
+
+### Check and Category Weights
+
+Assign custom relative weights to prioritize specific quality dimensions. Checks with higher weights have a greater influence on the overall score.
+
+```yaml
+health:
+  weights:
+    layer_integrity: 3.0       # Higher weight for critical architectural boundaries
+    schema_contracts: 2.0
+    column_names: 0.5           # Lower weight for naming conventions
+    metadata: 1.5
+
+  # Optionally set weights by connascence category
+  category_weights:
+    dynamic_coupling: 2.0       # Connascence of Timing / Execution
+    static_coupling: 1.5        # Connascence of Position / Meaning
+    naming: 0.75                # Connascence of Name
+```
+
+* **Check-level weights (`weights`)**: Map check or rule names (e.g. `layer_integrity`, `ban_select_star`) to a positive float weight.
+* **Category weights (`category_weights`)**: Map categories (e.g. `connascence_of_algorithm`, `dynamic_coupling`, `metadata`) to a positive float weight. If both category and check weights are specified, check-level weights take precedence.
+
+### Failure Penalties
+
+Customize the penalty points deducted for errors and warnings:
+
+```yaml
+health:
+  penalties:
+    # Model-level penalties (deducted proportionally to model count)
+    error: 1.0                  # Default: 1.0
+    warning: 0.5                # Default: 0.5
+
+    # Project-level penalties (subtracted directly from the check's 100-point score)
+    project_error: 100.0        # Default: 100.0 (or decimal 1.0)
+    project_warning: 50.0       # Default: 50.0 (or decimal 0.5)
+
+    # Check-specific overrides
+    checks:
+      schema_contracts:
+        error: 2.0              # Strict penalty for schema mismatch
+      column_names:
+        warning: 0.1            # Mild penalty for column name warnings
+```
+
+### Scoring Formula
+
+1. **Model-Level Checks** (e.g. `ban_select_star`, `metadata`):
+   $$\text{penalty points} = (\text{error count} \times \text{penalty}_{\text{error}}) + (\text{warning count} \times \text{penalty}_{\text{warning}})$$
+   $$\text{score} = \max\left(0, 100 \times \left(1 - \frac{\text{penalty points}}{\text{penalty}_{\text{error}} \times \text{total models}}\right)\right)$$
+
+2. **Project-Level Checks** (e.g. `layer_integrity`, `dependency_graph`):
+   $$\text{score} = \max\left(0, 100 - (\text{error count} \times \text{penalty}_{\text{proj\_error}} + \text{warning count} \times \text{penalty}_{\text{proj\_warn}})\right)$$
+
+3. **Overall Health Score**:
+   The weighted average across all active checks:
+   $$\text{Overall Score} = \frac{\sum (\text{score}_i \times \text{weight}_i)}{\sum \text{weight}_i}$$
+

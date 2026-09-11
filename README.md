@@ -122,6 +122,7 @@ For detailed option explanations, run `tff help <command>` or `tff <command> --h
 * `--group-by {connascence,domain}`: How to group the detailed health breakdown. `connascence` (default) groups by connascence category; `domain` groups by path segment under model directory (`models/` or `definitions/`).
 * `--json`: Output results in JSON format to stdout.
 * `--no-log`: Bypass writing execution logs to `.tff_logs/` (can also be enabled via `TFF_NO_LOG=1`).
+* *Weights & Penalties*: Check weights, category weights, and error/warning penalties can be customized under `health:` in `fitness_functions.yaml` (see [Health Scoring Configuration](docs/rules_and_checks.md#3-health-scoring-configuration)).
 
 #### `tff docs`
 * `--project PATH`, `--config PATH`, `--provider {auto,dbt,sqlmesh,dataform}`, `--dialect DIALECT`, `--manifest PATH`: (Same as above)
@@ -387,6 +388,18 @@ rules:
     not_null: true
   filename_equals_modelname:
     enabled: true
+
+# Configurable health scoring weights and failure penalties
+health:
+  weights:
+    layer_integrity: 3.0
+    schema_contracts: 2.0
+    column_names: 0.5
+  penalties:
+    error: 1.0
+    warning: 0.5
+    project_error: 100.0
+    project_warning: 50.0
 ```
 
 ---
