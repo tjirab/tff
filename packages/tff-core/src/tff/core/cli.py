@@ -310,6 +310,24 @@ def main(argv: list[str] | None = None) -> int:
         help="Output results in JSON format to stdout",
     )
     lint_parser.add_argument(
+        "--format",
+        choices=["text", "json", "sarif", "github"],
+        default=None,
+        help="Output format to stdout (text, json, sarif, github; default: text)",
+    )
+    lint_parser.add_argument(
+        "--github-annotations",
+        action="store_true",
+        help="Emit GitHub Actions workflow command annotations alongside console report",
+    )
+    lint_parser.add_argument(
+        "--junit-xml",
+        type=Path,
+        default=None,
+        metavar="PATH",
+        help="Write JUnit XML test results to the specified file path",
+    )
+    lint_parser.add_argument(
         "--fix",
         action="store_true",
         help="Automatically fix simple linting violations if possible",
@@ -969,7 +987,13 @@ def main(argv: list[str] | None = None) -> int:
         if args.command == "lint":
             # 5. Render report
             from tff.core.logs import get_lint_json_data, save_log
+            from tff.core.formatters import (
+                emit_github_annotations,
+                generate_junit_xml,
+                generate_sarif_report,
+            )
             import json
+            import os
 
             json_data = get_lint_json_data(findings, models_checked, args.fail_level)
             save_log(
@@ -979,7 +1003,48 @@ def main(argv: list[str] | None = None) -> int:
                 no_log=getattr(args, "no_log", False),
             )
 
-            if args.json:
+            # Write JUnit XML if requested
+            if getattr(args, "junit_xml", None):
+                xml_path = Path(args.junit_xml).resolve()
+                xml_path.parent.mkdir(parents=True, exist_ok=True)
+                xml_content = generate_junit_xml(
+                    findings,
+                    project_root=project_root,
+                    fail_level=args.fail_level,
+                )
+                xml_path.write_text(xml_content, encoding="utf-8")
+
+            output_format = args.format or ("json" if args.json else "text")
+
+            # Determine whether and where to emit GitHub Actions workflow command annotations
+            is_github_actions = os.environ.get("GITHUB_ACTIONS") == "true"
+            github_annotations_requested = getattr(args, "github_annotations", False)
+
+            if output_format == "github":
+                # Pure annotations mode directly to stdout (no tables or banners)
+                if findings:
+                    emit_github_annotations(findings, project_root=project_root, stream=sys.stdout)
+                passed = json_data["passed"]
+                return 0 if passed else 1
+
+            # For text format: emit annotations to stdout (explicitly requested or auto-detected in CI)
+            # For structured formats (sarif/json): if explicitly requested, route to stderr to keep stdout JSON clean
+            if output_format == "text":
+                if (github_annotations_requested or is_github_actions) and findings:
+                    emit_github_annotations(findings, project_root=project_root, stream=sys.stdout)
+            elif output_format in ("sarif", "json"):
+                if github_annotations_requested and findings:
+                    emit_github_annotations(findings, project_root=project_root, stream=sys.stderr)
+
+            if output_format == "sarif":
+                sarif_data = generate_sarif_report(
+                    findings,
+                    project_root=project_root,
+                    tool_version=__version__,
+                )
+                print(json.dumps(sarif_data, indent=2))
+                passed = json_data["passed"]
+            elif output_format == "json":
                 print(json.dumps(json_data, indent=2))
                 passed = json_data["passed"]
             else:

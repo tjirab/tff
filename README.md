@@ -108,7 +108,10 @@ For detailed option explanations, run `tff help <command>` or `tff <command> --h
 * `--fail-level {error,warning}`: Exit non-zero when findings at or above this severity exist (default: `error`).
 * `--group-by {connascence,model}`: How to group violations in the report (default: `model`).
 * `--dialect DIALECT`: SQL dialect of models (dbt and Dataform; auto-inferred by default).
-* `--json`: Output results in JSON format to stdout.
+* `--format {text,json,sarif,github}`: Output format to stdout (default: `text`). `sarif` outputs OASIS SARIF v2.1.0 JSON format for GitHub Code Scanning; `github` outputs pure workflow command annotations (`::error` / `::warning`) without tables or banners.
+* `--json`: Output results in JSON format to stdout (shorthand for `--format json`).
+* `--github-annotations`: Emit GitHub Actions workflow command annotations alongside console report (automatically enabled when `GITHUB_ACTIONS=true` in environment; safely routed to `stderr` when combined with `--format json` or `--format sarif` to keep `stdout` pure JSON).
+* `--junit-xml PATH`: Write JUnit XML test results to the specified file path for CI/CD test results tab rendering (GitLab CI, Azure DevOps, Bitbucket).
 * `--fix`: Automatically fix simple linting violations if possible (e.g. rewriting positional `GROUP BY`/`ORDER BY` and auto-scaffolding missing metadata).
 * `--no-log`: Bypass writing execution logs to `.tff_logs/` (can also be enabled via `TFF_NO_LOG=1`).
 
@@ -157,6 +160,21 @@ tff lint --checks no_missing_owner,ban_select_star
 Automatically fix simple linting violations (positional GROUP BY/ORDER BY, missing owner/description metadata):
 ```bash
 tff lint --fix
+```
+
+Output SARIF v2.1.0 report for GitHub Advanced Security / Code Scanning:
+```bash
+tff lint --format sarif > results.sarif
+```
+
+Output pure GitHub Actions annotations directly to stdout (no tables or banners):
+```bash
+tff lint --format github
+```
+
+Export JUnit XML test results for CI/CD test results tab (GitLab CI, Azure DevOps, Bitbucket):
+```bash
+tff lint --junit-xml reports/junit.xml
 ```
 
 Show project health report and require a score of at least 80% to pass:

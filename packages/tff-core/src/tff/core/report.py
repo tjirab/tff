@@ -24,6 +24,7 @@ class LintFinding:
     message: str
     model: str | None = None
     path: str | None = None
+    line: int | None = None
 
 
 CHECK_LABELS: dict[str, str] = registry.get_check_labels()

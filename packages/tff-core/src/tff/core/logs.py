@@ -14,13 +14,16 @@ from tff.core.report import LintFinding
 
 def serialize_finding(f: LintFinding) -> dict[str, Any]:
     """Serialize a LintFinding dataclass into a standard dictionary."""
-    return {
+    data: dict[str, Any] = {
         "check": f.check,
         "severity": f.severity,
         "message": f.message,
         "model": f.model,
         "path": f.path,
     }
+    if getattr(f, "line", None) is not None:
+        data["line"] = f.line
+    return data
 
 
 def get_lint_json_data(
