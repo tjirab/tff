@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.13.0](https://github.com/tjirab/tff/compare/tff-core-v0.12.1...tff-core-v0.13.0) (2026-09-11)
+
+
+### Features
+
+* **ci:** create official GitHub Action for GitHub Marketplace ([#165](https://github.com/tjirab/tff/issues/165)) ([#179](https://github.com/tjirab/tff/issues/179)) ([450b966](https://github.com/tjirab/tff/commit/450b966d9388fa412be7813878e96d62978d6a42))
+* **cli:** support SARIF, JUnit XML, and GitHub Actions annotations in tff lint ([#173](https://github.com/tjirab/tff/issues/173)) ([3f4aaef](https://github.com/tjirab/tff/commit/3f4aaef93b4e51c9f21054530f46849c954656fa))
+* **health:** configurable check weights and failure penalties for health scoring ([#159](https://github.com/tjirab/tff/issues/159)) ([#176](https://github.com/tjirab/tff/issues/176)) ([613613e](https://github.com/tjirab/tff/commit/613613e2c1cb6ee2677007ef9db244f7995ddae1))
+
+
+### Documentation
+
+* harmonize documentation, CLI flags, and CI example configs ([#155](https://github.com/tjirab/tff/issues/155)) ([#177](https://github.com/tjirab/tff/issues/177)) ([92f8b54](https://github.com/tjirab/tff/commit/92f8b54aa9b6d433e1c9e7173b023e4aff93bb11))
+
 ## [0.12.1](https://github.com/tjirab/tff/compare/tff-core-v0.12.0...tff-core-v0.12.1) (2026-09-11)
 
 
