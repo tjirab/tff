@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.12.0](https://github.com/tjirab/tff/compare/tff-core-v0.11.0...tff-core-v0.12.0) (2026-09-10)
+
+
+### Features
+
+* **ci:** add pre-commit hook support (.pre-commit-hooks.yaml) ([#170](https://github.com/tjirab/tff/issues/170)) ([16a2a73](https://github.com/tjirab/tff/commit/16a2a7364b7d2a5ded8ec2b6eaa93e9011fcb2fe))
+* **core:** zero-config default execution for instant onboarding ([#163](https://github.com/tjirab/tff/issues/163)) ([#168](https://github.com/tjirab/tff/issues/168)) ([e141bb2](https://github.com/tjirab/tff/commit/e141bb2eb88e85d5cfb1574e3fbafbf7b99e5f12))
+
 ## [0.11.0](https://github.com/tjirab/tff/compare/tff-core-v0.10.0...tff-core-v0.11.0) (2026-09-09)
 
 
