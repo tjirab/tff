@@ -32,6 +32,7 @@ Setup and usage details differ depending on your pipeline engine. Refer to the c
 * 📐 **SQLMesh Integration**: See [docs/sqlmesh.md](docs/sqlmesh.md)
 * ⚡ **dbt Integration**: See [docs/dbt.md](docs/dbt.md)
 * ☁️ **Dataform Integration**: See [docs/dataform.md](docs/dataform.md)
+* 🤖 **CI/CD & GitHub Actions Guide**: See [docs/ci_cd.md](docs/ci_cd.md)
 * 🔍 **Rules & Checks Reference**: See [docs/rules_and_checks.md](docs/rules_and_checks.md)
 * 📊 **Case Study: GitLab dbt Audit (2,200+ models)**: See [docs/case_study_gitlab.md](docs/case_study_gitlab.md)
 * 🏗️ **Architecture & Contributor Guide**: See [docs/contributing.md](docs/contributing.md)
@@ -248,65 +249,13 @@ tff health --json
 
 ---
 
-## Pre-commit Integration
+## CI/CD & Automated Quality Gates
 
-TFF can be integrated as a native [pre-commit](https://pre-commit.com/) hook to automatically run fitness function checks or auto-fix violations when SQL, YAML, or JSON files are committed.
+TFF integrates seamlessly into modern data engineering CI/CD pipelines to enforce architectural fitness functions, calculate health scores, and gate pull requests.
 
-Add the following to your project's `.pre-commit-config.yaml`:
+### Official GitHub Action (`tjirab/tff@v1`)
 
-```yaml
-repos:
-  - repo: https://github.com/tjirab/tff
-    rev: v0.11.0  # Use the latest release or tag
-    hooks:
-      - id: tff-lint
-```
-
-### Available Hooks
-
-| Hook ID | Description | Default Dependencies |
-| :--- | :--- | :--- |
-| `tff-lint` | Run Transformation Fitness Functions architectural and styling linter | `tff-core` |
-| `tff-lint-fix` | Automatically fix simple TFF violations (positional `GROUP BY`/`ORDER BY`, missing metadata) | `tff-core` |
-
-### Customizing Adapter Dependencies
-
-The pre-commit hooks default to bare `tff-core`, which out of the box provides support for **dbt** and **Dataform** projects without requiring additional dependencies.
-
-If your project uses **SQLMesh**, the SQLMesh engine package is required; declare `additional_dependencies: ["tff-core[sqlmesh]"]` in your `.pre-commit-config.yaml`:
-
-```yaml
-  # For SQLMesh projects:
-  - repo: https://github.com/tjirab/tff
-    rev: v0.11.0
-    hooks:
-      - id: tff-lint
-        additional_dependencies: ["tff-core[sqlmesh]"]
-
-  # For dbt projects (optional explicit declaration):
-  # - repo: https://github.com/tjirab/tff
-  #   rev: v0.11.0
-  #   hooks:
-  #     - id: tff-lint
-  #       additional_dependencies: ["tff-core[dbt]"]
-
-  # For Dataform projects (optional explicit declaration):
-  # - repo: https://github.com/tjirab/tff
-  #   rev: v0.11.0
-  #   hooks:
-  #     - id: tff-lint
-  #       additional_dependencies: ["tff-core[dataform]"]
-```
-
----
-
-## GitHub Actions Integration (Official Action)
-
-TFF provides an official GitHub Action to run architectural fitness functions and project health checks directly in CI/CD pull requests, automatically enforcing quality gates and posting comprehensive PR summary comments with baseline diff scoring.
-
-### Quick Start Workflow
-
-Create `.github/workflows/tff.yml` in your repository:
+Run TFF on pull requests with zero virtualenv setup. The action automatically installs the required engine adapter, gates merges based on health thresholds, emits inline annotations on modified lines, and posts interactive summary comments:
 
 ```yaml
 name: TFF Architectural Fitness Functions
@@ -316,7 +265,7 @@ on:
     branches: [ main ]
 
 jobs:
-  tff:
+  tff-check:
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -327,51 +276,36 @@ jobs:
         with:
           fetch-depth: 0  # Required to compute health score diff vs base branch
 
-      - name: Run TFF Fitness Functions
+      - name: Run TFF Action
         uses: tjirab/tff@v1
         with:
-          project: "."
-          provider: "auto"
-          fail-under: "80.0"
-          fail-level: "error"
-          comment-pr: "true"
+          provider: "auto"       # auto, dbt, sqlmesh, or dataform
+          fail-under: "80.0"     # Minimum health score to pass (0-100)
+          fail-level: "error"    # Failure severity level (error, warning)
+          only-changed: "true"   # 👈 Only gate models modified in this PR
+          comment-pr: "true"     # Post/update PR health summary comment
 ```
 
-### Action Inputs
+👉 **For the complete guide, full input/output reference tables, GitLab CI, and SARIF exports, see the [CI/CD & GitHub Actions Guide](docs/ci_cd.md).**
 
-| Input | Description | Default | Required |
-| :--- | :--- | :--- | :--- |
-| `project` | Path to project root directory | `.` | No |
-| `provider` | Pipeline engine (`auto`, `dbt`, `sqlmesh`, `dataform`) | `auto` | No |
-| `fail-under` | Minimum overall health score required to pass (`0.0` - `100.0`) | `0.0` | No |
-| `fail-level` | Severity level that causes step failure (`error`, `warning`) | `error` | No |
-| `comment-pr` | Post or update PR summary comment with health score and violations | `false` | No |
-| `github-token` | GitHub token for posting or updating PR comments | `${{ github.token }}` | No |
-| `config` | Path to `fitness_functions.yaml` relative to project root | `fitness_functions.yaml` | No |
-| `checks` | Comma-separated list of specific checks to run | (all enabled) | No |
-| `python-version` | Python version to set up in runner environment | `3.12` | No |
-| `version` | Specific version of `tff-core` to install | (latest release) | No |
-| `annotations` | Emit GitHub Actions workflow command annotations (`::error` / `::warning`) | `true` | No |
-| `diff-against-base` | Compute health score diff and violations diff against base branch | `true` | No |
+---
 
-### Action Outputs
+## Pre-commit Integration
 
-| Output | Description |
-| :--- | :--- |
-| `health-score` | Overall project fitness health score (`0.0` - `100.0`) |
-| `violations-count` | Total number of violations found |
-| `errors-count` | Total number of errors found |
-| `warnings-count` | Total number of warnings found |
-| `passed` | Whether checks passed according to thresholds (`true`/`false`) |
-| `comment-id` | GitHub PR comment ID if a comment was created or updated |
+TFF includes native [pre-commit](https://pre-commit.com/) hooks to validate or auto-fix violations locally before commits are created:
 
-### Pull Request Comment & Baseline Diff
+```yaml
+# .pre-commit-config.yaml
+repos:
+  - repo: https://github.com/tjirab/tff
+    rev: v0.12.1
+    hooks:
+      - id: tff-lint
+      # Or automatically fix simple violations:
+      # - id: tff-lint-fix
+```
 
-When `comment-pr: "true"` is set:
-* **Interactive Summary Comment**: An automated comment is posted with a summary table of the overall health score, pass/fail status, and violation counts.
-* **Diff Scoring vs Base Branch**: If `fetch-depth: 0` is set on checkout, TFF calculates the baseline health score of your target branch (e.g. `main`) and displays the score delta (`+2.5% vs main 📈`) along with counts of newly introduced and resolved violations.
-* **Idempotent Updates**: TFF updates its existing PR comment across pushes to avoid comment spam.
-* **GitHub Job Summary**: The full Markdown report is also published to the GitHub Actions Job Summary page for easy viewing.
+For SQLMesh projects or advanced pre-commit dependency configurations, refer to the [CI/CD Documentation](docs/ci_cd.md#2-pre-commit-hooks-integration).
 
 ---
 

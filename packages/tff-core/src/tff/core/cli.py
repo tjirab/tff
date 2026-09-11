@@ -584,6 +584,12 @@ def main(argv: list[str] | None = None) -> int:
         help="Disable computing health score diff against base branch",
     )
     action_parser.add_argument(
+        "--only-changed",
+        action="store_true",
+        default=False,
+        help="Only gate and report violations for models/files modified in this pull request",
+    )
+    action_parser.add_argument(
         "--annotations",
         action="store_true",
         default=True,

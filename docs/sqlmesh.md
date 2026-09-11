@@ -177,5 +177,8 @@ jobs:
           provider: "sqlmesh"
           fail-under: "80.0"
           fail-level: "error"
+          only-changed: "true"  # Only gate models modified in this PR
           comment-pr: "true"
 ```
+
+For advanced inputs, matrix setups, and PR comment details, see the [CI/CD Guide](ci_cd.md).

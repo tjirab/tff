@@ -22,6 +22,8 @@ from tff.core.action import (
     fetch_base_scores,
     generate_pr_comment_markdown,
     get_finding_fingerprint,
+    get_modified_files,
+    is_finding_in_files,
     parse_bool,
     post_or_update_pr_comment,
     write_github_output,
@@ -716,4 +718,187 @@ def test_execute_action_comment_pr_no_context(capsys: pytest.CaptureFixture[str]
         assert code == 0
         captured = capsys.readouterr()
         assert "Notice: comment-pr is enabled, but could not detect pull request context" in captured.err
+
+
+def test_action_manifest_has_only_changed() -> None:
+    root_manifest = _REPO_ROOT / "action.yml"
+    root_content = yaml.safe_load(root_manifest.read_text(encoding="utf-8"))
+    assert "only-changed" in root_content["inputs"]
+    assert root_content["inputs"]["only-changed"]["default"] == "false"
+
+
+def test_get_modified_files(tmp_path: Path) -> None:
+    # 1. Success on origin/{base_ref}...HEAD
+    with patch("subprocess.run") as mock_run:
+        mock_run.return_value = MagicMock(returncode=0, stdout="models/marts/dim_customers.sql\nmodels/staging/stg_orders.sql\n")
+        files = get_modified_files(tmp_path, base_ref="main")
+        assert files == {"models/marts/dim_customers.sql", "models/staging/stg_orders.sql"}
+
+    # 2. Fallback to {base_ref}...HEAD
+    with patch("subprocess.run") as mock_run:
+        mock_fail = MagicMock(returncode=1)
+        mock_ok = MagicMock(returncode=0, stdout="models/staging/stg_orders.sql\n")
+        mock_run.side_effect = [mock_fail, mock_ok]
+        files = get_modified_files(tmp_path, base_ref="main")
+        assert files == {"models/staging/stg_orders.sql"}
+
+    # 3. Fallback to HEAD~1
+    with patch("subprocess.run") as mock_run:
+        mock_fail = MagicMock(returncode=1)
+        mock_ok = MagicMock(returncode=0, stdout="models/stg.sql\n")
+        mock_run.side_effect = [mock_fail, mock_fail, mock_ok]
+        files = get_modified_files(tmp_path, base_ref="main")
+        assert files == {"models/stg.sql"}
+
+    # 4. Exception
+    with patch("subprocess.run", side_effect=RuntimeError("git failed")):
+        files = get_modified_files(tmp_path, base_ref="main")
+        assert files == set()
+
+
+def test_is_finding_in_files() -> None:
+    # Empty set
+    finding = {"check": "c", "model": "dim_customers", "path": "models/marts/dim_customers.sql"}
+    assert is_finding_in_files(finding, set(), _REPO_ROOT, _REPO_ROOT) is False
+
+    # Match by exact path
+    modified = {"models/marts/dim_customers.sql"}
+    assert is_finding_in_files(finding, modified, _REPO_ROOT, _REPO_ROOT) is True
+
+    # Match by model stem
+    modified_stem = {"models/marts/marketing/dim_customers.sql"}
+    assert is_finding_in_files(finding, modified_stem, _REPO_ROOT, _REPO_ROOT) is True
+
+    # Project root outside repo root (triggers except Exception fallback)
+    assert is_finding_in_files(
+        {"check": "c", "model": "dim_customers", "path": "models/marts/dim_customers.sql"},
+        {"models/marts/dim_customers.sql"},
+        Path("/some/arbitrary/project"),
+        Path("/other/repo"),
+    ) is True
+
+    # No match
+    modified_other = {"models/staging/stg_orders.sql"}
+    assert is_finding_in_files(finding, modified_other, _REPO_ROOT, _REPO_ROOT) is False
+
+
+def test_generate_pr_comment_markdown_only_changed() -> None:
+    current_data = {
+        "overall_score": 95.0,
+        "findings": [
+            {"check": "c", "severity": "error", "message": "msg", "model": "m", "path": "p.sql"}
+        ],
+        "errors_count": 1,
+        "warnings_count": 0,
+        "category_scores": {},
+    }
+    md = generate_pr_comment_markdown(
+        current_data,
+        fail_under=80.0,
+        fail_level="error",
+        only_changed=True,
+        modified_files_count=2,
+        ignored_violations_count=5,
+    )
+    assert "Mode" in md
+    assert "Gating `2` modified file(s)" in md
+    assert "5 pre-existing violation(s) in unmodified files were excluded" in md
+
+
+def test_execute_action_cli_only_changed_filters_violations(tmp_path: Path) -> None:
+    # Minimal dbt project has 7 findings: 1 on dim_customers, 6 on staging/intermediate
+    args = argparse.Namespace(
+        project=_MINIMAL_DBT,
+        provider="auto",
+        config="fitness_functions.yaml",
+        checks=None,
+        fail_under=0.0,
+        fail_level="error",
+        only_changed=True,
+        comment_pr="false",
+        github_token=None,
+        base_ref=None,
+        diff_against_base=False,
+        annotations=False,
+        pr_number=None,
+        repo=None,
+        dialect=None,
+        manifest=None,
+        json=False,
+    )
+
+    with patch("tff.core.action.get_modified_files", return_value={"models/marts/marketing/dim_customers.sql"}):
+        with patch("tff.core.action.render_health_report"):
+            code = execute_action(args)
+            # Only dim_customers violation remains, which has error severity -> fails with 1
+            assert code == 1
+
+
+def test_execute_action_cli_only_changed_no_matching_files() -> None:
+    args = argparse.Namespace(
+        project=_MINIMAL_DBT,
+        provider="auto",
+        config="fitness_functions.yaml",
+        checks=None,
+        fail_under=0.0,
+        fail_level="error",
+        only_changed=True,
+        comment_pr="false",
+        github_token=None,
+        base_ref=None,
+        diff_against_base=False,
+        annotations=False,
+        pr_number=None,
+        repo=None,
+        dialect=None,
+        manifest=None,
+        json=False,
+    )
+
+    # Modified file is unrelated (e.g. README.md) -> 0 gated violations -> passes with 0!
+    with patch("tff.core.action.get_modified_files", return_value={"README.md"}):
+        with patch("tff.core.action.render_health_report"):
+            code = execute_action(args)
+            assert code == 0
+
+
+def test_cli_only_changed_flag() -> None:
+    with patch("tff.core.action.get_modified_files", return_value={"README.md"}):
+        assert main([
+            "action",
+            "--project", str(_MINIMAL_DBT),
+            "--only-changed",
+            "--no-annotations",
+            "--fail-under", "0",
+        ]) == 0
+
+
+def test_execute_action_git_rev_parse_failure() -> None:
+    args = argparse.Namespace(
+        project=_MINIMAL_DBT,
+        provider="auto",
+        config="fitness_functions.yaml",
+        checks=None,
+        fail_under=0.0,
+        fail_level="error",
+        only_changed=True,
+        comment_pr="false",
+        github_token=None,
+        base_ref=None,
+        diff_against_base=False,
+        annotations=False,
+        pr_number=None,
+        repo=None,
+        dialect=None,
+        manifest=None,
+        json=False,
+    )
+
+    with patch("subprocess.run", side_effect=RuntimeError("git rev-parse failure")):
+        with patch("tff.core.action.get_modified_files", return_value={"README.md"}):
+            with patch("tff.core.action.render_health_report"):
+                code = execute_action(args)
+                assert code == 0
+
+
 

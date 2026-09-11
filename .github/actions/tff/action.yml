@@ -54,6 +54,10 @@ inputs:
     description: "Compute and display health score difference against base branch in PR comments"
     required: false
     default: "true"
+  only-changed:
+    description: "Only gate and report violations for models/files modified in this pull request"
+    required: false
+    default: "false"
 
 outputs:
   health-score:
@@ -123,6 +127,7 @@ runs:
         INPUT_CHECKS: ${{ inputs.checks }}
         INPUT_ANNOTATIONS: ${{ inputs.annotations }}
         INPUT_DIFF_AGAINST_BASE: ${{ inputs.diff-against-base }}
+        INPUT_ONLY_CHANGED: ${{ inputs.only-changed }}
       run: |
         ARGS=(
           "--project" "${INPUT_PROJECT}"
@@ -140,6 +145,9 @@ runs:
         fi
         if [ "${INPUT_DIFF_AGAINST_BASE}" = "false" ]; then
           ARGS+=("--no-diff-against-base")
+        fi
+        if [ "${INPUT_ONLY_CHANGED}" = "true" ]; then
+          ARGS+=("--only-changed")
         fi
         if [ -n "${GITHUB_BASE_REF}" ]; then
           ARGS+=("--base-ref" "${GITHUB_BASE_REF}")

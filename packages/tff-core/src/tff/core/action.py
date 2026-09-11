@@ -83,6 +83,71 @@ def compare_findings(
     return new_findings, resolved_findings
 
 
+def get_modified_files(
+    repo_root: Path,
+    base_ref: str = "main",
+) -> set[str]:
+    """Get list of modified/added files compared to base_ref."""
+    try:
+        cmd = ["git", "diff", "--name-only", f"origin/{base_ref}...HEAD"]
+        res = subprocess.run(cmd, cwd=str(repo_root), capture_output=True, text=True)
+        if res.returncode != 0:
+            cmd = ["git", "diff", "--name-only", f"{base_ref}...HEAD"]
+            res = subprocess.run(cmd, cwd=str(repo_root), capture_output=True, text=True)
+        if res.returncode != 0:
+            cmd = ["git", "diff", "--name-only", "HEAD~1"]
+            res = subprocess.run(cmd, cwd=str(repo_root), capture_output=True, text=True)
+
+        if res.returncode == 0:
+            return {
+                line.strip().replace("\\", "/")
+                for line in res.stdout.splitlines()
+                if line.strip()
+            }
+    except Exception as e:
+        logger.debug("Failed to get modified files: %s", e)
+    return set()
+
+
+def is_finding_in_files(
+    finding: dict[str, Any] | LintFinding,
+    modified_files: set[str],
+    project_root: Path,
+    repo_root: Path,
+) -> bool:
+    """Check whether a finding belongs to one of the modified files."""
+    if not modified_files:
+        return False
+
+    raw_path = finding.path if isinstance(finding, LintFinding) else finding.get("path")
+    model = finding.model if isinstance(finding, LintFinding) else finding.get("model")
+
+    path_str = str(raw_path or "").replace("\\", "/")
+
+    try:
+        rel_project = project_root.resolve().relative_to(repo_root.resolve())
+        rel_proj_str = str(rel_project).replace("\\", "/")
+        if rel_proj_str == ".":
+            path_rel_repo = path_str
+        else:
+            path_rel_repo = f"{rel_proj_str}/{path_str}" if path_str else ""
+    except Exception:
+        path_rel_repo = path_str
+
+    for mf in modified_files:
+        norm_mf = mf.replace("\\", "/")
+        if path_rel_repo and (norm_mf == path_rel_repo or norm_mf.endswith(f"/{path_str}")):
+            return True
+        if path_str and (norm_mf == path_str or norm_mf.endswith(f"/{path_str}")):
+            return True
+        if model:
+            mf_stem = Path(norm_mf).stem
+            if mf_stem == model:
+                return True
+
+    return False
+
+
 def evaluate_project(
     project_root: Path,
     provider: str = "auto",
@@ -249,6 +314,9 @@ def generate_pr_comment_markdown(
     fail_under: float = 0.0,
     fail_level: str = "error",
     base_ref: str = "main",
+    only_changed: bool = False,
+    modified_files_count: int = 0,
+    ignored_violations_count: int = 0,
 ) -> str:
     """Generate the GitHub PR markdown comment summarizing health score and violations."""
     score = float(current_data.get("overall_score", 100.0))
@@ -315,13 +383,26 @@ def generate_pr_comment_markdown(
                     f"*... and {len(new_violations) - 10} more new violations.*"
                 )
 
+    if only_changed:
+        threshold_line = (
+            f"> **Mode**: 🔍 Gating `{modified_files_count}` modified file(s) in PR · "
+            f"Minimum score: `{fail_under:.1f}%` · Severity threshold: `{fail_level}`\n"
+        )
+        if ignored_violations_count > 0:
+            threshold_line += (
+                f"> ℹ️ *{ignored_violations_count} pre-existing violation(s) "
+                f"in unmodified files were excluded due to `only-changed: true`.*\n"
+            )
+    else:
+        threshold_line = f"> **Threshold**: Minimum score: `{fail_under:.1f}%` · Severity threshold: `{fail_level}`\n"
+
     lines = [
         PR_COMMENT_MARKER,
         "## 🎯 Transformation Fitness Functions Report\n",
         "| Overall Health Score | Pass/Fail Status | Violations | Errors | Warnings |",
         "| :---: | :---: | :---: | :---: | :---: |",
         f"| {score_display} | {status_badge} | {total_violations} | {errors_count} | {warnings_count} |\n",
-        f"> **Threshold**: Minimum score: `{fail_under:.1f}%` · Severity threshold: `{fail_level}`\n",
+        threshold_line,
     ]
 
     if diff_summary_lines:
@@ -541,7 +622,53 @@ def execute_action(args: argparse.Namespace) -> int:
         )
         return 1
 
-    # 2. Emit GitHub Actions annotations
+    # 2. Filter findings for only-changed files if requested
+    only_changed = parse_bool(getattr(args, "only_changed", False))
+    modified_files_count = 0
+    ignored_violations_count = 0
+
+    if only_changed:
+        diff_base = getattr(args, "base_ref", None) or os.environ.get("GITHUB_BASE_REF") or "main"
+        try:
+            res = subprocess.run(
+                ["git", "rev-parse", "--show-toplevel"],
+                cwd=str(project_root),
+                capture_output=True,
+                text=True,
+                check=True,
+            )
+            repo_root = Path(res.stdout.strip()).resolve()
+        except Exception:
+            repo_root = project_root
+
+        modified_files = get_modified_files(repo_root, base_ref=diff_base)
+        modified_files_count = len(modified_files)
+
+        all_findings = current_data.get("findings", [])
+        all_raw_findings = current_data.get("raw_findings", [])
+
+        filtered_findings = [
+            f
+            for f in all_findings
+            if is_finding_in_files(f, modified_files, project_root, repo_root)
+        ]
+        filtered_raw_findings = [
+            f
+            for f in all_raw_findings
+            if is_finding_in_files(f, modified_files, project_root, repo_root)
+        ]
+
+        ignored_violations_count = len(all_findings) - len(filtered_findings)
+        current_data["findings"] = filtered_findings
+        current_data["raw_findings"] = filtered_raw_findings
+        current_data["errors_count"] = sum(
+            1 for f in filtered_findings if f.get("severity") == "error"
+        )
+        current_data["warnings_count"] = sum(
+            1 for f in filtered_findings if f.get("severity") == "warning"
+        )
+
+    # 3. Emit GitHub Actions annotations
     if getattr(args, "annotations", True):
         raw_findings = current_data.get("raw_findings", [])
         if raw_findings:
@@ -549,7 +676,7 @@ def execute_action(args: argparse.Namespace) -> int:
                 raw_findings, project_root=project_root, stream=sys.stdout
             )
 
-    # 3. Base branch diff calculation if requested
+    # 4. Base branch diff calculation if requested
     base_data: dict[str, Any] | None = None
     base_ref = getattr(args, "base_ref", None) or os.environ.get(
         "GITHUB_BASE_REF"
@@ -563,13 +690,16 @@ def execute_action(args: argparse.Namespace) -> int:
             checks=checks,
         )
 
-    # 4. Generate PR Comment Markdown
+    # 5. Generate PR Comment Markdown
     md_report = generate_pr_comment_markdown(
         current_data=current_data,
         base_data=base_data,
         fail_under=args.fail_under,
         fail_level=args.fail_level,
         base_ref=base_ref or "main",
+        only_changed=only_changed,
+        modified_files_count=modified_files_count,
+        ignored_violations_count=ignored_violations_count,
     )
 
     # 5. Output to terminal / console
