@@ -27,10 +27,10 @@ uvx tff-core lint --project examples/minimal-dbt-project
 
 ## Scaffolding a Configuration File
 
-To generate an annotated `fitness_functions.yaml` starter file in this directory, run:
+A sample configuration is provided in `fitness_functions.yaml.example`. You can also generate an annotated starter file in this directory by running:
 
 ```bash
 tff init
 ```
 
-Once generated, you can customize layer hierarchies, rules, thresholds, and contracts specifically for your project.
+Once generated or copied from the example, you can customize layer hierarchies, rules, thresholds, and contracts specifically for your project.

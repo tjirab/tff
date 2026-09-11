@@ -298,6 +298,7 @@ TFF runs two categories of quality guardrails (for full configuration details, s
 * **[Dependency graph](docs/rules_and_checks.md#dependency-graph-dependency_graph)**: Track DAG metrics and fail if model fan-in or fan-out exceeds defined thresholds.
 * **[Materialization depth](docs/rules_and_checks.md#materialization-depth-materialization_depth)**: Prevent deep nesting of views that degrades query performance.
 * **[Duplicate CTEs](docs/rules_and_checks.md#duplicate-ctes-duplicate_ctes)**: Detect duplicate complex transformation logic in CTEs across different models (Connascence of Algorithm).
+* **[Connascence of Value](docs/rules_and_checks.md#connascence-of-value-connascence_of_value)**: Identify duplicated domain-meaning literal values (strings, numbers) across multiple models (Connascence of Value).
 
 ### 2. Linter Rules
 * **[Ban `SELECT *`](docs/rules_and_checks.md#ban-select-ban_select_star)**: Require explicit columns to reduce upstream coupling.
@@ -345,6 +346,10 @@ checks:
     enabled: true
     severity: warning
     min_ast_nodes: 12
+  connascence_of_value:
+    enabled: true
+    severity: warning
+    min_occurrences: 2
 
 rules:
   ban_select_star:

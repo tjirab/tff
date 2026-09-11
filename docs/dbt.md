@@ -67,12 +67,13 @@ This layer and domain structure is evaluated against your `layers.order` configu
 ### `tff lint`
 
 ```bash
-tff lint [--project PATH] [--config PATH] [--provider PROVIDER] [--checks CHECK,...] [--fail-level error|warning] [--group-by connascence|model] [--dialect DIALECT]
+tff lint [--project PATH] [--config PATH] [--provider PROVIDER] [--manifest PATH] [--checks CHECK,...] [--fail-level error|warning] [--group-by connascence|model] [--dialect DIALECT]
 ```
 
 * **`--project`**: Path to your project root (default: current directory).
 * **`--config`**: Path to `fitness_functions.yaml` (default: `fitness_functions.yaml`).
-* **`--provider`**: The pipeline engine provider: `auto`, `dbt`, or `sqlmesh` (default: `auto`).
+* **`--provider`**: The pipeline engine provider: `auto`, `dbt`, `sqlmesh`, or `dataform` (default: `auto`).
+* **`--manifest`**: Path to precompiled dbt `manifest.json` (default: auto-detected under `target/manifest.json`).
 * **`--dialect`**: The SQL dialect used by your data warehouse, used for SQL parsing checks (dbt only; default: auto-inferred).
 * **`--checks`**: Comma-separated list of active checks to execute.
 * **`--fail-level`**: Exit non-zero when findings at or above this severity exist (`error` or `warning`, default: `error`).
@@ -81,12 +82,13 @@ tff lint [--project PATH] [--config PATH] [--provider PROVIDER] [--checks CHECK,
 ### `tff health`
 
 ```bash
-tff health [--project PATH] [--config PATH] [--provider PROVIDER] [--dialect DIALECT] [--fail-under SCORE] [--scope PATH_PREFIX ...] [--group-by connascence|domain]
+tff health [--project PATH] [--config PATH] [--provider PROVIDER] [--manifest PATH] [--dialect DIALECT] [--fail-under SCORE] [--scope PATH_PREFIX ...] [--group-by connascence|domain]
 ```
 
 * **`--project`**: Path to your project root (default: current directory).
 * **`--config`**: Path to `fitness_functions.yaml` (default: `fitness_functions.yaml`).
-* **`--provider`**: The pipeline engine provider: `auto`, `dbt`, or `sqlmesh` (default: `auto`).
+* **`--provider`**: The pipeline engine provider: `auto`, `dbt`, `sqlmesh`, or `dataform` (default: `auto`).
+* **`--manifest`**: Path to precompiled dbt `manifest.json` (default: auto-detected under `target/manifest.json`).
 * **`--dialect`**: SQL dialect for parsing (dbt only; default: auto-inferred).
 * **`--fail-under`**: Exit non-zero when the overall health score (0–100) is below this threshold (default: `0.0`).
 * **`--scope`**: Restrict the report to models whose path starts with one or more given prefixes. Multiple prefixes are supported. Examples:
