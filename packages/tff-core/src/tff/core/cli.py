@@ -311,14 +311,14 @@ def main(argv: list[str] | None = None) -> int:
     )
     lint_parser.add_argument(
         "--format",
-        choices=["text", "json", "sarif"],
+        choices=["text", "json", "sarif", "github"],
         default=None,
-        help="Output format to stdout (text, json, sarif; default: text)",
+        help="Output format to stdout (text, json, sarif, github; default: text)",
     )
     lint_parser.add_argument(
         "--github-annotations",
         action="store_true",
-        help="Emit GitHub Actions workflow command annotations to stdout",
+        help="Emit GitHub Actions workflow command annotations alongside console report",
     )
     lint_parser.add_argument(
         "--junit-xml",
@@ -1016,16 +1016,25 @@ def main(argv: list[str] | None = None) -> int:
 
             output_format = args.format or ("json" if args.json else "text")
 
-            # Determine whether to emit GitHub Actions workflow command annotations
+            # Determine whether and where to emit GitHub Actions workflow command annotations
             is_github_actions = os.environ.get("GITHUB_ACTIONS") == "true"
             github_annotations_requested = getattr(args, "github_annotations", False)
-            emit_annotations = (
-                github_annotations_requested
-                or (is_github_actions and output_format == "text")
-            )
 
-            if emit_annotations and findings:
-                emit_github_annotations(findings, project_root=project_root)
+            if output_format == "github":
+                # Pure annotations mode directly to stdout (no tables or banners)
+                if findings:
+                    emit_github_annotations(findings, project_root=project_root, stream=sys.stdout)
+                passed = json_data["passed"]
+                return 0 if passed else 1
+
+            # For text format: emit annotations to stdout (explicitly requested or auto-detected in CI)
+            # For structured formats (sarif/json): if explicitly requested, route to stderr to keep stdout JSON clean
+            if output_format == "text":
+                if (github_annotations_requested or is_github_actions) and findings:
+                    emit_github_annotations(findings, project_root=project_root, stream=sys.stdout)
+            elif output_format in ("sarif", "json"):
+                if github_annotations_requested and findings:
+                    emit_github_annotations(findings, project_root=project_root, stream=sys.stderr)
 
             if output_format == "sarif":
                 sarif_data = generate_sarif_report(
