@@ -138,6 +138,40 @@ repos:
 
 ---
 
+## GitHub Actions Integration
+
+To enforce TFF on pull requests with automated PR summary comments and baseline health score diffs, use the official GitHub Action:
+
+```yaml
+# .github/workflows/tff.yml
+name: TFF Architectural Fitness Functions
+
+on:
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  tff-dbt:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write  # Required for posting/updating PR comments
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Required for health score diff calculation
+
+      - uses: tjirab/tff@v1
+        with:
+          project: "."
+          provider: "dbt"
+          fail-under: "80.0"
+          fail-level: "error"
+          comment-pr: "true"
+```
+
+---
+
 ## Real-World Case Study
 
 See the [GitLab Architectural Audit Case Study](case_study_gitlab.md) to explore how TFF analyzed GitLab's 2,213-model Snowflake dbt repository in ~13 seconds with 100% static analysis, uncovering 54 duplicated CTE algorithms and 111 layer violations.

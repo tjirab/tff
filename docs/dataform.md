@@ -180,3 +180,36 @@ The hooks default to bare `tff-core`, which supports Dataform projects out of th
         additional_dependencies: ["tff-core[dataform]"]
 ```
 
+---
+
+## GitHub Actions Integration
+
+Automate Dataform fitness functions and post PR summary comments using the official GitHub Action:
+
+```yaml
+# .github/workflows/tff.yml
+name: TFF Architectural Fitness Functions
+
+on:
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  tff-dataform:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write  # Required for posting/updating PR comments
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Required for health score diff calculation
+
+      - uses: tjirab/tff@v1
+        with:
+          project: "."
+          provider: "dataform"
+          fail-under: "80.0"
+          fail-level: "error"
+          comment-pr: "true"
+```

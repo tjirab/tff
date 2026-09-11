@@ -146,4 +146,36 @@ repos:
 
 Because SQLMesh projects require the `sqlmesh` Python engine to load and evaluate models, specify `additional_dependencies: ["tff-core[sqlmesh]"]` so pre-commit installs SQLMesh into the hook's isolated virtual environment.
 
+---
 
+## GitHub Actions Integration
+
+Automate SQLMesh architectural quality checks and post PR health comments using the official GitHub Action:
+
+```yaml
+# .github/workflows/tff.yml
+name: TFF Architectural Fitness Functions
+
+on:
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  tff-sqlmesh:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write  # Required for posting/updating PR comments
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Required for health score diff calculation
+
+      - uses: tjirab/tff@v1
+        with:
+          project: "."
+          provider: "sqlmesh"
+          fail-under: "80.0"
+          fail-level: "error"
+          comment-pr: "true"
+```

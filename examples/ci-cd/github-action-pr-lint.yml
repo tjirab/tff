@@ -1,26 +1,27 @@
-name: TFF PR Linting
+name: TFF PR Health & Architectural Linting
 
 on:
   pull_request:
     branches: [ main, develop ]
 
 jobs:
-  lint:
+  tff-check:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write  # Required for posting/updating PR summary comment
     steps:
       - name: Checkout Repository Code
         uses: actions/checkout@v4
-
-      - name: Set up Python Environment
-        uses: actions/setup-python@v5
         with:
-          python-version: '3.12'
-          
-      - name: Install Dependencies
-        run: |
-          pip install --upgrade pip
-          pip install "tff-core[sqlmesh]"
+          fetch-depth: 0  # Required for calculating health score diff vs base branch
 
-      - name: Run TFF Linter
-        run: |
-          tff lint --project examples/minimal-sqlmesh-project --no-log
+      - name: Run TFF Fitness Functions
+        uses: tjirab/tff@v1
+        with:
+          project: "examples/minimal-sqlmesh-project"
+          provider: "auto"
+          fail-under: "80.0"
+          fail-level: "error"
+          comment-pr: "true"
+

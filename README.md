@@ -89,6 +89,7 @@ tff [command] [options]
 * **`info`**: Show diagnostic information about the project environment, configuration files, and adapter versions.
 * **`stats`**: Show history and trends of fitness checks.
 * **`init`**: Scaffold an annotated starter `fitness_functions.yaml` configuration file.
+* **`action`**: Run TFF GitHub Action pipeline (health scoring, baseline diff calculation, and PR comment generation).
 * **`help`**: Print help information for the CLI or specific subcommands.
 
 ### Common Options
@@ -98,6 +99,19 @@ For detailed option explanations, run `tff help <command>` or `tff <command> --h
 #### `tff init`
 * `--project PATH`: Path to the project root directory (default: current directory).
 * `--force`, `-f`: Overwrite existing `fitness_functions.yaml` if present.
+
+#### `tff action`
+* `--project PATH`: Path to the project root directory (default: current directory).
+* `--provider {auto,dbt,sqlmesh,dataform}`: Pipeline engine provider (default: auto-detected).
+* `--config PATH`: Path to `fitness_functions.yaml` relative to project root (default: `fitness_functions.yaml`).
+* `--fail-under SCORE`: Exit non-zero when overall health score is below this threshold (default: `0.0`).
+* `--fail-level {error,warning}`: Exit non-zero when findings at or above this severity exist (default: `error`).
+* `--comment-pr {true,false}`: Post or update PR summary comment with health score and violations (default: `false`).
+* `--github-token TOKEN`: GitHub token for creating/updating PR comments.
+* `--base-ref REF`: Git base branch reference to compare health score against (e.g. `main`).
+* `--diff-against-base` / `--no-diff-against-base`: Compute health score diff against base branch (default: enabled).
+* `--annotations` / `--no-annotations`: Emit GitHub Actions workflow command annotations (default: enabled).
+* `--json`: Output results in JSON format to stdout.
 
 #### `tff lint`
 * `--project PATH`: Path to the project root directory (default: current directory).
@@ -283,6 +297,81 @@ If your project uses **SQLMesh**, the SQLMesh engine package is required; declar
   #     - id: tff-lint
   #       additional_dependencies: ["tff-core[dataform]"]
 ```
+
+---
+
+## GitHub Actions Integration (Official Action)
+
+TFF provides an official GitHub Action to run architectural fitness functions and project health checks directly in CI/CD pull requests, automatically enforcing quality gates and posting comprehensive PR summary comments with baseline diff scoring.
+
+### Quick Start Workflow
+
+Create `.github/workflows/tff.yml` in your repository:
+
+```yaml
+name: TFF Architectural Fitness Functions
+
+on:
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  tff:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write  # Required for posting/updating PR summary comments
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Required to compute health score diff vs base branch
+
+      - name: Run TFF Fitness Functions
+        uses: tjirab/tff@v1
+        with:
+          project: "."
+          provider: "auto"
+          fail-under: "80.0"
+          fail-level: "error"
+          comment-pr: "true"
+```
+
+### Action Inputs
+
+| Input | Description | Default | Required |
+| :--- | :--- | :--- | :--- |
+| `project` | Path to project root directory | `.` | No |
+| `provider` | Pipeline engine (`auto`, `dbt`, `sqlmesh`, `dataform`) | `auto` | No |
+| `fail-under` | Minimum overall health score required to pass (`0.0` - `100.0`) | `0.0` | No |
+| `fail-level` | Severity level that causes step failure (`error`, `warning`) | `error` | No |
+| `comment-pr` | Post or update PR summary comment with health score and violations | `false` | No |
+| `github-token` | GitHub token for posting or updating PR comments | `${{ github.token }}` | No |
+| `config` | Path to `fitness_functions.yaml` relative to project root | `fitness_functions.yaml` | No |
+| `checks` | Comma-separated list of specific checks to run | (all enabled) | No |
+| `python-version` | Python version to set up in runner environment | `3.12` | No |
+| `version` | Specific version of `tff-core` to install | (latest release) | No |
+| `annotations` | Emit GitHub Actions workflow command annotations (`::error` / `::warning`) | `true` | No |
+| `diff-against-base` | Compute health score diff and violations diff against base branch | `true` | No |
+
+### Action Outputs
+
+| Output | Description |
+| :--- | :--- |
+| `health-score` | Overall project fitness health score (`0.0` - `100.0`) |
+| `violations-count` | Total number of violations found |
+| `errors-count` | Total number of errors found |
+| `warnings-count` | Total number of warnings found |
+| `passed` | Whether checks passed according to thresholds (`true`/`false`) |
+| `comment-id` | GitHub PR comment ID if a comment was created or updated |
+
+### Pull Request Comment & Baseline Diff
+
+When `comment-pr: "true"` is set:
+* **Interactive Summary Comment**: An automated comment is posted with a summary table of the overall health score, pass/fail status, and violation counts.
+* **Diff Scoring vs Base Branch**: If `fetch-depth: 0` is set on checkout, TFF calculates the baseline health score of your target branch (e.g. `main`) and displays the score delta (`+2.5% vs main 📈`) along with counts of newly introduced and resolved violations.
+* **Idempotent Updates**: TFF updates its existing PR comment across pushes to avoid comment spam.
+* **GitHub Job Summary**: The full Markdown report is also published to the GitHub Actions Job Summary page for easy viewing.
 
 ---
 

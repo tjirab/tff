@@ -516,11 +516,118 @@ def main(argv: list[str] | None = None) -> int:
         help="Overwrite existing fitness_functions.yaml if present",
     )
 
+    # Action subcommand
+    action_parser = subparsers.add_parser(
+        "action",
+        help="Run TFF GitHub Action pipeline (health scoring, baseline comparison, PR comment)",
+        description="Run TFF checks, compare against base branch, emit GitHub annotations, and create/update PR comments",
+    )
+    action_parser.add_argument(
+        "--project",
+        type=Path,
+        default=Path.cwd(),
+        help="Project root directory (default: current directory)",
+    )
+    action_parser.add_argument(
+        "--provider",
+        choices=["auto", "dbt", "sqlmesh", "dataform"],
+        default="auto",
+        help="Pipeline engine provider (default: auto-detected)",
+    )
+    action_parser.add_argument(
+        "--config",
+        default="fitness_functions.yaml",
+        help="Path to fitness_functions.yaml (relative to project root)",
+    )
+    action_parser.add_argument(
+        "--checks",
+        default=None,
+        help="Comma-separated checks to run (default: all enabled)",
+    )
+    action_parser.add_argument(
+        "--fail-under",
+        type=float,
+        default=0.0,
+        help="Minimum health score required to pass (0.0 - 100.0, default: 0.0)",
+    )
+    action_parser.add_argument(
+        "--fail-level",
+        choices=["error", "warning"],
+        default="error",
+        help="Failure severity level (default: error)",
+    )
+    action_parser.add_argument(
+        "--comment-pr",
+        default="false",
+        help="Post or update PR summary comment with health score and violations ('true' or 'false', default: false)",
+    )
+    action_parser.add_argument(
+        "--github-token",
+        default=None,
+        help="GitHub token for PR comment creation/updating (default: GITHUB_TOKEN env var)",
+    )
+    action_parser.add_argument(
+        "--base-ref",
+        default=None,
+        help="Git base branch reference to compare health score against (e.g. main)",
+    )
+    action_parser.add_argument(
+        "--diff-against-base",
+        action="store_true",
+        default=True,
+        help="Compute health score diff against base branch if available (default: true)",
+    )
+    action_parser.add_argument(
+        "--no-diff-against-base",
+        action="store_false",
+        dest="diff_against_base",
+        help="Disable computing health score diff against base branch",
+    )
+    action_parser.add_argument(
+        "--annotations",
+        action="store_true",
+        default=True,
+        help="Emit GitHub Actions workflow command annotations (default: true)",
+    )
+    action_parser.add_argument(
+        "--no-annotations",
+        action="store_false",
+        dest="annotations",
+        help="Disable emitting GitHub Actions workflow command annotations",
+    )
+    action_parser.add_argument(
+        "--pr-number",
+        type=int,
+        default=None,
+        help="Pull request number (auto-detected from GITHUB_EVENT_PATH if omitted)",
+    )
+    action_parser.add_argument(
+        "--repo",
+        default=None,
+        help="GitHub repository full name (owner/repo; auto-detected if omitted)",
+    )
+    action_parser.add_argument(
+        "--dialect",
+        default=None,
+        help="SQL dialect of models (dbt and Dataform; auto-inferred by default)",
+    )
+    action_parser.add_argument(
+        "--manifest",
+        type=Path,
+        default=None,
+        help="Path to precompiled Dataform compilation_result.json or manifest",
+    )
+    action_parser.add_argument(
+        "--json",
+        action="store_true",
+        help="Output results in JSON format to stdout",
+    )
+
     help_parser = subparsers.add_parser("help", help="Show help details for a command")
     help_parser.add_argument(
         "subcommand",
         nargs="?",
-        choices=["lint", "health", "info", "stats", "docs", "init"],
+        choices=["lint", "health", "info", "stats", "docs", "init", "action"],
         help="Specific command to get help for",
     )
 
@@ -539,6 +646,8 @@ def main(argv: list[str] | None = None) -> int:
             docs_parser.print_help()
         elif args.subcommand == "init":
             init_parser.print_help()
+        elif args.subcommand == "action":
+            action_parser.print_help()
         else:
             parser.print_help()
         return 0
@@ -882,6 +991,11 @@ def main(argv: list[str] | None = None) -> int:
         except Exception as e:
             print(f"Error creating configuration file: {e}", file=sys.stderr)
             return 1
+
+    if args.command == "action":
+        from tff.core.action import execute_action
+
+        return execute_action(args)
 
     if args.command in ("lint", "health"):
         logging.basicConfig(level=logging.ERROR)
