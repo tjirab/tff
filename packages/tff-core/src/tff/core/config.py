@@ -60,6 +60,7 @@ checks:
     severity: warning
     min_occurrences: 2
     ignored_values: ["0", "1", ""]
+    ignored_punctuation: ["|", " ", "-", "_", "/", ":"]
 
 # Model-level SQL rules
 rules:
@@ -154,6 +155,9 @@ class ConnascenceOfValueCheckConfig(LayerFilterConfig):
     severity: str = "warning"
     min_occurrences: int = 2
     ignored_values: list[str] = Field(default_factory=lambda: ["0", "1", ""])
+    ignored_punctuation: list[str] = Field(
+        default_factory=lambda: ["|", " ", "-", "_", "/", ":"]
+    )
 
 
 class CustomExclusionRule(BaseModel):
