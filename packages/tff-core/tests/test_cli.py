@@ -1,3 +1,4 @@
+import json
 import sys
 from pathlib import Path
 from unittest.mock import MagicMock, patch
@@ -1091,3 +1092,143 @@ def test_cli_health_existing_config_no_notice(tmp_path: Path, capsys):
         assert exit_code == 0
         captured = capsys.readouterr()
         assert "Notice: No fitness_functions.yaml found." not in captured.err
+
+
+def test_cli_lint_format_sarif(tmp_path: Path, capsys):
+    (tmp_path / "dbt_project.yml").touch()
+    from tff.core.report import LintFinding
+
+    finding = LintFinding(
+        check="banselectstar",
+        severity="error",
+        message="SELECT * not allowed",
+        model="model_a",
+        path="models/model_a.sql",
+        line=10,
+    )
+    mock_runner = MagicMock()
+    mock_runner.run_all_checks.return_value = ([finding], 1, ["banselectstar"])
+
+    with patch("tff.core.cli._get_runner", return_value=mock_runner):
+        exit_code = main(["lint", "--project", str(tmp_path), "--format", "sarif"])
+        assert exit_code == 1
+        captured = capsys.readouterr()
+        data = json.loads(captured.out)
+        assert data["version"] == "2.1.0"
+        assert len(data["runs"][0]["results"]) == 1
+        assert data["runs"][0]["results"][0]["ruleId"] == "banselectstar"
+
+
+def test_cli_lint_format_json(tmp_path: Path, capsys):
+    (tmp_path / "dbt_project.yml").touch()
+    mock_runner = MagicMock()
+    mock_runner.run_all_checks.return_value = ([], 1, [])
+
+    with patch("tff.core.cli._get_runner", return_value=mock_runner):
+        exit_code = main(["lint", "--project", str(tmp_path), "--format", "json"])
+        assert exit_code == 0
+        captured = capsys.readouterr()
+        data = json.loads(captured.out)
+        assert data["command"] == "lint"
+        assert data["passed"] is True
+
+
+def test_cli_lint_format_text(tmp_path: Path):
+    (tmp_path / "dbt_project.yml").touch()
+    mock_runner = MagicMock()
+    mock_runner.run_all_checks.return_value = ([], 1, [])
+
+    with patch("tff.core.cli._get_runner", return_value=mock_runner), \
+         patch("tff.core.cli.render_lint_report", return_value=True) as mock_render:
+        exit_code = main(["lint", "--project", str(tmp_path), "--format", "text"])
+        assert exit_code == 0
+        mock_render.assert_called_once()
+
+
+def test_cli_lint_github_annotations_flag(tmp_path: Path, capsys):
+    (tmp_path / "dbt_project.yml").touch()
+    from tff.core.report import LintFinding
+
+    finding = LintFinding(
+        check="nomissingowner",
+        severity="warning",
+        message="Missing model owner",
+        model="stg_users",
+        path="models/staging/stg_users.sql",
+        line=1,
+    )
+    mock_runner = MagicMock()
+    mock_runner.run_all_checks.return_value = ([finding], 1, ["nomissingowner"])
+
+    with patch("tff.core.cli._get_runner", return_value=mock_runner), \
+         patch("tff.core.cli.render_lint_report", return_value=True):
+        exit_code = main(["lint", "--project", str(tmp_path), "--github-annotations"])
+        assert exit_code == 0
+        captured = capsys.readouterr()
+        assert "::warning file=models/staging/stg_users.sql,line=1::Missing model owner" in captured.out
+
+
+def test_cli_lint_github_actions_env(tmp_path: Path, capsys, monkeypatch):
+    monkeypatch.setenv("GITHUB_ACTIONS", "true")
+    (tmp_path / "dbt_project.yml").touch()
+    from tff.core.report import LintFinding
+
+    finding = LintFinding(
+        check="banselectstar",
+        severity="error",
+        message="SELECT * forbidden",
+        model="fct_orders",
+        path="models/marts/fct_orders.sql",
+        line=25,
+    )
+    mock_runner = MagicMock()
+    mock_runner.run_all_checks.return_value = ([finding], 1, ["banselectstar"])
+
+    with patch("tff.core.cli._get_runner", return_value=mock_runner), \
+         patch("tff.core.cli.render_lint_report", return_value=False):
+        exit_code = main(["lint", "--project", str(tmp_path)])
+        assert exit_code == 1
+        captured = capsys.readouterr()
+        assert "::error file=models/marts/fct_orders.sql,line=25::SELECT * forbidden" in captured.out
+
+
+def test_cli_lint_github_actions_env_sarif_no_annotations(tmp_path: Path, capsys, monkeypatch):
+    monkeypatch.setenv("GITHUB_ACTIONS", "true")
+    (tmp_path / "dbt_project.yml").touch()
+    from tff.core.report import LintFinding
+
+    finding = LintFinding(
+        check="banselectstar",
+        severity="error",
+        message="SELECT * forbidden",
+        model="fct_orders",
+        path="models/marts/fct_orders.sql",
+    )
+    mock_runner = MagicMock()
+    mock_runner.run_all_checks.return_value = ([finding], 1, ["banselectstar"])
+
+    with patch("tff.core.cli._get_runner", return_value=mock_runner):
+        exit_code = main(["lint", "--project", str(tmp_path), "--format", "sarif"])
+        assert exit_code == 1
+        captured = capsys.readouterr()
+        assert "::error" not in captured.out
+        data = json.loads(captured.out)
+        assert data["version"] == "2.1.0"
+
+
+def test_cli_lint_junit_xml(tmp_path: Path):
+    (tmp_path / "dbt_project.yml").touch()
+    mock_runner = MagicMock()
+    mock_runner.run_all_checks.return_value = ([], 2, [])
+    junit_target = tmp_path / "reports" / "junit.xml"
+
+    with patch("tff.core.cli._get_runner", return_value=mock_runner), \
+         patch("tff.core.cli.render_lint_report", return_value=True):
+        exit_code = main(["lint", "--project", str(tmp_path), "--junit-xml", str(junit_target)])
+        assert exit_code == 0
+        assert junit_target.exists()
+        content = junit_target.read_text(encoding="utf-8")
+        assert "<testsuites" in content
+        assert 'tests="1"' in content
+        assert 'failures="0"' in content
+
