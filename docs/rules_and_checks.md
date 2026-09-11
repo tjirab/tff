@@ -317,7 +317,16 @@ Architectural checks evaluate the structure, dependencies, and layout of your en
 
 * **What it checks**:
   * Identifies "Connascence of Value" by flagging literal values (strings, numbers) duplicated across multiple models.
-  * Only string and numeric literals are checked (excluding boolean literals, NULL, and literals located inside `LIMIT` or `OFFSET` clauses).
+  * Only domain-meaning literals are checked. Structural and technical SQL literals are automatically excluded based on AST context:
+    * Literals inside `LIMIT` or `OFFSET` clauses.
+    * Data type parameters and precision/scale definitions (e.g. `DECIMAL(15, 2)`, `VARCHAR(255)`).
+    * Rounding and truncation precision/scale arguments (e.g. `ROUND(amount, 2)`, `TRUNC(amount, 2)`).
+    * String splitting delimiter and index arguments (e.g. `SPLIT_PART(email, '@', 2)`).
+    * Positional string slicing parameters (e.g. `SUBSTRING(name, 1, 10)`, `LEFT(name, 5)`, `RIGHT(name, 5)`).
+    * String concatenation operators (`||` / `DPipe`) and `CONCAT_WS` separators.
+    * Mathematical divisors in arithmetic division (e.g. `amount / 100.00` cents-to-dollars divisor).
+  * Short punctuation characters (`|`, ` `, `-`, `_`, `/`, `:`) are ignored by default and configurable via `ignored_punctuation`.
+  * Project-specific literal escapes can be added to `ignored_values`.
   * Grouping is case-insensitive for strings, but the original casing is preserved in the findings messages.
 * **How to configure**:
   Defined under `checks.connascence_of_value` in `fitness_functions.yaml`.
@@ -328,6 +337,7 @@ Architectural checks evaluate the structure, dependencies, and layout of your en
       severity: warning               # Severity of finding: 'warning' or 'error'
       min_occurrences: 2             # Minimum number of unique models sharing a literal to trigger (default: 2)
       ignored_values: ["0", "1", ""]  # List of literals to ignore (default: ['0', '1', ''])
+      ignored_punctuation: ["|", " ", "-", "_", "/", ":"] # Punctuation strings to ignore (default: ['|', ' ', '-', '_', '/', ':'])
       skip_layers: [staging]
   ```
 

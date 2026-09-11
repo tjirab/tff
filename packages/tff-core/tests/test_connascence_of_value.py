@@ -1,5 +1,9 @@
 
-from tff.core.checks.connascence_of_value import collect_connascence_of_value_findings
+from sqlglot import exp
+from tff.core.checks.connascence_of_value import (
+    collect_connascence_of_value_findings,
+    is_ignored_literal,
+)
 from tff.core.config import FitnessFunctionsConfig
 from tff.core.context import set_ff_config
 from tff.core.model import ModelRepresentation
@@ -257,3 +261,151 @@ def test_cov_multiple_other_occurrences():
     # Message should use oxford comma list
     finding_m1 = [f for f in findings if f.model == "model1"][0]
     assert "model 'model2', model 'model3', and model 'model4'" in finding_m1.message
+
+
+def test_cov_structural_sql_literals_ignored():
+    config = FitnessFunctionsConfig()
+    config.checks.connascence_of_value.enabled = True
+    set_ff_config(config)
+
+    queries = [
+        "SELECT md5(a || '|' || b) as uuid FROM {{ ref('stg_a') }}",
+        "SELECT round(x / 100.00, 2) FROM {{ ref('stg_a') }}",
+        "SELECT cast(x as decimal(15, 2)) FROM {{ ref('stg_a') }}",
+        "SELECT x::decimal(15, 2) FROM {{ ref('stg_a') }}",
+        "SELECT split_part(email, '@', 2) FROM {{ ref('stg_a') }}",
+        "SELECT substring(name, 1, 10), left(name, 5), right(name, 5) FROM {{ ref('stg_a') }}",
+        "SELECT concat_ws('/', a, b) FROM {{ ref('stg_a') }}",
+        "SELECT round(amount, -2) FROM {{ ref('stg_a') }}",
+        "SELECT amount / (100.00) FROM {{ ref('stg_a') }}",
+    ]
+
+    for q in queries:
+        model1 = ModelRepresentation(
+            name="model1",
+            path="models/marts/model1.sql",
+            dialect="postgres",
+            query=q,
+        )
+        model2 = ModelRepresentation(
+            name="model2",
+            path="models/marts/model2.sql",
+            dialect="postgres",
+            query=q,
+        )
+        models = {"model1": model1, "model2": model2}
+        findings = collect_connascence_of_value_findings(models, config)
+        assert len(findings) == 0, f"Expected 0 findings for query: {q}, got: {findings}"
+
+
+def test_cov_domain_reuse_fixtures_warn():
+    config = FitnessFunctionsConfig()
+    config.checks.connascence_of_value.enabled = True
+    config.checks.connascence_of_value.min_occurrences = 2
+    set_ff_config(config)
+
+    # 1. WHERE status = 'premium'
+    model1 = ModelRepresentation(
+        name="model1",
+        path="models/marts/model1.sql",
+        dialect="postgres",
+        query="SELECT * FROM {{ ref('stg_a') }} WHERE status = 'premium'",
+    )
+    model2 = ModelRepresentation(
+        name="model2",
+        path="models/marts/model2.sql",
+        dialect="postgres",
+        query="SELECT * FROM {{ ref('stg_b') }} WHERE status = 'premium'",
+    )
+    findings = collect_connascence_of_value_findings({"model1": model1, "model2": model2}, config)
+    assert len(findings) == 2
+    assert all("premium" in f.message for f in findings)
+
+    # 2. decode(tech_id, 2, '<value>', 'default')
+    model3 = ModelRepresentation(
+        name="model3",
+        path="models/marts/model3.sql",
+        dialect="postgres",
+        query="SELECT decode(tech_id, 2, '<value>', 'default') FROM {{ ref('stg_a') }}",
+    )
+    model4 = ModelRepresentation(
+        name="model4",
+        path="models/marts/model4.sql",
+        dialect="postgres",
+        query="SELECT decode(tech_id, 2, '<value>', 'default') FROM {{ ref('stg_b') }}",
+    )
+    findings_decode = collect_connascence_of_value_findings({"model3": model3, "model4": model4}, config)
+    # Literals 2, '<value>', and 'default' are duplicated across model3 and model4
+    flagged_literals = {f.message for f in findings_decode}
+    assert any("Literal '2'" in msg for msg in flagged_literals)
+    assert any("Literal '<value>'" in msg for msg in flagged_literals)
+    assert any("Literal 'default'" in msg for msg in flagged_literals)
+
+
+def test_cov_ignored_punctuation():
+    config = FitnessFunctionsConfig()
+    config.checks.connascence_of_value.enabled = True
+    set_ff_config(config)
+
+    model1 = ModelRepresentation(
+        name="model1",
+        path="models/marts/model1.sql",
+        dialect="postgres",
+        query="SELECT col1 || ' - ' || col2, col3 || ':' || col4 FROM {{ ref('stg_a') }}",
+    )
+    model2 = ModelRepresentation(
+        name="model2",
+        path="models/marts/model2.sql",
+        dialect="postgres",
+        query="SELECT col1 || ' - ' || col2, col3 || ':' || col4 FROM {{ ref('stg_b') }}",
+    )
+    models = {"model1": model1, "model2": model2}
+    findings = collect_connascence_of_value_findings(models, config)
+    assert len(findings) == 0
+
+    # If ignored_punctuation is cleared, punctuation characters trigger if duplicated
+    config.checks.connascence_of_value.ignored_punctuation = []
+    # Test with a standalone punctuation string not in DPipe
+    model3 = ModelRepresentation(
+        name="model3",
+        path="models/marts/model3.sql",
+        dialect="postgres",
+        query="SELECT * FROM {{ ref('stg_a') }} WHERE delim = ':'",
+    )
+    model4 = ModelRepresentation(
+        name="model4",
+        path="models/marts/model4.sql",
+        dialect="postgres",
+        query="SELECT * FROM {{ ref('stg_b') }} WHERE delim = ':'",
+    )
+    findings_punct = collect_connascence_of_value_findings({"model3": model3, "model4": model4}, config)
+    assert len(findings_punct) == 2
+    assert "Literal ':'" in findings_punct[0].message
+
+
+def test_cov_negated_with_parentheses():
+    config = FitnessFunctionsConfig()
+    config.checks.connascence_of_value.enabled = True
+    set_ff_config(config)
+
+    model1 = ModelRepresentation(
+        name="model1",
+        path="models/marts/model1.sql",
+        dialect="postgres",
+        query="SELECT * FROM {{ ref('stg_a') }} WHERE val = -(99)",
+    )
+    model2 = ModelRepresentation(
+        name="model2",
+        path="models/marts/model2.sql",
+        dialect="postgres",
+        query="SELECT * FROM {{ ref('stg_b') }} WHERE val = -(99)",
+    )
+    models = {"model1": model1, "model2": model2}
+    findings = collect_connascence_of_value_findings(models, config)
+    assert len(findings) == 2
+    assert "Literal '-99'" in findings[0].message
+
+
+def test_is_ignored_literal_standalone_node():
+    node = exp.Literal.number(42)
+    assert is_ignored_literal(node) is False
