@@ -1,0 +1,163 @@
+name: "TFF - Transformation Fitness Functions"
+description: "Architectural linter and health score engine for dbt, SQLMesh, and Dataform"
+author: "Bart Schuijt"
+branding:
+  icon: "check-circle"
+  color: "blue"
+
+inputs:
+  project:
+    description: "Path to project root directory"
+    required: false
+    default: "."
+  provider:
+    description: "Pipeline engine (auto, dbt, sqlmesh, dataform)"
+    required: false
+    default: "auto"
+  fail-under:
+    description: "Minimum health score required to pass (0.0 - 100.0)"
+    required: false
+    default: "0.0"
+  fail-level:
+    description: "Failure severity level (error, warning)"
+    required: false
+    default: "error"
+  comment-pr:
+    description: "Post or update PR summary comment with health score and violations"
+    required: false
+    default: "false"
+  github-token:
+    description: "GitHub Token for posting or updating PR comments"
+    required: false
+    default: "${{ github.token }}"
+  config:
+    description: "Path to fitness_functions.yaml (relative to project root)"
+    required: false
+    default: "fitness_functions.yaml"
+  checks:
+    description: "Comma-separated list of specific checks to run (default: all enabled)"
+    required: false
+    default: ""
+  python-version:
+    description: "Python version to set up if Python is not already installed"
+    required: false
+    default: "3.12"
+  version:
+    description: "Version of tff-core to install (default: latest release)"
+    required: false
+    default: ""
+  annotations:
+    description: "Emit GitHub Actions workflow command annotations (::error / ::warning)"
+    required: false
+    default: "true"
+  diff-against-base:
+    description: "Compute and display health score difference against base branch in PR comments"
+    required: false
+    default: "true"
+  only-changed:
+    description: "Only gate and report violations for models/files modified in this pull request"
+    required: false
+    default: "false"
+
+outputs:
+  health-score:
+    description: "Overall project fitness health score (0.0 - 100.0)"
+    value: "${{ steps.run-tff.outputs.health-score }}"
+  violations-count:
+    description: "Total number of violations found"
+    value: "${{ steps.run-tff.outputs.violations-count }}"
+  errors-count:
+    description: "Total number of errors found"
+    value: "${{ steps.run-tff.outputs.errors-count }}"
+  warnings-count:
+    description: "Total number of warnings found"
+    value: "${{ steps.run-tff.outputs.warnings-count }}"
+  passed:
+    description: "Whether all fitness function checks passed according to thresholds"
+    value: "${{ steps.run-tff.outputs.passed }}"
+  comment-id:
+    description: "GitHub PR comment ID if a comment was created or updated"
+    value: "${{ steps.run-tff.outputs.comment-id }}"
+
+runs:
+  using: "composite"
+  steps:
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: ${{ inputs.python-version }}
+        check-latest: false
+
+    - name: Install TFF
+      shell: bash
+      run: |
+        EXTRA=""
+        if [ "${{ inputs.provider }}" = "sqlmesh" ]; then
+          EXTRA="[sqlmesh]"
+        elif [ "${{ inputs.provider }}" = "dbt" ]; then
+          EXTRA="[dbt]"
+        elif [ "${{ inputs.provider }}" = "dataform" ]; then
+          EXTRA="[dataform]"
+        else
+          # Auto-detect if project has SQLMesh configuration
+          if [ -f "${{ inputs.project }}/.sqlmesh" ] || [ -f "${{ inputs.project }}/config.py" ] || [ -f "${{ inputs.project }}/config.yaml" ] || [ -f "${{ inputs.project }}/config.yml" ]; then
+            EXTRA="[sqlmesh]"
+          fi
+        fi
+
+        PKG="tff-core${EXTRA}"
+        if [ -n "${{ inputs.version }}" ]; then
+          PKG="${PKG}==${{ inputs.version }}"
+        fi
+
+        echo "Installing ${PKG}..."
+        pip install --upgrade "${PKG}"
+
+    - name: Run TFF Action
+      id: run-tff
+      shell: bash
+      env:
+        GITHUB_TOKEN: ${{ inputs.github-token }}
+        INPUT_PROJECT: ${{ inputs.project }}
+        INPUT_PROVIDER: ${{ inputs.provider }}
+        INPUT_FAIL_UNDER: ${{ inputs.fail-under }}
+        INPUT_FAIL_LEVEL: ${{ inputs.fail-level }}
+        INPUT_COMMENT_PR: ${{ inputs.comment-pr }}
+        INPUT_CONFIG: ${{ inputs.config }}
+        INPUT_CHECKS: ${{ inputs.checks }}
+        INPUT_ANNOTATIONS: ${{ inputs.annotations }}
+        INPUT_DIFF_AGAINST_BASE: ${{ inputs.diff-against-base }}
+        INPUT_ONLY_CHANGED: ${{ inputs.only-changed }}
+      run: |
+        ARGS=(
+          "--project" "${INPUT_PROJECT}"
+          "--provider" "${INPUT_PROVIDER}"
+          "--fail-under" "${INPUT_FAIL_UNDER}"
+          "--fail-level" "${INPUT_FAIL_LEVEL}"
+          "--comment-pr" "${INPUT_COMMENT_PR}"
+          "--config" "${INPUT_CONFIG}"
+        )
+        if [ -n "${INPUT_CHECKS}" ]; then
+          ARGS+=("--checks" "${INPUT_CHECKS}")
+        fi
+        if [ "${INPUT_ANNOTATIONS}" = "false" ]; then
+          ARGS+=("--no-annotations")
+        fi
+        if [ "${INPUT_DIFF_AGAINST_BASE}" = "false" ]; then
+          ARGS+=("--no-diff-against-base")
+        fi
+        if [ "${INPUT_ONLY_CHANGED}" = "true" ]; then
+          ARGS+=("--only-changed")
+        fi
+        if [ -n "${GITHUB_BASE_REF}" ]; then
+          ARGS+=("--base-ref" "${GITHUB_BASE_REF}")
+        fi
+        if [ -n "${GITHUB_TOKEN}" ]; then
+          ARGS+=("--github-token" "${GITHUB_TOKEN}")
+        fi
+
+        if command -v tff >/dev/null 2>&1; then
+          tff action "${ARGS[@]}"
+        else
+          python -m tff.core.cli action "${ARGS[@]}"
+        fi

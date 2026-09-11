@@ -146,4 +146,42 @@ repos:
 
 Because SQLMesh projects require the `sqlmesh` Python engine to load and evaluate models, specify `additional_dependencies: ["tff-core[sqlmesh]"]` so pre-commit installs SQLMesh into the hook's isolated virtual environment.
 
+---
 
+## GitHub Actions Integration
+
+Automate SQLMesh architectural quality checks and post PR health comments using the official GitHub Action:
+
+```yaml
+# .github/workflows/tff.yml
+name: TFF Architectural Fitness Functions
+
+on:
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  tff-sqlmesh:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write  # Required for posting/updating PR comments
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Required for health score diff calculation
+
+      - uses: tjirab/tff@v1
+        with:
+          project: "."
+          provider: "sqlmesh"
+          fail-under: "80.0"
+          fail-level: "error"
+          only-changed: "true"  # Only gate models modified in this PR
+          comment-pr: "true"
+```
+
+### Zero-Compilation In-Memory Evaluation
+Unlike manifest-driven tools, **SQLMesh requires zero pre-compilation, zero external manifest files, and zero warehouse credentials**. TFF parses `.sql` and `.py` model definitions directly using SQLGlot and Python's semantic engine. When running baseline diffing (`diff-against-base: true`), TFF evaluates `origin/main` cleanly in memory in a temporary worktree. For more details, see the [CI/CD Guide](ci_cd.md#2-sqlmesh-zero-compilation-native-evaluation).
+
+For advanced inputs, matrix setups, and PR comment details, see the [CI/CD Guide](ci_cd.md).

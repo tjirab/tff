@@ -180,3 +180,43 @@ The hooks default to bare `tff-core`, which supports Dataform projects out of th
         additional_dependencies: ["tff-core[dataform]"]
 ```
 
+---
+
+## GitHub Actions Integration
+
+Automate Dataform fitness functions and post PR summary comments using the official GitHub Action:
+
+```yaml
+# .github/workflows/tff.yml
+name: TFF Architectural Fitness Functions
+
+on:
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  tff-dataform:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write  # Required for posting/updating PR comments
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Required for health score diff calculation
+
+      - uses: tjirab/tff@v1
+        with:
+          project: "."
+          provider: "dataform"
+          fail-under: "80.0"
+          fail-level: "error"
+          only-changed: "true"  # Only gate models modified in this PR
+          comment-pr: "true"
+```
+
+### 3-Tier Resolution Strategy in CI
+Dataform projects support three loading tiers: precompiled `compilation_result.json`, on-the-fly CLI compilation (`dataform compile --json`), and a built-in zero-tooling `.sqlx` static parser. In CI, both the feature branch and `main` baseline comparisons evaluate out of the box without requiring precompiled artifacts committed to Git. For more details, see the [CI/CD Guide](ci_cd.md#3-dataform-3-tier-resolution-strategy).
+
+For advanced inputs, matrix setups, and PR comment details, see the [CI/CD Guide](ci_cd.md).
+
