@@ -28,6 +28,7 @@ The CLI provides the following subcommands:
 * **Parallel Execution**: AST parsing, duplicate CTE fingerprinting, and model rule checks execute across a worker pool in parallel (`--workers`, `TFF_WORKERS`, or `workers:` in config).
 * **Persistent AST Caching**: Precomputed ASTs are persistently cached under `.tff_cache/ast` keyed by SQLGlot version, SQL dialect, and SQL SHA-256 hash for sub-second repeat runs. Disable with `--no-cache` or clear with `--clear-cache`.
 * **Local Run Logging**: Executions of `tff lint` and `tff health` automatically save run metrics to `.tff_logs/` in JSON format (retained for 60 days). Disable anytime with `--no-log` or `export TFF_NO_LOG=1`.
+* **Debug Logging**: Inspect internal operations and troubleshoot pipeline detection, AST caching, and check execution by passing `--debug` (e.g. `tff --debug lint` or `tff lint --debug`) or setting `export TFF_DEBUG=1`.
 * **Exit Codes**:
   * `0`: Success (all checks passed, health score at or above threshold).
   * `1`: Quality failure (violations found at or above fail-level, or health score below threshold).
@@ -64,6 +65,7 @@ tff lint [options]
 | `--no-cache` | Flag | `false` | Disable disk-based AST caching in `.tff_cache/`. |
 | `--clear-cache` | Flag | `false` | Clear the persistent `.tff_cache/` directory before running. |
 | `--no-log` | Flag | `false` | Disable writing execution logs to `.tff_logs/lint/`. |
+| `--debug` | Flag | `false` | Enable verbose debug logging output to stderr. |
 
 ### Examples
 
@@ -111,6 +113,7 @@ tff health [options]
 | `--clear-cache` | Flag | `false` | Clear the persistent `.tff_cache/` directory before running. |
 | `--json` | Flag | `false` | Output results in JSON format to stdout. |
 | `--no-log` | Flag | `false` | Disable writing execution logs to `.tff_logs/health/`. |
+| `--debug` | Flag | `false` | Enable verbose debug logging output to stderr. |
 
 ### Examples
 

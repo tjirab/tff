@@ -120,6 +120,9 @@ tff lint --format sarif > results.sarif
 
 # Accelerate large DAGs with parallel worker pool and persistent AST caching
 tff lint --workers 8
+
+# Run with verbose debug logging to inspect internal operations
+tff lint --debug
 ```
 
 👉 **For the complete CLI reference, detailed option tables for every command, output formats, and cookbooks, see the [CLI Reference Guide](docs/cli.md).**

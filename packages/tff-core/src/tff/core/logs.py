@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import os
 import time
 from datetime import date, datetime, timedelta
@@ -10,6 +11,8 @@ from pathlib import Path
 from typing import Any
 
 from tff.core.report import LintFinding
+
+logger = logging.getLogger(__name__)
 
 
 def serialize_finding(f: LintFinding) -> dict[str, Any]:
@@ -93,6 +96,32 @@ def is_logging_disabled() -> bool:
     return os.environ.get("TFF_NO_LOG", "").strip().lower() in ("1", "true", "yes")
 
 
+def is_debug_enabled(args: Any = None) -> bool:
+    """Return True if debug logging is enabled via --debug flag or TFF_DEBUG env var."""
+    if args is not None and getattr(args, "debug", False):
+        return True
+    return os.environ.get("TFF_DEBUG", "").strip().lower() in ("1", "true", "yes")
+
+
+def setup_cli_logging(debug: bool = False) -> None:
+    """Configure CLI logging level and formatting for the active session."""
+    level = logging.DEBUG if debug else logging.ERROR
+    if debug:
+        logging.basicConfig(
+            level=level,
+            format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+            datefmt="%H:%M:%S",
+            force=True,
+        )
+    else:
+        logging.basicConfig(
+            level=level,
+            format="%(levelname)s: %(message)s",
+            force=True,
+        )
+    logging.getLogger().setLevel(level)
+
+
 def save_log(
     project_root: Path, command: str, data: dict[str, Any], no_log: bool = False
 ) -> Path | None:
@@ -101,6 +130,7 @@ def save_log(
     If no_log is True or TFF_NO_LOG=1 is set, logging is bypassed and returns None.
     """
     if no_log or is_logging_disabled():
+        logger.debug("Execution logging bypassed (no_log=%s)", no_log)
         return None
 
     log_dir = project_root / ".tff_logs" / command
@@ -113,6 +143,8 @@ def save_log(
 
     with open(log_file, "w", encoding="utf-8") as f:
         json.dump(data, f, indent=2)
+
+    logger.debug("Saved execution log to %s", log_file)
 
     # Clean up logs older than 60 days in both lint/health dirs
     limit = time.time() - (60 * 24 * 3600)

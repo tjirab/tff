@@ -1432,5 +1432,139 @@ def test_cli_lint_workers_and_cache_flags(tmp_path: Path, capsys, monkeypatch: p
     assert exit_code_config_no_cache == 0
 
 
+@patch("tff.core.cli._get_runner")
+@patch("tff.core.cli.load_fitness_config")
+@patch("tff.core.cli.render_lint_report")
+def test_cli_debug_flag_root(mock_render, mock_load_config, mock_get_runner, tmp_path: Path):
+    import logging
+
+    mock_runner = MagicMock()
+    mock_runner.run_all_checks.return_value = ([], 1, ["rules"])
+    mock_get_runner.return_value = mock_runner
+    mock_render.return_value = True
+
+    exit_code = main(["--debug", "lint", "--project", str(tmp_path), "--provider", "dbt"])
+    assert exit_code == 0
+    assert logging.getLogger().level == logging.DEBUG
+
+
+@patch("tff.core.cli._get_runner")
+@patch("tff.core.cli.load_fitness_config")
+@patch("tff.core.cli.render_lint_report")
+def test_cli_debug_flag_subcommand(mock_render, mock_load_config, mock_get_runner, tmp_path: Path):
+    import logging
+
+    mock_runner = MagicMock()
+    mock_runner.run_all_checks.return_value = ([], 1, ["rules"])
+    mock_get_runner.return_value = mock_runner
+    mock_render.return_value = True
+
+    exit_code = main(["lint", "--debug", "--project", str(tmp_path), "--provider", "dbt"])
+    assert exit_code == 0
+    assert logging.getLogger().level == logging.DEBUG
+
+
+@patch("tff.core.cli._get_runner")
+@patch("tff.core.cli.load_fitness_config")
+@patch("tff.core.health.render_health_report")
+def test_cli_debug_flag_health(mock_render_health, mock_load_config, mock_get_runner, tmp_path: Path):
+    import logging
+
+    mock_runner = MagicMock()
+    mock_runner.run_all_checks.return_value = ([], 1, ["rules"])
+    mock_get_runner.return_value = mock_runner
+
+    exit_code = main(["health", "--debug", "--project", str(tmp_path), "--provider", "dbt"])
+    assert exit_code == 0
+    assert logging.getLogger().level == logging.DEBUG
+
+
+def test_cli_debug_only():
+    import logging
+
+    exit_code = main(["--debug"])
+    assert exit_code == 0
+    assert logging.getLogger().level == logging.DEBUG
+
+
+def test_cli_debug_env_var(monkeypatch):
+    import logging
+
+    monkeypatch.setenv("TFF_DEBUG", "1")
+    exit_code = main(["help"])
+    assert exit_code == 0
+    assert logging.getLogger().level == logging.DEBUG
+
+
+@patch("tff.core.cli._get_runner")
+@patch("tff.core.cli.load_fitness_config")
+@patch("tff.core.cli.render_lint_report")
+def test_cli_debug_captures_logs(mock_render, mock_load_config, mock_get_runner, tmp_path: Path, capsys):
+    mock_runner = MagicMock()
+    mock_runner.run_all_checks.return_value = ([], 2, ["rules"])
+    mock_get_runner.return_value = mock_runner
+    mock_render.return_value = True
+
+    exit_code = main(["--debug", "lint", "--project", str(tmp_path), "--provider", "dbt"])
+    assert exit_code == 0
+    captured = capsys.readouterr()
+    assert "TFF v" in captured.err
+    assert "Check execution completed" in captured.err
+
+
+@patch("tff.dbt.cli.run_all_checks")
+@patch("tff.dbt.cli.load_fitness_config")
+@patch("tff.dbt.cli.render_lint_report")
+def test_deprecated_dbt_cli_debug(mock_render, mock_load_config, mock_run_checks, tmp_path: Path):
+    import logging
+    import tff.dbt.cli
+
+    mock_run_checks.return_value = ([], 1, ["rules"])
+    mock_render.return_value = True
+
+    exit_code = tff.dbt.cli.main(["lint", "--debug", "--project", str(tmp_path)])
+    assert exit_code == 0
+    assert logging.getLogger().level == logging.DEBUG
+
+
+@patch("tff.dataform.cli.run_all_checks")
+@patch("tff.dataform.cli.load_fitness_config")
+@patch("tff.dataform.cli.render_lint_report")
+def test_deprecated_dataform_cli_debug(mock_render, mock_load_config, mock_run_checks, tmp_path: Path):
+    import logging
+    import tff.dataform.cli
+
+    mock_run_checks.return_value = ([], 1, ["rules"])
+    mock_render.return_value = True
+
+    exit_code = tff.dataform.cli.main(["lint", "--debug", "--project", str(tmp_path)])
+    assert exit_code == 0
+    assert logging.getLogger().level == logging.DEBUG
+
+
+@patch("tff.sqlmesh.cli.run_all_checks")
+@patch("tff.sqlmesh.cli.load_fitness_config")
+@patch("tff.sqlmesh.cli.render_lint_report")
+def test_deprecated_sqlmesh_cli_debug(mock_render, mock_load_config, mock_run_checks, tmp_path: Path):
+    import logging
+    import tff.sqlmesh.cli
+
+    mock_run_checks.return_value = ([], 1, ["rules"])
+    mock_render.return_value = True
+
+    exit_code = tff.sqlmesh.cli.main(["lint", "--debug", "--project", str(tmp_path)])
+    assert exit_code == 0
+    assert logging.getLogger().level == logging.DEBUG
+
+
+@patch("tff.core.cli._get_adapter")
+def test_cli_get_adapter_error(mock_get_adapter, tmp_path: Path):
+    mock_get_adapter.side_effect = ImportError("Adapter missing")
+    exit_code = main(["lint", "--project", str(tmp_path), "--provider", "dbt"])
+    assert exit_code == 1
+
+
+
+
 
 

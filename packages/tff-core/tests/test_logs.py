@@ -13,6 +13,8 @@ from tff.core.logs import (
     collect_stats,
     render_ascii_chart,
     is_logging_disabled,
+    is_debug_enabled,
+    setup_cli_logging,
 )
 
 
@@ -295,6 +297,44 @@ def test_save_log_env_disabled(tmp_path: Path, monkeypatch):
     res = save_log(tmp_path, "lint", {"test": "data"})
     assert res is None
     assert not (tmp_path / ".tff_logs").exists()
+
+
+def test_is_debug_enabled(monkeypatch):
+    import argparse
+
+    monkeypatch.delenv("TFF_DEBUG", raising=False)
+    assert not is_debug_enabled()
+
+    monkeypatch.setenv("TFF_DEBUG", "1")
+    assert is_debug_enabled()
+
+    monkeypatch.setenv("TFF_DEBUG", "true")
+    assert is_debug_enabled()
+
+    monkeypatch.setenv("TFF_DEBUG", "yes")
+    assert is_debug_enabled()
+
+    monkeypatch.setenv("TFF_DEBUG", "0")
+    assert not is_debug_enabled()
+
+    monkeypatch.delenv("TFF_DEBUG")
+    # With args
+    ns = argparse.Namespace(debug=True)
+    assert is_debug_enabled(ns)
+
+    ns_false = argparse.Namespace(debug=False)
+    assert not is_debug_enabled(ns_false)
+
+
+def test_setup_cli_logging():
+    import logging
+
+    setup_cli_logging(debug=True)
+    assert logging.getLogger().level == logging.DEBUG
+
+    setup_cli_logging(debug=False)
+    assert logging.getLogger().level == logging.ERROR
+
 
 
 

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import logging
 from pathlib import Path
 
 from typing import TYPE_CHECKING
@@ -11,6 +12,8 @@ from tff.core.parallel import precompute_model_asts
 if TYPE_CHECKING:
     from tff.core.config import FitnessFunctionsConfig
 
+logger = logging.getLogger(__name__)
+
 
 def load_dbt_models(
     project_root: Path,
@@ -20,6 +23,7 @@ def load_dbt_models(
     config: FitnessFunctionsConfig | None = None,
 ) -> dict[str, ModelRepresentation]:
     manifest_path = project_root / target_dir / "manifest.json"
+    logger.debug("Loading dbt manifest from %s", manifest_path)
     if not manifest_path.exists():
         raise FileNotFoundError(
             f"dbt manifest not found at {manifest_path}. Please run 'dbt compile' first."
@@ -32,6 +36,8 @@ def load_dbt_models(
     adapter_type = manifest.get("metadata", {}).get("adapter_type")
     if dialect is None:
         dialect = adapter_type
+
+    logger.debug("Resolved dbt SQL dialect: %s (adapter_type: %s)", dialect, adapter_type)
 
     if not dialect:
         raise ValueError(
@@ -154,6 +160,8 @@ def load_dbt_models(
             tags=source.get("tags") or [],
             meta=source.get("meta") or {},
         )
+
+    logger.debug("Mapped %d models/seeds from dbt manifest", len(mapped_models))
 
     # Parallelize AST parsing and hydrate model expressions with disk caching
     precompute_model_asts(

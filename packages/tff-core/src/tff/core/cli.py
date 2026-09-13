@@ -18,7 +18,10 @@ from tff.core.config import (
     load_fitness_config,
     resolve_project_path,
 )
+from tff.core.logs import is_debug_enabled, setup_cli_logging
 from tff.core.report import render_lint_report
+
+logger = logging.getLogger("tff.core.cli")
 
 if TYPE_CHECKING:
     from tff.core.config import FitnessFunctionsConfig
@@ -223,12 +226,12 @@ class TFFArgumentParser(argparse.ArgumentParser):
         # If the prog is already subcommand-specific (e.g. 'tff lint'), use it.
         # Otherwise, check the arguments to see if a subcommand was targetted.
         if hint_cmd == "tff" and TFFArgumentParser._current_argv is not None:
-            for sub in ("lint", "health", "info", "help", "stats", "docs", "init"):
+            for sub in ("lint", "health", "info", "help", "stats", "docs", "init", "action"):
                 if sub in TFFArgumentParser._current_argv:
                     hint_cmd = f"tff {sub}"
                     break
         elif hint_cmd == "tff":
-            for sub in ("lint", "health", "info", "help", "stats", "docs", "init"):
+            for sub in ("lint", "health", "info", "help", "stats", "docs", "init", "action"):
                 if sub in sys.argv:
                     hint_cmd = f"tff {sub}"
                     break
@@ -245,8 +248,21 @@ def _main_impl(argv: list[str] | None = None) -> int:
 
     if not args_list:
         args_list = ["help"]
+    elif all(arg.startswith("-") for arg in args_list) and not any(
+        arg in ("-h", "--help", "-v", "--version") for arg in args_list
+    ):
+        args_list = ["help"] + args_list
 
     TFFArgumentParser._current_argv = args_list
+
+    debug_parent = argparse.ArgumentParser(add_help=False)
+    debug_parent.add_argument(
+        "--debug",
+        action="store_true",
+        default=argparse.SUPPRESS,
+        help="Enable verbose debug logging output",
+    )
+
     parser = TFFArgumentParser(
         prog="tff",
         description=f"tff {__version__} - Run Transformation Fitness Function (tff) checks",
@@ -257,11 +273,19 @@ def _main_impl(argv: list[str] | None = None) -> int:
         action="version",
         version=f"tff {__version__}",
     )
+    parser.add_argument(
+        "--debug",
+        action="store_true",
+        default=False,
+        help="Enable verbose debug logging output",
+    )
     subparsers = parser.add_subparsers(
         dest="command", required=True, parser_class=TFFArgumentParser
     )
 
-    lint_parser = subparsers.add_parser("lint", help="Run all enabled fitness checks")
+    lint_parser = subparsers.add_parser(
+        "lint", parents=[debug_parent], help="Run all enabled fitness checks"
+    )
     lint_parser.add_argument(
         "--project",
         type=Path,
@@ -359,7 +383,7 @@ def _main_impl(argv: list[str] | None = None) -> int:
     )
 
     health_parser = subparsers.add_parser(
-        "health", help="Show project health report and scores"
+        "health", parents=[debug_parent], help="Show project health report and scores"
     )
     health_parser.add_argument(
         "--project",
@@ -442,6 +466,7 @@ def _main_impl(argv: list[str] | None = None) -> int:
     # Info subcommand
     info_parser = subparsers.add_parser(
         "info",
+        parents=[debug_parent],
         help="Show configuration and environment information",
         description="Show configuration and environment information",
     )
@@ -466,6 +491,7 @@ def _main_impl(argv: list[str] | None = None) -> int:
     # Stats subcommand
     stats_parser = subparsers.add_parser(
         "stats",
+        parents=[debug_parent],
         help="Show history and trends of fitness checks",
         description="Show history and trends of fitness checks",
     )
@@ -490,6 +516,7 @@ def _main_impl(argv: list[str] | None = None) -> int:
     # Docs subcommand
     docs_parser = subparsers.add_parser(
         "docs",
+        parents=[debug_parent],
         help="Generate HTML documentation and health dashboard",
         description="Generate HTML documentation and health dashboard",
     )
@@ -543,6 +570,7 @@ def _main_impl(argv: list[str] | None = None) -> int:
     # Init subcommand
     init_parser = subparsers.add_parser(
         "init",
+        parents=[debug_parent],
         help="Scaffold an annotated starter fitness_functions.yaml configuration file",
         description="Scaffold an annotated starter fitness_functions.yaml configuration file in the project directory",
     )
@@ -562,6 +590,7 @@ def _main_impl(argv: list[str] | None = None) -> int:
     # Action subcommand
     action_parser = subparsers.add_parser(
         "action",
+        parents=[debug_parent],
         help="Run TFF GitHub Action pipeline (health scoring, baseline comparison, PR comment)",
         description="Run TFF checks, compare against base branch, emit GitHub annotations, and create/update PR comments",
     )
@@ -678,7 +707,7 @@ def _main_impl(argv: list[str] | None = None) -> int:
         help="Number of parallel worker processes for model loading and AST traversal",
     )
 
-    help_parser = subparsers.add_parser("help", help="Show help details for a command")
+    help_parser = subparsers.add_parser("help", parents=[debug_parent], help="Show help details for a command")
     help_parser.add_argument(
         "subcommand",
         nargs="?",
@@ -687,6 +716,10 @@ def _main_impl(argv: list[str] | None = None) -> int:
     )
 
     args = parser.parse_args(args_list)
+
+    is_debug = is_debug_enabled(args)
+    setup_cli_logging(debug=is_debug)
+    logger.debug("TFF v%s initialized with command: %s (args: %s)", __version__, args.command, args_list)
 
     if args.command == "help":
         if args.subcommand == "lint":
@@ -1068,32 +1101,41 @@ def _main_impl(argv: list[str] | None = None) -> int:
         return execute_action(args)
 
     if args.command in ("lint", "health"):
-        logging.basicConfig(level=logging.ERROR)
         project_root = args.project.resolve()
+        logger.debug("Project root directory: %s", project_root)
 
         # 1. Determine provider
         provider = args.provider
         if provider == "auto":
             try:
                 provider = _detect_provider(project_root)
+                logger.debug("Auto-detected provider: %s", provider)
             except ValueError as e:
+                logger.debug("Provider auto-detection error: %s", e)
                 print(f"Error: {e}", file=sys.stderr)
                 return 1
+        else:
+            logger.debug("Using specified provider: %s", provider)
 
         # 2. Get adapter (checks adapter availability)
         try:
             adapter = _get_adapter(provider)
+            logger.debug("Loaded pipeline adapter: %s", adapter.provider_name)
         except (ImportError, ValueError) as e:
+            logger.debug("Failed to load adapter: %s", e)
             print(f"Error: {e}", file=sys.stderr)
             return 1
 
         # 3. Load config
         try:
+            logger.debug("Loading config from %s (project: %s)", args.config, project_root)
             config = load_fitness_config(
                 project_root,
                 config_path=args.config,
             )
+            logger.debug("Loaded config: %s", config)
         except Exception as e:
+            logger.debug("Failed to load config: %s", e)
             print(f"Error loading configuration: {e}", file=sys.stderr)
             return 1
 
@@ -1102,17 +1144,21 @@ def _main_impl(argv: list[str] | None = None) -> int:
 
         if getattr(args, "workers", None) is not None:
             config.workers = args.workers
+            logger.debug("Set config.workers to %d from CLI flag", args.workers)
         if getattr(args, "no_cache", False):
             config.cache_ast = False
             os.environ["TFF_NO_CACHE"] = "1"
+            logger.debug("AST caching disabled via --no-cache")
         elif not getattr(config, "cache_ast", True):
             os.environ["TFF_NO_CACHE"] = "1"
+            logger.debug("AST caching disabled via config")
 
         if getattr(args, "clear_cache", False):
             from tff.core.ast_cache import clear_ast_cache
 
             custom_cache = getattr(config, "cache_dir", None) if config else None
             cleared = clear_ast_cache(project_root=project_root, custom_dir=custom_cache)
+            logger.debug("Cleared %d AST cache files", cleared)
             if not getattr(args, "json", False):
                 print(f"Cleared {cleared} AST cache file(s).")
 
@@ -1129,6 +1175,14 @@ def _main_impl(argv: list[str] | None = None) -> int:
             )
 
         manifest_path = getattr(args, "manifest", None)
+        logger.debug(
+            "Running %s checks with adapter '%s' (checks=%s, dialect=%s, manifest=%s)",
+            args.command,
+            adapter.provider_name,
+            checks,
+            args.dialect,
+            manifest_path,
+        )
         try:
             findings, models_checked, executed_checks = adapter.run_checks(
                 project_root=project_root,
@@ -1137,7 +1191,14 @@ def _main_impl(argv: list[str] | None = None) -> int:
                 dialect=args.dialect,
                 manifest_path=manifest_path,
             )
+            logger.debug(
+                "Check execution completed: evaluated %d model(s), executed %s, found %d violation(s)",
+                models_checked,
+                executed_checks,
+                len(findings),
+            )
         except Exception as e:
+            logger.debug("Error executing checks: %s", e)
             print(f"Error executing checks: {e}", file=sys.stderr)
             return 1
 
@@ -1252,6 +1313,7 @@ def _main_impl(argv: list[str] | None = None) -> int:
                     fail_level=args.fail_level,  # type: ignore[arg-type]
                     group_by=args.group_by,  # type: ignore[arg-type]
                 )
+            logger.debug("Lint report finished: passed=%s", passed)
             return 0 if passed else 1
         else:
             # health command
@@ -1304,6 +1366,7 @@ def _main_impl(argv: list[str] | None = None) -> int:
                 render_health_report(scores, config, provider, group_by=group_by)
 
             overall_score = scores["overall_score"]
+            logger.debug("Overall project health score: %.2f%% (fail_under=%.1f%%)", overall_score, args.fail_under)
             if args.fail_under > 0.0 and overall_score < args.fail_under:
                 if not args.json:
                     print(

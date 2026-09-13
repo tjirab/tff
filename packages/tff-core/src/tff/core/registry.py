@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Callable, Literal
+
+logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -360,18 +363,31 @@ class CheckRegistry:
 
         workers = get_max_workers(config=config, override=max_workers)
         resolved = self.resolve_checks(checks, config, provider=provider)
+        logger.debug(
+            "Executing %d check(s) across %d model(s) (workers=%d): %s",
+            len(resolved),
+            len(models),
+            workers,
+            [c.id for c in resolved],
+        )
         findings: list[LintFinding] = []
 
         if workers <= 1 or len(resolved) <= 1:
             for check_def in resolved:
-                findings.extend(check_def.run(models, config, max_workers=workers))
+                logger.debug("Executing check '%s' (scope=%s, category=%s)", check_def.id, check_def.scope, check_def.category)
+                res = check_def.run(models, config, max_workers=workers)
+                logger.debug("Check '%s' produced %d finding(s)", check_def.id, len(res))
+                findings.extend(res)
         else:
             from concurrent.futures import ThreadPoolExecutor
 
             pool_size = min(workers, len(resolved))
             with ThreadPoolExecutor(max_workers=pool_size) as executor:
                 def _run_single(c: CheckDefinition) -> list[LintFinding]:
-                    return c.run(models, config, max_workers=1)
+                    logger.debug("Executing check '%s' (scope=%s, category=%s)", c.id, c.scope, c.category)
+                    res = c.run(models, config, max_workers=1)
+                    logger.debug("Check '%s' produced %d finding(s)", c.id, len(res))
+                    return res
 
                 results = executor.map(_run_single, resolved)
                 for res in results:

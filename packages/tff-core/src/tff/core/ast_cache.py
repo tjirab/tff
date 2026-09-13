@@ -70,11 +70,14 @@ def get_cached_ast(
     target_dir = cache_dir or get_ast_cache_dir(project_root)
     cache_file = target_dir / cache_key[:2] / f"{cache_key[2:]}.ast"
     if not cache_file.exists():
+        logger.debug("AST cache miss for key %s", cache_key[:12])
         return None
 
     try:
         data = cache_file.read_bytes()
-        return pickle.loads(data)
+        expr = pickle.loads(data)
+        logger.debug("AST cache hit for key %s (%s)", cache_key[:12], cache_file.name)
+        return expr
     except Exception as exc:
         logger.debug("Failed to load cached AST from %s: %s", cache_file, exc)
         cache_file.unlink(missing_ok=True)
@@ -102,6 +105,7 @@ def set_cached_ast(
 
         target_file = subdir / f"{cache_key[2:]}.ast"
         temp_path.replace(target_file)
+        logger.debug("Cached AST stored for key %s (%s)", cache_key[:12], target_file.name)
     except Exception as exc:
         if temp_path is not None:
             temp_path.unlink(missing_ok=True)

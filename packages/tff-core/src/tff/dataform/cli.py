@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import argparse
-import logging
 import sys
 from pathlib import Path
 
@@ -70,11 +69,19 @@ def main(argv: list[str] | None = None) -> int:
         default=None,
         help="Path to precompiled Dataform compilation_result.json",
     )
+    lint_parser.add_argument(
+        "--debug",
+        action="store_true",
+        default=False,
+        help="Enable verbose debug logging output",
+    )
 
     args = parser.parse_args(argv)
 
     if args.command == "lint":
-        logging.basicConfig(level=logging.ERROR)
+        from tff.core.logs import is_debug_enabled, setup_cli_logging
+
+        setup_cli_logging(debug=is_debug_enabled(args))
         project_root = args.project.resolve()
         config = load_fitness_config(
             project_root,
