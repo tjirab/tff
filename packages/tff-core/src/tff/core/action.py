@@ -155,6 +155,7 @@ def evaluate_project(
     checks: list[str] | None = None,
     dialect: str | None = None,
     manifest: Path | None = None,
+    workers: int | None = None,
 ) -> dict[str, Any]:
     """Run TFF health evaluation on the specified project directory."""
     project_root = Path(project_root).resolve()
@@ -163,6 +164,8 @@ def evaluate_project(
 
     adapter = get_adapter(provider)
     config = load_fitness_config(project_root, config_path=config_path)
+    if workers is not None:
+        config.workers = workers
 
     findings, models_checked, executed_checks = adapter.run_checks(
         project_root=project_root,
@@ -614,6 +617,7 @@ def execute_action(args: argparse.Namespace) -> int:
             checks=checks,
             dialect=getattr(args, "dialect", None),
             manifest=getattr(args, "manifest", None),
+            workers=getattr(args, "workers", None),
         )
     except Exception as e:
         print(

@@ -41,20 +41,24 @@ def run_all_checks(
     checks: list[str] | None = None,
     dialect: str | None = None,
     models: dict[str, ModelRepresentation] | None = None,
+    workers: int | None = None,
 ) -> tuple[list[LintFinding], int, list[str]]:
     project_root = project_root or Path.cwd()
     if config is None:
         config = load_fitness_config(project_root)
 
+    resolved_workers = workers if workers is not None else getattr(config, "workers", None)
+
     # Parse and load manifest.json if models not already provided
     if models is None:
-        models = load_dbt_models(project_root, dialect=dialect)
+        models = load_dbt_models(project_root, dialect=dialect, max_workers=resolved_workers)
 
     findings, selected = registry.run_checks(
         models=models,
         config=config,
         checks=checks,
         provider="dbt",
+        max_workers=resolved_workers,
     )
 
     models_checked = sum(

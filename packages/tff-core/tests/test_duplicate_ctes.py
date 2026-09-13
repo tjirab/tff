@@ -217,3 +217,109 @@ def test_duplicate_ctes_parse_exception():
     )
     assert collect_duplicate_cte_findings({"m": model_invalid_sql}, config) == []
 
+
+def test_extract_model_cte_fingerprints_direct():
+    from tff.core.checks.duplicate_ctes import extract_model_cte_fingerprints
+    import sqlglot
+
+    # 1. None ast_or_sql
+    assert extract_model_cte_fingerprints(("m", "m.sql", "duckdb", None, 12)) == []
+
+    # 2. String SQL with complex CTE
+    sql = """
+    WITH complex_cte AS (
+        SELECT id, name FROM users WHERE active = true JOIN orders ON users.id = orders.user_id
+    )
+    SELECT * FROM complex_cte
+    """
+    res1 = extract_model_cte_fingerprints(("m1", "m1.sql", "duckdb", sql, 6))
+    assert len(res1) == 1
+    assert res1[0][1]["cte_name"] == "complex_cte"
+
+    # 3. Parsed Expression with simple CTE (node count < min_nodes)
+    simple_sql = "WITH simple_cte AS (SELECT 1) SELECT * FROM simple_cte"
+    parsed_simple = sqlglot.parse_one(simple_sql, read="duckdb")
+    res2 = extract_model_cte_fingerprints(("m2", "m2.sql", "duckdb", parsed_simple, 15))
+    assert len(res2) == 0
+
+
+def test_duplicate_ctes_parallel_execution():
+    config = FitnessFunctionsConfig()
+    config.checks.duplicate_ctes.enabled = True
+    config.checks.duplicate_ctes.min_ast_nodes = 8
+
+    cte_logic = """
+    WITH shared_logic AS (
+        SELECT user_id, SUM(amount) AS total
+        FROM ref('stg_orders')
+        WHERE status = 'completed'
+        GROUP BY 1
+    )
+    """
+
+    models = {
+        f"model_{i}": ModelRepresentation(
+            name=f"model_{i}",
+            path=f"models/marts/model_{i}.sql",
+            dialect="duckdb",
+            query=f"{cte_logic} SELECT * FROM shared_logic",
+        )
+        for i in range(3)
+    }
+
+    # Parallel run with max_workers=2
+    findings = collect_duplicate_cte_findings(models, config, max_workers=2)
+    assert len(findings) == 3
+    for f in findings:
+        assert f.check == "duplicate_ctes"
+        assert "has duplicate transformation logic" in f.message
+
+
+def test_duplicate_ctes_parallel_fallback():
+    config = FitnessFunctionsConfig()
+    config.checks.duplicate_ctes.enabled = True
+    config.checks.duplicate_ctes.min_ast_nodes = 8
+
+    cte_logic = """
+    WITH shared_logic AS (
+        SELECT user_id, SUM(amount) AS total
+        FROM ref('stg_orders')
+        WHERE status = 'completed'
+        GROUP BY 1
+    )
+    """
+
+    models = {
+        f"model_{i}": ModelRepresentation(
+            name=f"model_{i}",
+            path=f"models/marts/model_{i}.sql",
+            dialect="duckdb",
+            query=f"{cte_logic} SELECT * FROM shared_logic",
+        )
+        for i in range(3)
+    }
+
+    from unittest.mock import patch
+    with patch(
+        "tff.core.checks.duplicate_ctes.ProcessPoolExecutor",
+        side_effect=RuntimeError("ProcessPool unavailable"),
+    ):
+        findings = collect_duplicate_cte_findings(models, config, max_workers=2)
+        assert len(findings) == 3
+
+
+def test_duplicate_ctes_empty_and_external():
+    config = FitnessFunctionsConfig()
+    config.checks.duplicate_ctes.enabled = True
+
+    # Empty
+    assert collect_duplicate_cte_findings({}, config) == []
+
+    # Only external / symbolic models
+    models = {
+        "ext": ModelRepresentation(name="ext", path="ext.sql", dialect="duckdb", is_external=True),
+        "sym": ModelRepresentation(name="sym", path="sym.sql", dialect="duckdb", is_symbolic=True),
+    }
+    assert collect_duplicate_cte_findings(models, config) == []
+
+

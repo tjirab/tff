@@ -21,6 +21,11 @@ STARTER_CONFIG_YAML: str = """# ================================================
 # Documentation: https://github.com/tjirab/tff
 # =============================================================================
 
+# Parallelism and caching options (optional)
+# workers: 4          # Number of worker processes (default: auto, capped at CPU count)
+# cache_ast: true     # Enable persistent AST caching in .tff_cache/ (default: true)
+# cache_dir: ".tff_cache" # Persistent AST cache directory (default: ".tff_cache")
+
 # Define the architectural layer hierarchy (upstream -> downstream).
 # Models in an upstream layer cannot depend on models in a downstream layer.
 layers:
@@ -489,6 +494,19 @@ class FitnessFunctionsConfig(BaseModel):
     contract_groups: ContractGroupsConfig | None = None
     exclusions: list[CustomExclusionRule] | None = None
     allowed_exceptions: list[AllowedExceptionRule] | None = None
+    workers: int | None = None
+    cache_ast: bool = True
+    cache_dir: str = ".tff_cache"
+
+    @field_validator("workers", mode="before")
+    @classmethod
+    def _validate_workers(cls, v: Any) -> int | None:
+        if v is None:
+            return None
+        val = int(v)
+        if val < 1:
+            raise ValueError(f"workers must be at least 1, got {val}")
+        return val
 
     @field_validator("plugins", mode="before")
     @classmethod

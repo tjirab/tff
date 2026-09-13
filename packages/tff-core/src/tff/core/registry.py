@@ -63,37 +63,19 @@ def run_model_rule(
     severity: Severity = "error",
     check_name: str | None = None,
     config: FitnessFunctionsConfig | None = None,
+    max_workers: int | None = None,
 ) -> list[LintFinding]:
     """Execute a single model-level Rule across all eligible models in a project."""
-    from tff.core.report import LintFinding
-    from tff.core.utils.paths import model_path_relative
+    from tff.core.parallel import run_parallel_model_rule
 
-    rule = rule_cls(config=config)
-    findings: list[LintFinding] = []
-    finding_check = check_name or getattr(rule, "name", rule_cls.__name__.lower())
-
-    for model in models.values():
-        if model.is_external or model.is_symbolic:
-            continue
-
-        violation = rule.check_model(model)
-        if violation:
-            msgs = violation.violation_msg
-            if isinstance(msgs, str):
-                msgs = [msgs]
-            for msg in msgs:
-                model_label = f"{model.name}: "
-                clean_msg = msg.removeprefix(model_label)
-                findings.append(
-                    LintFinding(
-                        check=finding_check,
-                        severity=severity,
-                        model=model.name,
-                        path=model_path_relative(model),
-                        message=clean_msg,
-                    )
-                )
-    return findings
+    return run_parallel_model_rule(
+        rule_cls=rule_cls,
+        models=list(models.values()),
+        severity=severity,
+        check_name=check_name,
+        config=config,
+        max_workers=max_workers,
+    )
 
 
 @dataclass(frozen=True)
@@ -173,6 +155,7 @@ class CheckDefinition:
         self,
         models: dict[str, ModelRepresentation],
         config: FitnessFunctionsConfig,
+        max_workers: int | None = None,
     ) -> list[LintFinding]:
         if self.scope == "model":
             rule_cls = self.get_rule_cls()
@@ -184,11 +167,17 @@ class CheckDefinition:
                     severity=severity,
                     check_name=self.finding_id,
                     config=config,
+                    max_workers=max_workers,
                 )
             return []
         elif self.scope == "dag":
             collector = self.get_collector_fn()
             if collector is not None:
+                import inspect
+
+                sig = inspect.signature(collector)
+                if "max_workers" in sig.parameters:
+                    return collector(models, config, max_workers=max_workers)
                 return collector(models, config)
             return []
         return []
@@ -365,11 +354,28 @@ class CheckRegistry:
         config: FitnessFunctionsConfig,
         checks: list[str] | None = None,
         provider: str = "dbt",
+        max_workers: int | None = None,
     ) -> tuple[list[LintFinding], list[str]]:
+        from tff.core.parallel import get_max_workers
+
+        workers = get_max_workers(config=config, override=max_workers)
         resolved = self.resolve_checks(checks, config, provider=provider)
         findings: list[LintFinding] = []
-        for check_def in resolved:
-            findings.extend(check_def.run(models, config))
+
+        if workers <= 1 or len(resolved) <= 1:
+            for check_def in resolved:
+                findings.extend(check_def.run(models, config, max_workers=workers))
+        else:
+            from concurrent.futures import ThreadPoolExecutor
+
+            pool_size = min(workers, len(resolved))
+            with ThreadPoolExecutor(max_workers=pool_size) as executor:
+                def _run_single(c: CheckDefinition) -> list[LintFinding]:
+                    return c.run(models, config, max_workers=1)
+
+                results = executor.map(_run_single, resolved)
+                for res in results:
+                    findings.extend(res)
 
         if checks is not None:
             executed_names = checks

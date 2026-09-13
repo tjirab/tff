@@ -25,6 +25,8 @@ The CLI provides the following subcommands:
 
 * **Zero-Config Fallback**: If no `fitness_functions.yaml` is present, TFF automatically infers standard architectural layer conventions (`staging` &rarr; `intermediate` &rarr; `core` &rarr; `marts`) and runs all baseline rules.
 * **Auto-Discovery**: TFF automatically detects the project engine (`dbt`, `SQLMesh`, or `Dataform`) by scanning configuration files in the target directory.
+* **Parallel Execution**: AST parsing, duplicate CTE fingerprinting, and model rule checks execute across a worker pool in parallel (`--workers`, `TFF_WORKERS`, or `workers:` in config).
+* **Persistent AST Caching**: Precomputed ASTs are persistently cached under `.tff_cache/ast` keyed by SQLGlot version, SQL dialect, and SQL SHA-256 hash for sub-second repeat runs. Disable with `--no-cache` or clear with `--clear-cache`.
 * **Local Run Logging**: Executions of `tff lint` and `tff health` automatically save run metrics to `.tff_logs/` in JSON format (retained for 60 days). Disable anytime with `--no-log` or `export TFF_NO_LOG=1`.
 * **Exit Codes**:
   * `0`: Success (all checks passed, health score at or above threshold).
@@ -58,6 +60,9 @@ tff lint [options]
 | `--json` | Flag | `false` | Shorthand for `--format json`. |
 | `--github-annotations` | Flag | (auto if CI) | Emit GitHub Actions workflow commands (`::error` / `::warning`) to stderr. |
 | `--junit-xml PATH` | File Path | (none) | Write JUnit XML test report for CI results tabs (GitLab, Azure DevOps, Bitbucket). |
+| `--workers NUM` | Integer | (auto / CPU count) | Number of worker processes for parallel model loading, AST parsing, and CTE analysis (or set `TFF_WORKERS`). |
+| `--no-cache` | Flag | `false` | Disable disk-based AST caching in `.tff_cache/`. |
+| `--clear-cache` | Flag | `false` | Clear the persistent `.tff_cache/` directory before running. |
 | `--no-log` | Flag | `false` | Disable writing execution logs to `.tff_logs/lint/`. |
 
 ### Examples
@@ -101,6 +106,9 @@ tff health [options]
 | `--group-by` | `connascence`, `domain` | `connascence` | Group breakdown by connascence category or domain folder. |
 | `--dialect DIALECT` | String | (auto-inferred) | SQL dialect of models. |
 | `--manifest PATH` | File Path | (auto-discovered) | Path to precompiled manifest. |
+| `--workers NUM` | Integer | (auto / CPU count) | Number of worker processes for parallel model loading and AST parsing. |
+| `--no-cache` | Flag | `false` | Disable disk-based AST caching in `.tff_cache/`. |
+| `--clear-cache` | Flag | `false` | Clear the persistent `.tff_cache/` directory before running. |
 | `--json` | Flag | `false` | Output results in JSON format to stdout. |
 | `--no-log` | Flag | `false` | Disable writing execution logs to `.tff_logs/health/`. |
 
@@ -146,6 +154,7 @@ tff action [options]
 | `--annotations` / `--no-annotations` | Flag | `true` | Emit GitHub Actions workflow command annotations. |
 | `--pr-number NUM` | Integer | (auto-detected) | Pull request number (auto-inferred from `$GITHUB_EVENT_PATH`). |
 | `--repo OWNER/REPO` | String | (auto-detected) | GitHub repository full name (auto-inferred from `$GITHUB_REPOSITORY`). |
+| `--workers NUM` | Integer | (auto / CPU count) | Number of worker processes for parallel model loading and AST parsing. |
 | `--json` | Flag | `false` | Output final results as JSON to stdout. |
 
 ### Examples
@@ -178,6 +187,7 @@ tff docs [options]
 | `--provider` | `auto`, `dbt`, `sqlmesh`, `dataform` | `auto` | Pipeline engine provider. |
 | `--dialect DIALECT` | String | (auto-inferred) | SQL dialect of models. |
 | `--manifest PATH` | File Path | (auto-discovered) | Path to precompiled manifest. |
+| `--workers NUM` | Integer | (auto / CPU count) | Number of worker processes for parallel model loading and AST parsing. |
 | `--no-log` | Flag | `false` | Disable writing execution logs. |
 
 ### Examples

@@ -509,6 +509,26 @@ def test_rule_get_rule_config():
     assert rule_bare.get_rule_config() is None
 
 
+def test_config_workers_and_cache():
+    cfg = FitnessFunctionsConfig(workers=4, cache_ast=False, cache_dir=".custom_cache")
+    assert cfg.workers == 4
+    assert cfg.cache_ast is False
+    assert cfg.cache_dir == ".custom_cache"
+
+    # String converted to int
+    cfg_str = FitnessFunctionsConfig(workers="2")
+    assert cfg_str.workers == 2
+
+    # None allowed
+    cfg_none = FitnessFunctionsConfig(workers=None)
+    assert cfg_none.workers is None
+
+    # Invalid workers < 1 raises ValidationError
+    with pytest.raises(ValidationError, match="workers must be at least 1"):
+        FitnessFunctionsConfig(workers=0)
+
+
+
 
 
 

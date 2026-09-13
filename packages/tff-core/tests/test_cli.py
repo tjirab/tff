@@ -1364,4 +1364,46 @@ def test_cli_info_and_lint_with_plugins_and_custom_adapter(tmp_path: Path, capsy
         _REGISTERED_ADAPTERS.pop("my_custom_engine", None)
 
 
+def test_cli_lint_workers_and_cache_flags(tmp_path: Path, capsys):
+    (tmp_path / "dbt_project.yml").touch()
+    (tmp_path / "fitness_functions.yaml").write_text("workers: 1\n", encoding="utf-8")
+    (tmp_path / "target").mkdir()
+    (tmp_path / "target" / "manifest.json").write_text(
+        '{"metadata": {"adapter_type": "duckdb"}, "nodes": {}, "sources": {}}',
+        encoding="utf-8",
+    )
+
+    # 1. Test --workers and --no-cache
+    exit_code = main([
+        "lint",
+        "--project", str(tmp_path),
+        "--provider", "dbt",
+        "--workers", "4",
+        "--no-cache",
+    ])
+    assert exit_code == 0
+
+    # 2. Test --clear-cache
+    exit_code_clear = main([
+        "lint",
+        "--project", str(tmp_path),
+        "--provider", "dbt",
+        "--clear-cache",
+    ])
+    assert exit_code_clear == 0
+    captured = capsys.readouterr()
+    assert "Cleared" in captured.out
+
+    # 3. Test health with --workers and --no-cache
+    exit_code_health = main([
+        "health",
+        "--project", str(tmp_path),
+        "--provider", "dbt",
+        "--workers", "2",
+        "--no-cache",
+    ])
+    assert exit_code_health == 0
+
+
+
 

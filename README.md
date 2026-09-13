@@ -117,6 +117,9 @@ tff docs
 
 # Export SARIF for GitHub Code Scanning
 tff lint --format sarif > results.sarif
+
+# Accelerate large DAGs with parallel worker pool and persistent AST caching
+tff lint --workers 8
 ```
 
 👉 **For the complete CLI reference, detailed option tables for every command, output formats, and cookbooks, see the [CLI Reference Guide](docs/cli.md).**

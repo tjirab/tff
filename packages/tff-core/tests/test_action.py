@@ -901,4 +901,11 @@ def test_execute_action_git_rev_parse_failure() -> None:
                 assert code == 0
 
 
+def test_evaluate_project_with_workers() -> None:
+    res = evaluate_project(_MINIMAL_DBT, workers=2)
+    assert res["config"].workers == 2
+    assert "overall_score" in res["scores"]
+
+
+
 

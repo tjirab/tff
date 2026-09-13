@@ -42,15 +42,21 @@ def run_all_checks(
     dialect: str | None = None,
     manifest_path: str | Path | None = None,
     models: dict[str, ModelRepresentation] | None = None,
+    workers: int | None = None,
 ) -> tuple[list[LintFinding], int, list[str]]:
     project_root = project_root or Path.cwd()
     if config is None:
         config = load_fitness_config(project_root)
 
+    resolved_workers = workers if workers is not None else getattr(config, "workers", None)
+
     # Load Dataform models if not already provided
     if models is None:
         models = load_dataform_models(
-            project_root, manifest_path=manifest_path, dialect=dialect
+            project_root,
+            manifest_path=manifest_path,
+            dialect=dialect,
+            max_workers=resolved_workers,
         )
 
     findings, selected = registry.run_checks(
@@ -58,6 +64,7 @@ def run_all_checks(
         config=config,
         checks=checks,
         provider="dataform",
+        max_workers=resolved_workers,
     )
 
     # Count of non-external, non-symbolic models checked

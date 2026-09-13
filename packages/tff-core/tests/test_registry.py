@@ -751,3 +751,96 @@ class RegistryTestRule(Rule):
     assert len(loaded) == 1
     assert reg.get("reg_test_rule") is not None
 
+
+def test_registry_run_checks_parallel():
+    reg = CheckRegistry()
+    cfg = FitnessFunctionsConfig()
+
+    class Rule1(Rule):
+        name = "rule_one"
+        def check_model(self, model):
+            return None
+
+    class Rule2(Rule):
+        name = "rule_two"
+        def check_model(self, model):
+            return None
+
+    reg.register_rule(Rule1, id="rule_one")
+    reg.register_rule(Rule2, id="rule_two")
+
+    models = {
+        "m1": ModelRepresentation(name="m1", path="m1.sql", dialect="duckdb"),
+        "m2": ModelRepresentation(name="m2", path="m2.sql", dialect="duckdb"),
+    }
+
+    # Sequential
+    findings_seq, selected_seq = reg.run_checks(
+        models=models,
+        config=cfg,
+        checks=["rule_one", "rule_two"],
+        max_workers=1,
+    )
+    assert findings_seq == []
+    assert selected_seq == ["rule_one", "rule_two"]
+
+    # Parallel with max_workers=2
+    findings_par, selected_par = reg.run_checks(
+        models=models,
+        config=cfg,
+        checks=["rule_one", "rule_two"],
+        max_workers=2,
+    )
+    assert findings_par == []
+    assert selected_par == ["rule_one", "rule_two"]
+
+
+def test_check_definition_run_with_workers():
+    cfg = FitnessFunctionsConfig()
+    models = {"m": ModelRepresentation(name="m", path="m.sql", dialect="duckdb")}
+
+    # Model scope
+    class DummyRule(Rule):
+        name = "dummy"
+        def check_model(self, model):
+            return RuleViolation("violation")
+
+    check_model = CheckDefinition(
+        id="dummy",
+        label="Dummy",
+        category="Test",
+        scope="model",
+        rule_cls=DummyRule,
+    )
+    findings = check_model.run(models, cfg, max_workers=2)
+    assert len(findings) == 1
+
+    # DAG scope with max_workers in signature
+    def collector_with_workers(m, c, max_workers=None):
+        return [LintFinding("dag_check", "warning", "m", "m.sql", "msg")]
+
+    check_dag_workers = CheckDefinition(
+        id="dag_workers",
+        label="DAG Workers",
+        category="Test",
+        scope="dag",
+        collector_fn=collector_with_workers,
+    )
+    findings_dag = check_dag_workers.run(models, cfg, max_workers=2)
+    assert len(findings_dag) == 1
+
+    # DAG scope without max_workers in signature
+    def collector_without_workers(m, c):
+        return [LintFinding("dag_no_workers", "warning", "m", "m.sql", "msg")]
+
+    check_dag_no_workers = CheckDefinition(
+        id="dag_no_workers",
+        label="DAG No Workers",
+        category="Test",
+        scope="dag",
+        collector_fn=collector_without_workers,
+    )
+    findings_dag2 = check_dag_no_workers.run(models, cfg, max_workers=2)
+    assert len(findings_dag2) == 1
+
+

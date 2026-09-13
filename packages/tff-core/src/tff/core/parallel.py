@@ -1,0 +1,246 @@
+"""Worker pool utilities for parallel AST parsing, rule execution, and CTE fingerprinting."""
+
+from __future__ import annotations
+
+import logging
+import os
+import re
+from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor
+from pathlib import Path
+from typing import TYPE_CHECKING, Any
+
+from tff.core.ast_cache import (
+    compute_ast_cache_key,
+    get_ast_cache_dir,
+    get_cached_ast,
+    is_cache_enabled,
+    parse_sql_with_cache,
+)
+from tff.core.utils.jinja import clean_dataform_for_parsing, clean_jinja_for_parsing
+
+if TYPE_CHECKING:
+    import sqlglot.expressions as exp
+    from tff.core.config import FitnessFunctionsConfig
+    from tff.core.model import ModelRepresentation
+    from tff.core.report import LintFinding, Severity
+    from tff.core.rules.base import Rule
+
+logger = logging.getLogger(__name__)
+
+
+def get_max_workers(
+    config: FitnessFunctionsConfig | None = None,
+    override: int | None = None,
+) -> int:
+    """Determine the maximum number of worker processes or threads to use."""
+    if override is not None:
+        return max(1, int(override))
+
+    env_tff = os.environ.get("TFF_MAX_WORKERS")
+    if env_tff:
+        try:
+            return max(1, int(env_tff.strip()))
+        except ValueError:
+            pass
+
+    if config is not None:
+        cfg_workers = getattr(config, "workers", None)
+        if cfg_workers is not None:
+            try:
+                return max(1, int(cfg_workers))
+            except ValueError:
+                pass
+
+    env_fork = os.environ.get("MAX_FORK_WORKERS")
+    if env_fork:
+        try:
+            return max(1, int(env_fork.strip()))
+        except ValueError:
+            pass
+
+    cpu_count = os.cpu_count() or 1
+    return max(1, min(cpu_count, 8))
+
+
+def _clean_sql_for_model(sql: str) -> str:
+    """Clean SQL by stripping MODEL blocks and template directives."""
+    cleaned = re.sub(r"^MODEL\s*\(.*?\)\s*;", "", sql, flags=re.DOTALL | re.IGNORECASE).strip()
+    cleaned = clean_dataform_for_parsing(cleaned)
+    cleaned = clean_jinja_for_parsing(cleaned)
+    return cleaned
+
+
+def _worker_parse_model_sql(
+    task: tuple[str, str, str, str | None, bool],
+) -> tuple[str, exp.Expression | None]:
+    """Top-level worker function for parsing a model SQL query into an AST."""
+    model_name, cleaned_sql, dialect, cache_dir_str, cache_enabled = task
+    cache_dir = Path(cache_dir_str) if cache_dir_str else None
+    parsed = parse_sql_with_cache(
+        cleaned_sql,
+        dialect=dialect,
+        cache_dir=cache_dir,
+        enabled=cache_enabled,
+    )
+    return model_name, parsed
+
+
+def precompute_model_asts(
+    models: dict[str, ModelRepresentation],
+    project_root: Path | None = None,
+    config: FitnessFunctionsConfig | None = None,
+    max_workers: int | None = None,
+) -> None:
+    """Parse and populate AST expressions for models in parallel using disk cache."""
+    cache_enabled = is_cache_enabled(config)
+    cache_dir = get_ast_cache_dir(project_root) if cache_enabled else None
+
+    tasks: list[tuple[str, str, str, str | None, bool]] = []
+
+    for name, model in models.items():
+        if model.expression is not None:
+            continue
+        if model.is_external or model.is_symbolic:
+            continue
+
+        sql = model.query
+        if sql is None:
+            if not model.path:
+                continue
+            path = Path(model.path)
+            if not path.exists():
+                continue
+            try:
+                sql = path.read_text(encoding="utf-8")
+            except Exception:
+                continue
+
+        if not sql or not sql.strip():
+            continue
+
+        cleaned_sql = _clean_sql_for_model(sql)
+        if not cleaned_sql:
+            continue
+
+        # Fast in-process disk cache check
+        if cache_enabled and cache_dir is not None:
+            cache_key = compute_ast_cache_key(cleaned_sql, model.dialect)
+            cached_ast = get_cached_ast(cache_key, cache_dir=cache_dir)
+            if cached_ast is not None:
+                model.expression = cached_ast
+                continue
+
+        tasks.append((
+            name,
+            cleaned_sql,
+            model.dialect,
+            str(cache_dir) if cache_dir else None,
+            cache_enabled,
+        ))
+
+    if not tasks:
+        return
+
+    workers = get_max_workers(config=config, override=max_workers)
+    if workers <= 1 or len(tasks) <= 2:
+        for task in tasks:
+            m_name, expr = _worker_parse_model_sql(task)
+            if expr is not None and m_name in models:
+                models[m_name].expression = expr
+        return
+
+    try:
+        pool_size = min(workers, len(tasks))
+        with ProcessPoolExecutor(max_workers=pool_size) as executor:
+            chunksize = max(1, len(tasks) // (pool_size * 4))
+            for m_name, expr in executor.map(_worker_parse_model_sql, tasks, chunksize=chunksize):
+                if expr is not None and m_name in models:
+                    models[m_name].expression = expr
+    except Exception as exc:
+        logger.debug("ProcessPoolExecutor encountered an issue (%s), falling back to sequential parsing", exc)
+        for task in tasks:
+            m_name, expr = _worker_parse_model_sql(task)
+            if expr is not None and m_name in models:
+                models[m_name].expression = expr
+
+
+def _check_single_model(
+    args: tuple[type[Rule], Any, ModelRepresentation, Severity, str],
+) -> list[LintFinding]:
+    rule_cls, config, model, severity, finding_check = args
+    from tff.core.report import LintFinding
+    from tff.core.utils.paths import model_path_relative
+
+    findings: list[LintFinding] = []
+    rule = rule_cls(config=config)
+    violation = rule.check_model(model)
+    if violation:
+        msgs = violation.violation_msg
+        if isinstance(msgs, str):
+            msgs = [msgs]
+        for msg in msgs:
+            model_label = f"{model.name}: "
+            clean_msg = msg.removeprefix(model_label)
+            findings.append(
+                LintFinding(
+                    check=finding_check,
+                    severity=severity,
+                    model=model.name,
+                    path=model_path_relative(model),
+                    message=clean_msg,
+                )
+            )
+    return findings
+
+
+def run_parallel_model_rule(
+    rule_cls: type[Rule],
+    models: list[ModelRepresentation],
+    severity: Severity = "error",
+    check_name: str | None = None,
+    config: FitnessFunctionsConfig | None = None,
+    max_workers: int | None = None,
+) -> list[LintFinding]:
+    """Execute a single model rule across models, parallelizing across threads if beneficial."""
+    from tff.core.report import LintFinding
+    from tff.core.utils.paths import model_path_relative
+
+    finding_check = check_name or getattr(rule_cls, "name", rule_cls.__name__.lower())
+    eligible_models = [m for m in models if not m.is_external and not m.is_symbolic]
+
+    if not eligible_models:
+        return []
+
+    workers = get_max_workers(config=config, override=max_workers)
+    if workers <= 1 or len(eligible_models) <= 20:
+        rule = rule_cls(config=config)
+        findings: list[LintFinding] = []
+        for model in eligible_models:
+            violation = rule.check_model(model)
+            if violation:
+                msgs = violation.violation_msg
+                if isinstance(msgs, str):
+                    msgs = [msgs]
+                for msg in msgs:
+                    model_label = f"{model.name}: "
+                    clean_msg = msg.removeprefix(model_label)
+                    findings.append(
+                        LintFinding(
+                            check=finding_check,
+                            severity=severity,
+                            model=model.name,
+                            path=model_path_relative(model),
+                            message=clean_msg,
+                        )
+                    )
+        return findings
+
+    # Parallelize model rule execution using thread pool
+    pool_size = min(workers, len(eligible_models))
+    tasks = [(rule_cls, config, m, severity, finding_check) for m in eligible_models]
+    all_findings: list[LintFinding] = []
+    with ThreadPoolExecutor(max_workers=pool_size) as executor:
+        for res in executor.map(_check_single_model, tasks):
+            all_findings.extend(res)
+
+    return all_findings

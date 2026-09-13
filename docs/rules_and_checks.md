@@ -15,6 +15,28 @@ TFF includes a built-in auto-fixer that can automatically resolve simple violati
 
 ---
 
+## ⚡ Performance: Parallel Traversal & AST Caching
+
+For enterprise DAGs consisting of hundreds or thousands of transformation models, TFF provides multi-core parallelism and persistent disk-based caching:
+
+* **Parallel Model Loading & Parsing**: AST parsing is dispatched across a pool of worker processes (`ProcessPoolExecutor`) during model loading.
+* **Parallel Duplicate CTE Fingerprinting**: CTE extraction, AST normalization, and cryptographic hashing run concurrently across models.
+* **Persistent AST Caching**: Precomputed ASTs are cached in `.tff_cache/ast` keyed by SQLGlot version, target dialect, and model SQL SHA-256 hash. Repeat evaluations achieve sub-second execution speeds.
+* **Threaded Rule Execution**: Model-level rules and check definitions run concurrently via thread pools (`run_parallel_model_rule`).
+
+### Configuration in `fitness_functions.yaml`
+
+```yaml
+# Root configuration options:
+workers: 4              # Optional: number of worker processes (default: auto, capped at CPU count)
+cache_ast: true         # Optional: toggle persistent AST caching (default: true)
+cache_dir: ".tff_cache" # Optional: persistent cache directory (default: ".tff_cache")
+```
+
+You can also override these on the CLI via `--workers <N>`, `--no-cache`, and `--clear-cache`, or via the `TFF_WORKERS` environment variable.
+
+---
+
 ## Shared Layer Filtering Configuration
 
 Most checks and rules inherit a common layer filtering schema. This allows you to apply guardrails selectively based on the pipeline layer a model belongs to:
@@ -299,6 +321,7 @@ Architectural checks evaluate the structure, dependencies, and layout of your en
 * **What it checks**:
   * Identifies "Connascence of Algorithm" by flagging duplicate or near-identical transformation logic inside CTEs across different models.
   * CTEs are parsed, canonicalized using `sqlglot` to ignore whitespace/formatting differences, and hashed.
+  * CTE extraction and fingerprinting run concurrently across a parallel worker pool for high-performance traversal on large DAGs.
   * Only "complex" CTEs are checked. A CTE is complex if it has a minimum AST node count and contains a structural element (`JOIN`, `WHERE`, `GROUP BY`, `HAVING`, `WINDOW`, `CASE`, or `IF`).
 * **How to configure**:
   Defined under `checks.duplicate_ctes` in `fitness_functions.yaml`.

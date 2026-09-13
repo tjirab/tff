@@ -21,12 +21,20 @@ def generate_docs_dashboard(
     config_path: str = "fitness_functions.yaml",
     manifest_path: str | Path | None = None,
     no_log: bool = False,
+    workers: int | None = None,
 ) -> Path:
     """Run checks, compile, and output a standalone interactive HTML dashboard."""
     # 1. Load config
     config = load_fitness_config(project_root, config_path=config_path)
+    if workers is not None:
+        config.workers = workers
 
     # 2. Get adapter
+    if provider == "auto":
+        from tff.core.adapter import detect_provider
+
+        provider = detect_provider(project_root)
+
     from tff.core.cli import _get_adapter
 
     adapter = _get_adapter(provider)

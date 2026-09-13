@@ -340,6 +340,22 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="Disable saving run execution logs to .tff_logs/",
     )
+    lint_parser.add_argument(
+        "--workers",
+        type=int,
+        default=None,
+        help="Number of parallel worker processes for model loading and AST traversal",
+    )
+    lint_parser.add_argument(
+        "--no-cache",
+        action="store_true",
+        help="Disable disk-based AST caching",
+    )
+    lint_parser.add_argument(
+        "--clear-cache",
+        action="store_true",
+        help="Clear persistent AST disk cache before execution",
+    )
 
     health_parser = subparsers.add_parser(
         "health", help="Show project health report and scores"
@@ -404,6 +420,17 @@ def main(argv: list[str] | None = None) -> int:
         "--no-log",
         action="store_true",
         help="Disable saving run execution logs to .tff_logs/",
+    )
+    health_parser.add_argument(
+        "--workers",
+        type=int,
+        default=None,
+        help="Number of parallel worker processes for model loading and AST traversal",
+    )
+    health_parser.add_argument(
+        "--no-cache",
+        action="store_true",
+        help="Disable disk-based AST caching",
     )
 
     # Info subcommand
@@ -499,6 +526,12 @@ def main(argv: list[str] | None = None) -> int:
         "--no-log",
         action="store_true",
         help="Disable saving run execution logs to .tff_logs/",
+    )
+    docs_parser.add_argument(
+        "--workers",
+        type=int,
+        default=None,
+        help="Number of parallel worker processes for model loading and AST traversal",
     )
 
     # Init subcommand
@@ -631,6 +664,12 @@ def main(argv: list[str] | None = None) -> int:
         "--json",
         action="store_true",
         help="Output results in JSON format to stdout",
+    )
+    action_parser.add_argument(
+        "--workers",
+        type=int,
+        default=None,
+        help="Number of parallel worker processes for model loading and AST traversal",
     )
 
     help_parser = subparsers.add_parser("help", help="Show help details for a command")
@@ -991,6 +1030,8 @@ def main(argv: list[str] | None = None) -> int:
             docs_kwargs["no_log"] = True
         if getattr(args, "manifest", None) is not None:
             docs_kwargs["manifest_path"] = args.manifest
+        if getattr(args, "workers", None) is not None:
+            docs_kwargs["workers"] = args.workers
         try:
             output_file = generate_docs_dashboard(**docs_kwargs)
             print(f"Successfully generated HTML dashboard at: {output_file}")
@@ -1052,6 +1093,17 @@ def main(argv: list[str] | None = None) -> int:
 
         if not getattr(config, "_config_file_found", True) and not getattr(args, "json", False):
             print(MISSING_CONFIG_NOTICE, file=sys.stderr)
+
+        if getattr(args, "workers", None) is not None:
+            config.workers = args.workers
+        if getattr(args, "no_cache", False):
+            config.cache_ast = False
+        if getattr(args, "clear_cache", False):
+            from tff.core.ast_cache import clear_ast_cache
+
+            cleared = clear_ast_cache(project_root=project_root)
+            if not getattr(args, "json", False):
+                print(f"Cleared {cleared} AST cache file(s).")
 
         if args.command == "lint":
             checks = _parse_checks(args.checks)

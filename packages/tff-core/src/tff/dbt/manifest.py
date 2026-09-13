@@ -4,12 +4,14 @@ import json
 from pathlib import Path
 
 from tff.core.model import ModelRepresentation
+from tff.core.parallel import precompute_model_asts
 
 
 def load_dbt_models(
     project_root: Path,
     target_dir: str = "target",
     dialect: str | None = None,
+    max_workers: int | None = None,
 ) -> dict[str, ModelRepresentation]:
     manifest_path = project_root / target_dir / "manifest.json"
     if not manifest_path.exists():
@@ -105,14 +107,6 @@ def load_dbt_models(
         audits = model_tests.get(unique_id, [])
         query = node.get("compiled_code") or node.get("raw_code")
 
-        expression = None
-        if query:
-            try:
-                import sqlglot
-                expression = sqlglot.parse_one(query, read=dialect)
-            except Exception:
-                pass
-
         mapped_models[unique_id] = ModelRepresentation(
             name=name,
             path=abs_path,
@@ -127,11 +121,10 @@ def load_dbt_models(
             audits=audits,
             query=query,
             materialized=materialized,
-            expression=expression,
+            expression=None,
             tags=node.get("tags") or [],
             meta={**config_meta, **meta},
         )
-
 
     # 3. Map sources to ModelRepresentation so graph checks resolve them
     for source_id, source in manifest.get("sources", {}).items():
@@ -156,5 +149,7 @@ def load_dbt_models(
             meta=source.get("meta") or {},
         )
 
+    # Parallelize AST parsing and hydrate model expressions with disk caching
+    precompute_model_asts(mapped_models, project_root=project_root, max_workers=max_workers)
 
     return mapped_models

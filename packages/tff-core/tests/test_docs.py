@@ -252,3 +252,28 @@ def test_help_docs_subcommand(capsys):
     assert main(["help", "docs"]) == 0
     captured = capsys.readouterr()
     assert "Generate HTML documentation and health dashboard" in captured.out
+
+
+@patch("tff.core.cli._detect_provider")
+@patch("tff.core.docs.generate_docs_dashboard")
+def test_cli_docs_command_with_workers(mock_generate_docs, mock_detect_provider, tmp_path: Path):
+    mock_detect_provider.return_value = "dbt"
+    mock_generate_docs.return_value = tmp_path / "tff_report.html"
+
+    exit_code = main(["docs", "--project", str(tmp_path), "--workers", "3"])
+    assert exit_code == 0
+    assert mock_generate_docs.call_args[1]["workers"] == 3
+
+
+def test_generate_docs_dashboard_workers(tmp_path: Path):
+    (tmp_path / "dbt_project.yml").touch()
+    (tmp_path / "fitness_functions.yaml").touch()
+    (tmp_path / "target").mkdir()
+    (tmp_path / "target" / "manifest.json").write_text(
+        '{"metadata": {"adapter_type": "duckdb"}, "nodes": {}, "sources": {}}',
+        encoding="utf-8",
+    )
+    res = generate_docs_dashboard(tmp_path, workers=2, no_log=True)
+    assert res.exists()
+
+
