@@ -45,6 +45,7 @@ git checkout -b feat/<task-summary> # For new features
 
 ### Step 6: Self-Review (Quality Gate)
 **Goal:** Proactively review the entire contribution as if preparing for a peer review.
+**Workflow:** Run `/review` to trigger the automated code review skill, checking security, performance, feature coverage, and test coverage before opening the PR.
 **Checklist:**
 *   [ ] Does the code only implement what was asked? (No scope creep).
 *   [ ] Are variable/function names clear and self-explanatory?
