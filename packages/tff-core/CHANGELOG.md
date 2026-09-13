@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.15.0](https://github.com/tjirab/tff/compare/tff-core-v0.14.0...tff-core-v0.15.0) (2026-09-13)
+
+
+### Features
+
+* **cli:** add --debug flag and verbose logging for under-the-hood inspection ([#191](https://github.com/tjirab/tff/issues/191)) ([8ab1004](https://github.com/tjirab/tff/commit/8ab100474364e86ff13302b9c7e0aa22c0cd71ec))
+
+
+### Performance Improvements
+
+* **core:** parallelize AST traversal and duplicate CTE fingerprinting ([#161](https://github.com/tjirab/tff/issues/161)) ([#187](https://github.com/tjirab/tff/issues/187)) ([83c5ab6](https://github.com/tjirab/tff/commit/83c5ab6924621747d22644b2b3507aba0d2c80f7))
+
 ## [0.14.0](https://github.com/tjirab/tff/compare/tff-core-v0.13.0...tff-core-v0.14.0) (2026-09-13)
 
 
