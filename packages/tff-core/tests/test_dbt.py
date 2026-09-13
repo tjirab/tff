@@ -209,6 +209,38 @@ def test_run_all_checks(tmp_path: Path):
     assert len(findings_subset) > 0
 
 
+def test_run_all_checks_with_no_cache(tmp_path: Path):
+    target_dir = tmp_path / "target"
+    target_dir.mkdir(parents=True, exist_ok=True)
+    manifest_file = target_dir / "manifest.json"
+    manifest_data = {
+        "nodes": {
+            "model.my_project.stg_users": {
+                "resource_type": "model",
+                "name": "stg_users",
+                "original_file_path": "models/staging/stg_users.sql",
+                "columns": {},
+                "config": {},
+                "meta": {},
+                "raw_code": "SELECT 1 AS id",
+                "depends_on": {"nodes": []},
+            }
+        },
+        "sources": {},
+        "metadata": {"adapter_type": "duckdb"},
+    }
+    manifest_file.write_text(json.dumps(manifest_data), encoding="utf-8")
+
+    config = FitnessFunctionsConfig(cache_ast=False)
+    findings, checked, _ = run_all_checks(
+        project_root=tmp_path,
+        config=config,
+    )
+    assert checked == 1
+    # Verify .tff_cache was not created
+    assert not (tmp_path / ".tff_cache").exists()
+
+
 def test_dbt_metadata_checks_coverage(tmp_path: Path):
     target_dir = tmp_path / "target"
     target_dir.mkdir(parents=True, exist_ok=True)

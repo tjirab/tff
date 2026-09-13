@@ -837,4 +837,24 @@ def test_load_dataform_models_cli_compilation_success_and_failure(tmp_path: Path
         assert isinstance(models_fallback, dict)
 
 
+def test_dataform_run_all_checks_with_no_cache(tmp_path: Path):
+    from tff.core.config import FitnessFunctionsConfig
+    from tff.dataform.runner import run_all_checks
+
+    definitions_dir = tmp_path / "definitions"
+    definitions_dir.mkdir(parents=True, exist_ok=True)
+    sqlx = """
+    config {
+      type: 'view'
+    }
+    SELECT 1 AS val
+    """
+    (definitions_dir / "m1.sqlx").write_text(sqlx, encoding="utf-8")
+
+    config = FitnessFunctionsConfig(cache_ast=False)
+    findings, checked, _ = run_all_checks(project_root=tmp_path, config=config)
+    assert checked == 1
+    assert not (tmp_path / ".tff_cache").exists()
+
+
 

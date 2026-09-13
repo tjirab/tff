@@ -26,7 +26,14 @@ def get_ast_cache_dir(
 ) -> Path:
     """Resolve the directory for storing AST cache files."""
     if custom_dir:
-        return Path(custom_dir)
+        p = Path(custom_dir)
+        if not p.is_absolute() and project_root:
+            p = project_root / p
+        if p.name == AST_CACHE_SUBDIR:
+            return p
+        if (p / AST_CACHE_SUBDIR).exists() or not p.exists():
+            return p / AST_CACHE_SUBDIR
+        return p
     env_dir = os.environ.get("TFF_CACHE_DIR")
     if env_dir:
         return Path(env_dir) / AST_CACHE_SUBDIR
@@ -83,6 +90,7 @@ def set_cached_ast(
     """Atomically store an AST expression into the disk cache."""
     target_dir = cache_dir or get_ast_cache_dir(project_root)
     subdir = target_dir / cache_key[:2]
+    temp_path: Path | None = None
     try:
         subdir.mkdir(parents=True, exist_ok=True)
         data = pickle.dumps(expression, protocol=pickle.HIGHEST_PROTOCOL)
@@ -91,10 +99,12 @@ def set_cached_ast(
         with tempfile.NamedTemporaryFile(dir=subdir, delete=False, suffix=".tmp") as tf:
             tf.write(data)
             temp_path = Path(tf.name)
-        
+
         target_file = subdir / f"{cache_key[2:]}.ast"
         temp_path.replace(target_file)
     except Exception as exc:
+        if temp_path is not None:
+            temp_path.unlink(missing_ok=True)
         logger.debug("Failed to write cached AST to %s: %s", target_dir, exc)
 
 
@@ -143,9 +153,10 @@ def clear_ast_cache(
         return 0
 
     count = 0
-    for ast_file in target_dir.glob("**/*.ast"):
-        ast_file.unlink(missing_ok=True)
-        count += 1
+    for pattern in ("**/*.ast", "**/*.tmp"):
+        for cached_file in target_dir.glob(pattern):
+            cached_file.unlink(missing_ok=True)
+            count += 1
 
     # Clean up empty subdirectories
     for sub in list(target_dir.iterdir()):

@@ -45,7 +45,13 @@ def test_get_max_workers(monkeypatch: pytest.MonkeyPatch):
     cfg_invalid.__dict__["workers"] = "invalid"
     assert get_max_workers(config=cfg_invalid) >= 1
 
-    # 3. TFF_MAX_WORKERS env var
+    # 3. TFF_WORKERS / TFF_MAX_WORKERS env var
+    monkeypatch.setenv("TFF_WORKERS", "6")
+    assert get_max_workers() == 6
+    monkeypatch.setenv("TFF_WORKERS", "invalid")
+    assert get_max_workers() >= 1
+    monkeypatch.delenv("TFF_WORKERS")
+
     monkeypatch.setenv("TFF_MAX_WORKERS", "5")
     assert get_max_workers() == 5
     monkeypatch.setenv("TFF_MAX_WORKERS", "invalid")
@@ -133,6 +139,17 @@ def test_precompute_model_asts_sequential_and_filters(tmp_path: Path):
         query="MODEL (name empty_model);",
     )
 
+    rel_dir = tmp_path / "models" / "staging"
+    rel_dir.mkdir(parents=True, exist_ok=True)
+    rel_file = rel_dir / "rel_model.sql"
+    rel_file.write_text("SELECT 99 AS val", encoding="utf-8")
+    m_rel = ModelRepresentation(
+        name="m_rel",
+        path="models/staging/rel_model.sql",
+        dialect="duckdb",
+        query=None,
+    )
+
     models = {
         "m1": m1,
         "m_already": m_already_parsed,
@@ -143,6 +160,7 @@ def test_precompute_model_asts_sequential_and_filters(tmp_path: Path):
         "m_empty_path": m_empty_path,
         "m_empty_sql": m_empty_sql,
         "m_block": m_model_block_only,
+        "m_rel": m_rel,
     }
 
     precompute_model_asts(models, project_root=tmp_path, max_workers=1)
@@ -152,6 +170,7 @@ def test_precompute_model_asts_sequential_and_filters(tmp_path: Path):
     assert m_external.expression is None
     assert m_symbolic.expression is None
     assert m_from_path.expression is not None
+    assert m_rel.expression is not None
     assert m_nonexistent.expression is None
     assert m_empty_path.expression is None
     assert m_empty_sql.expression is None
@@ -280,3 +299,23 @@ def test_run_parallel_model_rule_multithreaded():
     # Even indices (0, 2, 4, ..., 24) = 13 models contain 'foo'
     assert len(findings) == 13
     assert all(f.check == "dummy_ban_foo" for f in findings)
+
+
+def test_precompute_model_asts_custom_cache_dir(tmp_path: Path):
+    custom_dir = tmp_path / "custom_cache"
+    cfg = FitnessFunctionsConfig(cache_dir=str(custom_dir))
+
+    model = ModelRepresentation(
+        name="custom_cached_model",
+        path="m.sql",
+        dialect="duckdb",
+        query="SELECT 123",
+    )
+    precompute_model_asts(
+        {"custom_cached_model": model},
+        project_root=tmp_path,
+        config=cfg,
+        max_workers=1,
+    )
+    assert model.expression is not None
+    assert (custom_dir / "ast").exists()

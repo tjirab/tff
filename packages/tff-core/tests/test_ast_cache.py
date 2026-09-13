@@ -37,7 +37,14 @@ def test_get_ast_cache_dir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
 
     # Custom dir parameter
     custom = tmp_path / "custom_cache"
-    assert get_ast_cache_dir(tmp_path, custom_dir=custom) == custom
+    assert get_ast_cache_dir(tmp_path, custom_dir=custom) == custom / "ast"
+
+    # Custom relative dir
+    assert get_ast_cache_dir(tmp_path, custom_dir=".custom_cache") == tmp_path / ".custom_cache" / "ast"
+
+    # Custom dir already ending in 'ast'
+    already_ast = tmp_path / "custom" / "ast"
+    assert get_ast_cache_dir(tmp_path, custom_dir=already_ast) == already_ast
 
     # Environment variable override
     env_dir = tmp_path / "env_cache"
@@ -107,6 +114,12 @@ def test_set_cached_ast_error_handling(tmp_path: Path):
         # Should not raise exception
         set_cached_ast(key, exp.Literal.number(1), cache_dir=cache_dir)
 
+    # Test failure during replace cleans up the temporary file
+    with patch("pathlib.Path.replace", side_effect=OSError("Permission denied")):
+        set_cached_ast(key, exp.Literal.number(1), cache_dir=cache_dir)
+        # Verify no orphaned .tmp files remain
+        assert list(cache_dir.glob("**/*.tmp")) == []
+
 
 def test_parse_sql_with_cache_empty_and_disabled(tmp_path: Path):
     cache_dir = tmp_path / "cache"
@@ -170,7 +183,11 @@ def test_clear_ast_cache(tmp_path: Path):
     non_empty.mkdir()
     (non_empty / "other.txt").touch()
 
+    # Add orphaned temp file to ensure it gets cleared
+    (cache_dir / "orphaned.tmp").touch()
+
     cleared = clear_ast_cache(custom_dir=cache_dir)
-    assert cleared == 2
+    assert cleared == 3
     assert list(cache_dir.glob("**/*.ast")) == []
+    assert list(cache_dir.glob("**/*.tmp")) == []
     assert non_empty.exists()

@@ -51,7 +51,12 @@ def run_all_checks(
 
     # Parse and load manifest.json if models not already provided
     if models is None:
-        models = load_dbt_models(project_root, dialect=dialect, max_workers=resolved_workers)
+        models = load_dbt_models(
+            project_root,
+            dialect=dialect,
+            max_workers=resolved_workers,
+            config=config,
+        )
 
     findings, selected = registry.run_checks(
         models=models,

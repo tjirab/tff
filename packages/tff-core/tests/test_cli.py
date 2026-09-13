@@ -1,4 +1,5 @@
 import json
+import os
 import sys
 from pathlib import Path
 from unittest.mock import MagicMock, patch
@@ -1364,7 +1365,7 @@ def test_cli_info_and_lint_with_plugins_and_custom_adapter(tmp_path: Path, capsy
         _REGISTERED_ADAPTERS.pop("my_custom_engine", None)
 
 
-def test_cli_lint_workers_and_cache_flags(tmp_path: Path, capsys):
+def test_cli_lint_workers_and_cache_flags(tmp_path: Path, capsys, monkeypatch: pytest.MonkeyPatch):
     (tmp_path / "dbt_project.yml").touch()
     (tmp_path / "fitness_functions.yaml").write_text("workers: 1\n", encoding="utf-8")
     (tmp_path / "target").mkdir()
@@ -1403,6 +1404,32 @@ def test_cli_lint_workers_and_cache_flags(tmp_path: Path, capsys):
         "--no-cache",
     ])
     assert exit_code_health == 0
+
+    # 4. Test health with --clear-cache
+    exit_code_health_clear = main([
+        "health",
+        "--project", str(tmp_path),
+        "--provider", "dbt",
+        "--clear-cache",
+    ])
+    assert exit_code_health_clear == 0
+
+    # 5. Test main when TFF_NO_CACHE is already set in os.environ (verifies restoration)
+    monkeypatch.setenv("TFF_NO_CACHE", "1")
+    exit_code_env = main(["help"])
+    assert exit_code_env == 0
+    assert os.environ.get("TFF_NO_CACHE") == "1"
+    monkeypatch.delenv("TFF_NO_CACHE")
+
+    # 6. Test with config containing cache_ast: false
+    config_file = tmp_path / "fitness_functions.yaml"
+    config_file.write_text("cache_ast: false\n", encoding="utf-8")
+    exit_code_config_no_cache = main([
+        "lint",
+        "--project", str(tmp_path),
+        "--provider", "dbt",
+    ])
+    assert exit_code_config_no_cache == 0
 
 
 

@@ -323,3 +323,47 @@ def test_duplicate_ctes_empty_and_external():
     assert collect_duplicate_cte_findings(models, config) == []
 
 
+def test_duplicate_ctes_from_file_path(tmp_path: Path):
+    config = FitnessFunctionsConfig()
+    config.checks.duplicate_ctes.enabled = True
+    config.checks.duplicate_ctes.min_ast_nodes = 8
+
+    cte_sql = """
+    WITH shared_cte AS (
+        SELECT id, price * qty AS total
+        FROM ref('stg_items')
+        WHERE price > 0
+    )
+    SELECT * FROM shared_cte
+    """
+
+    f1 = tmp_path / "m1.sql"
+    f2 = tmp_path / "m2.sql"
+    f1.write_text(cte_sql, encoding="utf-8")
+    f2.write_text(cte_sql, encoding="utf-8")
+
+    m1 = ModelRepresentation(
+        name="m1",
+        path=str(f1),
+        dialect="duckdb",
+        query=None,
+    )
+    m2 = ModelRepresentation(
+        name="m2",
+        path=str(f2),
+        dialect="duckdb",
+        query=None,
+    )
+    m3_missing = ModelRepresentation(
+        name="m3_missing",
+        path="nonexistent_model_file.sql",
+        dialect="duckdb",
+        query=None,
+    )
+
+    models = {"m1": m1, "m2": m2, "m3": m3_missing}
+    findings = collect_duplicate_cte_findings(models, config, max_workers=1)
+    assert len(findings) == 2
+    assert {f.model for f in findings} == {"m1", "m2"}
+
+

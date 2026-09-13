@@ -57,6 +57,7 @@ def run_all_checks(
             manifest_path=manifest_path,
             dialect=dialect,
             max_workers=resolved_workers,
+            config=config,
         )
 
     findings, selected = registry.run_checks(

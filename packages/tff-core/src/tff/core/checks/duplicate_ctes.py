@@ -6,6 +6,7 @@ import hashlib
 import logging
 from collections import defaultdict
 from concurrent.futures import ProcessPoolExecutor
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 import sqlglot.expressions as exp
@@ -97,12 +98,20 @@ def collect_duplicate_cte_findings(
         if not rule_config.should_run(layer):
             continue
 
-        parsed = model.ast
+        raw_or_parsed: exp.Expression | str | None = (
+            model.expression if model.expression is not None else model.query
+        )
+        if raw_or_parsed is None and model.path:
+            try:
+                raw_or_parsed = Path(model.path).read_text(encoding="utf-8")
+            except Exception:
+                raw_or_parsed = None
+
         tasks.append((
             model.name,
             model.path,
             model.dialect,
-            parsed,
+            raw_or_parsed,
             rule_config.min_ast_nodes,
         ))
 

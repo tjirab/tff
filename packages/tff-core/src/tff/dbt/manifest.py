@@ -3,8 +3,13 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+from typing import TYPE_CHECKING
+
 from tff.core.model import ModelRepresentation
 from tff.core.parallel import precompute_model_asts
+
+if TYPE_CHECKING:
+    from tff.core.config import FitnessFunctionsConfig
 
 
 def load_dbt_models(
@@ -12,6 +17,7 @@ def load_dbt_models(
     target_dir: str = "target",
     dialect: str | None = None,
     max_workers: int | None = None,
+    config: FitnessFunctionsConfig | None = None,
 ) -> dict[str, ModelRepresentation]:
     manifest_path = project_root / target_dir / "manifest.json"
     if not manifest_path.exists():
@@ -150,6 +156,11 @@ def load_dbt_models(
         )
 
     # Parallelize AST parsing and hydrate model expressions with disk caching
-    precompute_model_asts(mapped_models, project_root=project_root, max_workers=max_workers)
+    precompute_model_asts(
+        mapped_models,
+        project_root=project_root,
+        config=config,
+        max_workers=max_workers,
+    )
 
     return mapped_models

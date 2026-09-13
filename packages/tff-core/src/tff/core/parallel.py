@@ -36,7 +36,7 @@ def get_max_workers(
     if override is not None:
         return max(1, int(override))
 
-    env_tff = os.environ.get("TFF_MAX_WORKERS")
+    env_tff = os.environ.get("TFF_WORKERS") or os.environ.get("TFF_MAX_WORKERS")
     if env_tff:
         try:
             return max(1, int(env_tff.strip()))
@@ -63,7 +63,7 @@ def get_max_workers(
 
 
 def _clean_sql_for_model(sql: str) -> str:
-    """Clean SQL by stripping MODEL blocks and template directives."""
+    """Strip Jinja/Dataform/SQLMesh syntax noise for AST parsing."""
     cleaned = re.sub(r"^MODEL\s*\(.*?\)\s*;", "", sql, flags=re.DOTALL | re.IGNORECASE).strip()
     cleaned = clean_dataform_for_parsing(cleaned)
     cleaned = clean_jinja_for_parsing(cleaned)
@@ -93,7 +93,8 @@ def precompute_model_asts(
 ) -> None:
     """Parse and populate AST expressions for models in parallel using disk cache."""
     cache_enabled = is_cache_enabled(config)
-    cache_dir = get_ast_cache_dir(project_root) if cache_enabled else None
+    custom_cache = getattr(config, "cache_dir", None) if config else None
+    cache_dir = get_ast_cache_dir(project_root, custom_dir=custom_cache) if cache_enabled else None
 
     tasks: list[tuple[str, str, str, str | None, bool]] = []
 
@@ -108,10 +109,11 @@ def precompute_model_asts(
             if not model.path:
                 continue
             path = Path(model.path)
-            if not path.exists():
+            target_path = path if path.is_absolute() or not project_root else project_root / path
+            if not target_path.exists():
                 continue
             try:
-                sql = path.read_text(encoding="utf-8")
+                sql = target_path.read_text(encoding="utf-8")
             except Exception:
                 continue
 
