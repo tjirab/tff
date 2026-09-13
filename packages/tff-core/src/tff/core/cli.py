@@ -193,12 +193,16 @@ class _MockRunnerAdapter(PipelineAdapter):
 
 def _get_adapter(provider: str) -> PipelineAdapter:
     """Load and return the adapter instance for the specified provider, wrapping test mocks if present."""
-    runner = _get_runner(provider)
-    from unittest.mock import Mock
+    try:
+        runner = _get_runner(provider)
+        from unittest.mock import Mock
 
-    if isinstance(runner, Mock):
-        return _MockRunnerAdapter(provider, runner)
+        if isinstance(runner, Mock):
+            return _MockRunnerAdapter(provider, runner)
+    except Exception:
+        pass
     return get_adapter(provider)
+
 
 
 def _parse_checks(value: str | None) -> list[str] | None:
@@ -288,10 +292,10 @@ def main(argv: list[str] | None = None) -> int:
     )
     lint_parser.add_argument(
         "--provider",
-        choices=["auto", "dbt", "sqlmesh", "dataform"],
         default="auto",
         help="Pipeline engine provider (default: auto-detected)",
     )
+
     lint_parser.add_argument(
         "--dialect",
         default=None,
@@ -353,10 +357,10 @@ def main(argv: list[str] | None = None) -> int:
     )
     health_parser.add_argument(
         "--provider",
-        choices=["auto", "dbt", "sqlmesh", "dataform"],
         default="auto",
         help="Pipeline engine provider (default: auto-detected)",
     )
+
     health_parser.add_argument(
         "--dialect",
         default=None,
@@ -421,10 +425,10 @@ def main(argv: list[str] | None = None) -> int:
     )
     info_parser.add_argument(
         "--provider",
-        choices=["auto", "dbt", "sqlmesh", "dataform"],
         default="auto",
         help="Pipeline engine provider (default: auto-detected)",
     )
+
 
     # Stats subcommand
     stats_parser = subparsers.add_parser(
@@ -469,10 +473,10 @@ def main(argv: list[str] | None = None) -> int:
     )
     docs_parser.add_argument(
         "--provider",
-        choices=["auto", "dbt", "sqlmesh", "dataform"],
         default="auto",
         help="Pipeline engine provider (default: auto-detected)",
     )
+
     docs_parser.add_argument(
         "--dialect",
         default=None,
@@ -530,10 +534,10 @@ def main(argv: list[str] | None = None) -> int:
     )
     action_parser.add_argument(
         "--provider",
-        choices=["auto", "dbt", "sqlmesh", "dataform"],
         default="auto",
         help="Pipeline engine provider (default: auto-detected)",
     )
+
     action_parser.add_argument(
         "--config",
         default="fitness_functions.yaml",
@@ -743,9 +747,14 @@ def main(argv: list[str] | None = None) -> int:
                     "  [bold]Exclusions:[/bold]",
                     f"{exclusions_path} ({exclusions_status})",
                 )
+                if hasattr(cfg, "plugins") and cfg.plugins:
+                    for p in cfg.plugins:
+                        table.add_row("  [bold]Plugin:[/bold]", str(p))
             except Exception as e:
+
                 console.print(f"[yellow]Failed to load config: {e}[/yellow]")
         console.print(table)
+
 
         console.print("\n[bold cyan]● Adapter Versions[/bold cyan]")
         target_site_packages = []
@@ -808,7 +817,15 @@ def main(argv: list[str] | None = None) -> int:
         ver_table.add_row(
             "  [bold]dataform integration[/bold]", f"{tff_ver} [dim](core)[/dim]"
         )
+        from tff.core.adapter import get_available_providers
+
+        for prov in get_available_providers():
+            if prov not in ("dbt", "sqlmesh", "dataform"):
+                ver_table.add_row(
+                    f"  [bold]{prov} integration[/bold]", "[cyan]plugin[/cyan]"
+                )
         console.print(ver_table)
+
 
         try:
             adapter = _get_adapter(provider)

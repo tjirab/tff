@@ -654,3 +654,129 @@ health:
    The weighted average across all active checks:
    $$\text{Overall Score} = \frac{\sum (\text{score}_i \times \text{weight}_i)}{\sum \text{weight}_i}$$
 
+---
+
+## 3. Custom Plugins & Extensions
+
+TFF provides an extensible plugin architecture that enables teams to implement proprietary fitness rules and connect custom transformation engines or pipeline adapters without modifying `tff-core`.
+
+### Overview
+
+Plugins can be registered through two mechanisms:
+1. **Python Package Entry Points**: Distributed Python packages exposing `tff.rules` and `tff.adapters` entry points are discovered automatically when installed in your Python environment.
+2. **Configuration File Plugins**: Local Python scripts or installed modules declared under the `plugins:` list in `fitness_functions.yaml`.
+
+```yaml
+# fitness_functions.yaml
+plugins:
+  - rules/my_custom_rules.py
+  - my_company_tff_plugin
+
+rules:
+  company_naming_convention:
+    enabled: true
+    severity: error
+    prefix: "corp_"
+```
+
+### Authoring Custom Rules
+
+To define a custom model-level rule, inherit from `tff.core.rules.base.Rule` and implement `check_model`:
+
+```python
+# rules/my_custom_rules.py
+from tff.core.model import ModelRepresentation
+from tff.core.rules.base import Rule, RuleViolation
+
+class CompanyNamingRule(Rule):
+    """Enforce that production models follow internal company naming standards."""
+    name = "company_naming_convention"
+    category = "Internal Standards"
+    default_severity = "error"
+
+    def check_model(self, model: ModelRepresentation) -> RuleViolation | None:
+        cfg = self.get_rule_config() or {}
+        prefix = cfg.get("prefix", "corp_") if isinstance(cfg, dict) else getattr(cfg, "prefix", "corp_")
+
+        if not model.name.startswith(prefix):
+            return self.violation(f"Model '{model.name}' must start with required prefix '{prefix}'.")
+        return None
+```
+
+TFF automatically discovers and registers any `Rule` subclasses found within files or modules listed in `plugins:`. Custom configuration options can be retrieved dynamically via `self.get_rule_config()`.
+
+#### Module Registration Hooks (Optional)
+
+If you prefer explicit control, you can define a `register` or `register_rules` hook function in your plugin module:
+
+```python
+from tff.core.registry import CheckDefinition, CheckRegistry
+
+def register(registry: CheckRegistry) -> list[CheckDefinition]:
+    return [
+        CheckDefinition(
+            id="custom_dag_check",
+            label="Custom DAG Validation",
+            category="Custom",
+            scope="dag",
+            collector_module="my_plugin.collector",
+            collector_func_name="run_dag_check",
+        )
+    ]
+```
+
+### Authoring Custom Pipeline Adapters
+
+Third-party adapters allow TFF to analyze non-standard data pipelines or internal orchestration frameworks. Subclass `tff.core.adapter.PipelineAdapter`:
+
+```python
+from pathlib import Path
+from tff.core.adapter import PipelineAdapter, register_adapter
+from tff.core.model import ModelRepresentation
+
+class MyCustomEngineAdapter(PipelineAdapter):
+    @property
+    def provider_name(self) -> str:
+        return "custom_engine"
+
+    def is_applicable(self, project_root: Path) -> bool:
+        """Return True if project_root contains this engine's project definition."""
+        return (project_root / "custom_pipeline.yml").is_file()
+
+    def load_models(self, project_root: Path, dialect=None, manifest_path=None) -> dict[str, ModelRepresentation]:
+        # Parse and return ModelRepresentation mapping
+        return {}
+
+    def run_checks(self, project_root: Path, config, checks=None, dialect=None, manifest_path=None, models=None):
+        # Run checks or delegate to CheckRegistry
+        return [], 0, []
+```
+
+To register the adapter, either:
+- Expose it in a plugin file/module (auto-discovered),
+- Define `register_adapters()` in your plugin module, or
+- Call `register_adapter("custom_engine", MyCustomEngineAdapter)`.
+
+### Registering via Python Package Entry Points
+
+For installable libraries (e.g. distributed via PyPI or internal wheels), configure entry points in `pyproject.toml`:
+
+```toml
+[project.entry-points."tff.rules"]
+company_naming = "my_package.rules:CompanyNamingRule"
+custom_checks = "my_package.rules:register"
+
+[project.entry-points."tff.adapters"]
+custom_engine = "my_package.adapter:MyCustomEngineAdapter"
+```
+
+Once installed, TFF discovers and registers these rules and adapters automatically without requiring explicit `plugins:` configuration in `fitness_functions.yaml`.
+
+### Inspecting Plugins and Adapters
+
+You can inspect registered plugins and adapters using the `tff info` command:
+
+```bash
+tff info
+```
+

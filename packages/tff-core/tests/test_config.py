@@ -3,6 +3,7 @@
 from pathlib import Path
 
 import pytest
+from pydantic import ValidationError
 
 from tff.core.config import (
     DEFAULT_LAYER_ORDER,
@@ -424,6 +425,89 @@ health:
     })
     assert ratio_cfg.health.penalties.get_check_error_penalty("layer_integrity", is_project_level=True) == 25.0
     assert ratio_cfg.health.penalties.get_check_warning_penalty("layer_integrity", is_project_level=True) == 10.0
+
+
+def test_fitness_config_plugins(tmp_path: Path):
+    from tff.core.config import FitnessFunctionsConfig, STARTER_CONFIG_YAML, load_fitness_config
+    from tff.core.registry import registry
+
+    # 1. plugins as list
+    cfg1 = FitnessFunctionsConfig(plugins=["plugin1.py", "plugin2.py"])
+    assert cfg1.plugins == ["plugin1.py", "plugin2.py"]
+
+    # 2. plugins as single string normalized
+    cfg2 = FitnessFunctionsConfig.model_validate({"plugins": "single_plugin.py"})
+    assert cfg2.plugins == ["single_plugin.py"]
+
+    # 3. plugins as None normalized to empty list
+    cfg3 = FitnessFunctionsConfig.model_validate({"plugins": None})
+    assert cfg3.plugins == []
+
+    # Invalid plugins type raises ValidationError
+    with pytest.raises(ValidationError):
+        FitnessFunctionsConfig.model_validate({"plugins": 123})
+
+    # 4. STARTER_CONFIG_YAML contains plugins comment
+    assert "# plugins:" in STARTER_CONFIG_YAML
+
+    # 5. load_fitness_config triggers plugin loading
+    plugin_file = tmp_path / "cfg_test_plugin.py"
+    plugin_file.write_text(
+        """from tff.core.rules.base import Rule
+class CfgTestRule(Rule):
+    name = "cfg_test_rule"
+    def check_model(self, model):
+        return None
+""",
+        encoding="utf-8",
+    )
+
+    yaml_file = tmp_path / "fitness_functions.yaml"
+    yaml_file.write_text(
+        f"""plugins:
+  - "{plugin_file.name}"
+""",
+        encoding="utf-8",
+    )
+
+    loaded_cfg = load_fitness_config(tmp_path)
+    assert loaded_cfg.plugins == [plugin_file.name]
+    assert registry.get("cfg_test_rule") is not None
+
+
+def test_rule_get_rule_config():
+    from tff.core.config import FitnessFunctionsConfig
+    from tff.core.rules.base import Rule
+
+    class TestCustomRule(Rule):
+        name = "test_custom_rule"
+
+    cfg = FitnessFunctionsConfig.model_validate({
+        "rules": {
+            "test_custom_rule": {"threshold": 42, "enabled": True},
+            "other_rule": {"threshold": 100},
+        }
+    })
+
+    rule = TestCustomRule(config=cfg)
+    rule_cfg = rule.get_rule_config()
+    assert rule_cfg == {"threshold": 42, "enabled": True}
+
+    # Match via explicit rule_name
+    assert rule.get_rule_config("other_rule") == {"threshold": 100}
+
+    # Unknown rule config returns None
+    assert rule.get_rule_config("nonexistent_rule") is None
+
+    # Builtin rule name (e.g. ban_select_star) returns direct attribute
+    assert rule.get_rule_config("ban_select_star") is cfg.rules.ban_select_star
+
+    # Rule without config
+    rule_bare = TestCustomRule()
+    rule_bare._config = None
+    rule_bare.config.rules = None  # type: ignore[assignment]
+    assert rule_bare.get_rule_config() is None
+
 
 
 

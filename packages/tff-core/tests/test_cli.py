@@ -1305,3 +1305,63 @@ def test_cli_lint_structured_with_github_annotations(tmp_path: Path, capsys):
         assert "::warning file=models/staging/stg_customers.sql,line=1::Missing owner attribute" in captured_json.err
 
 
+def test_cli_info_and_lint_with_plugins_and_custom_adapter(tmp_path: Path, capsys):
+    from tff.core.adapter import PipelineAdapter, _REGISTERED_ADAPTERS, register_adapter
+
+    class MyCustomEngineAdapter(PipelineAdapter):
+        @property
+        def provider_name(self) -> str:
+            return "my_custom_engine"
+
+        def is_applicable(self, project_root: Path) -> bool:
+            return True
+
+        def load_models(self, project_root: Path, dialect=None, manifest_path=None):
+            return {}
+
+        def run_checks(self, project_root: Path, config, checks=None, dialect=None, manifest_path=None, models=None):
+            return [], 0, ["custom_rule"]
+
+        def get_diagnostic_files(self, project_root: Path):
+            return [("custom_config.yml", "found")]
+
+    register_adapter("my_custom_engine", MyCustomEngineAdapter)
+    adapter_inst = MyCustomEngineAdapter()
+    assert adapter_inst.provider_name == "my_custom_engine"
+    assert adapter_inst.is_applicable(tmp_path) is True
+    assert adapter_inst.load_models(tmp_path) == {}
+
+    try:
+        # Create fitness_functions.yaml with plugin
+        cfg_file = tmp_path / "fitness_functions.yaml"
+        cfg_file.write_text("plugins:\n  - custom_plugin.py\n", encoding="utf-8")
+        (tmp_path / "custom_plugin.py").write_text("# custom plugin\n", encoding="utf-8")
+
+
+        # 1. Test info command
+        exit_code_info = main([
+            "info",
+            "--project", str(tmp_path),
+            "--provider", "my_custom_engine",
+        ])
+        assert exit_code_info == 0
+        captured_info = capsys.readouterr()
+        assert "my_custom_engine integration" in captured_info.out
+        assert "Plugin:" in captured_info.out
+        assert "custom_plugin.py" in captured_info.out
+        assert "custom_config.yml" in captured_info.out
+
+        # 2. Test lint command with custom provider
+        exit_code_lint = main([
+            "lint",
+            "--project", str(tmp_path),
+            "--provider", "my_custom_engine",
+        ])
+        assert exit_code_lint == 0
+        captured_lint = capsys.readouterr()
+        assert "LINT PASSED" in captured_lint.out
+    finally:
+        _REGISTERED_ADAPTERS.pop("my_custom_engine", None)
+
+
+

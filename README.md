@@ -5,7 +5,7 @@
 
 Configurable fitness functions engine and linter for transformation projects. 
 
-TFF allows you to enforce architectural layout boundaries, layer structure policies, schema contracts, and code formatting rules across data pipelines. It ships with dedicated plugins for **SQLMesh**, **dbt**, and **Google Cloud Dataform**, outputting clean, color-coded lint reports to the terminal.
+TFF allows you to enforce architectural layout boundaries, layer structure policies, schema contracts, and code formatting rules across data pipelines. It ships with dedicated plugins for **SQLMesh**, **dbt**, and **Google Cloud Dataform**, supports custom adapters and proprietary rules via entry points and plugins, and outputs clean, color-coded lint reports to the terminal.
 
 <img width="1280" height="708" alt="20260629_tff-health" src="https://github.com/user-attachments/assets/2302a3dc-595f-4726-94ba-6c2aaf838bd4" />
 
@@ -32,6 +32,7 @@ Setup and usage details differ depending on your pipeline engine. Refer to the c
 * 📐 **SQLMesh Integration**: See [docs/sqlmesh.md](docs/sqlmesh.md)
 * ⚡ **dbt Integration**: See [docs/dbt.md](docs/dbt.md)
 * ☁️ **Dataform Integration**: See [docs/dataform.md](docs/dataform.md)
+* 🔌 **Custom Plugins & Adapters**: See [docs/rules_and_checks.md#3-custom-plugins--extensions](docs/rules_and_checks.md#3-custom-plugins--extensions)
 * 💻 **CLI Reference Guide**: See [docs/cli.md](docs/cli.md)
 * 🤖 **CI/CD & GitHub Actions Guide**: See [docs/ci_cd.md](docs/ci_cd.md)
 * 🔍 **Rules & Checks Reference**: See [docs/rules_and_checks.md](docs/rules_and_checks.md)

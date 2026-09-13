@@ -40,3 +40,18 @@ class Rule:
         if not message:
             message = self.__doc__ or ""
         return RuleViolation(violation_msg=message)
+
+    def get_rule_config(self, rule_name: str | None = None) -> t.Any:
+        """Retrieve the configuration object or dict for this rule from config.rules."""
+        name = (rule_name or getattr(self, "name", None) or self.__class__.__name__).lower().replace("-", "").replace("_", "")
+        rules_cfg = getattr(self.config, "rules", None)
+        if rules_cfg is None:
+            return None
+        entries = dict(getattr(rules_cfg, "__dict__", {}))
+        if hasattr(rules_cfg, "model_extra") and rules_cfg.model_extra:
+            entries.update(rules_cfg.model_extra)
+        for k, v in entries.items():
+            if k.lower().replace("-", "").replace("_", "") == name:
+                return v
+        return None
+

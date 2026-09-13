@@ -584,3 +584,170 @@ def test_sqlmesh_runner_initializes_context_when_missing(tmp_path: Path) -> None
         )
         assert mock_ctx_cls.called
         assert selected == ["sqlmesh"]
+
+
+def test_check_registry_register_rule_and_unregister():
+    from tff.core.registry import CheckRegistry
+    from tff.core.rules.base import Rule
+
+    reg = CheckRegistry()
+
+    class CustomDocRule(Rule):
+        """Custom documentation rule."""
+        name = "custom_doc_rule"
+
+    # Auto-derived metadata
+    c1 = reg.register_rule(CustomDocRule)
+    assert c1.id == "custom_doc_rule"
+    assert c1.label == "Custom documentation rule."
+    assert c1.category == "Custom Rules"
+    assert c1.default_severity == "error"
+    assert reg.get("custom_doc_rule") is c1
+
+    # Explicit metadata and unregister
+    class BareRule(Rule):
+        pass
+
+    c2 = reg.register_rule(
+        BareRule,
+        id="bare_rule",
+        label="Bare Label",
+        category="Governance",
+        default_severity="warning",
+        aliases=("bare_alias",),
+        finding_check_id="bare_finding",
+    )
+    assert c2.id == "bare_rule"
+    assert c2.label == "Bare Label"
+    assert c2.category == "Governance"
+    assert c2.default_severity == "warning"
+    assert reg.get("bare_alias") is c2
+    assert reg.get("bare_finding") is c2
+
+    # Unregister
+    reg.unregister("bare_rule")
+    assert reg.get("bare_rule") is None
+    assert reg.get("bare_alias") is None
+    assert reg.get("bare_finding") is None
+
+    # Unregister nonexistent doesn't fail
+    reg.unregister("nonexistent")
+
+
+def test_is_rule_enabled_in_config():
+    from tff.core.config import FitnessFunctionsConfig
+    from tff.core.registry import is_rule_enabled_in_config
+
+    cfg = FitnessFunctionsConfig()
+
+    # Empty names -> True
+    assert is_rule_enabled_in_config(cfg) is True
+
+    # Unknown rule -> True by default
+    assert is_rule_enabled_in_config(cfg, "unknown_rule") is True
+
+    # Rule configured via model_extra as dict
+    cfg.rules.__pydantic_extra__ = {
+        "custom_rule": {"enabled": False},
+        "bool_rule": False,
+        "dict_true": {"enabled": True},
+        "bool_true": True,
+    }
+    assert is_rule_enabled_in_config(cfg, "custom_rule") is False
+    assert is_rule_enabled_in_config(cfg, "bool_rule") is False
+    assert is_rule_enabled_in_config(cfg, "dict_true") is True
+    assert is_rule_enabled_in_config(cfg, "bool_true") is True
+
+    # Check configured via checks model_extra
+    cfg.checks.__pydantic_extra__ = {
+        "custom_dag_check": {"enabled": False},
+        "bool_dag_check": False,
+    }
+    assert is_rule_enabled_in_config(cfg, "custom_dag_check") is False
+    assert is_rule_enabled_in_config(cfg, "bool_dag_check") is False
+
+    # Config with no rules
+    cfg_empty = FitnessFunctionsConfig()
+    cfg_empty.rules = None  # type: ignore[assignment]
+    cfg_empty.checks = None  # type: ignore[assignment]
+    assert is_rule_enabled_in_config(cfg_empty, "any_rule") is True
+
+
+def test_check_definition_dynamic_severity(tmp_path: Path):
+    from tff.core.config import FitnessFunctionsConfig
+    from tff.core.model import ModelRepresentation
+    from tff.core.registry import CheckDefinition
+    from tff.core.rules.base import Rule, RuleViolation
+
+    class AlwaysFailRule(Rule):
+        name = "always_fail"
+
+        def check_model(self, model: ModelRepresentation):
+            return RuleViolation("Model failed!")
+
+    c = CheckDefinition(
+        id="always_fail",
+        label="Always Fail",
+        category="Test",
+        scope="model",
+        default_severity="error",
+        rule_cls=AlwaysFailRule,
+    )
+
+    sql_file = tmp_path / "model.sql"
+    sql_file.write_text("SELECT 1", encoding="utf-8")
+    models = {"m": ModelRepresentation(name="m", path=str(sql_file), dialect="duckdb")}
+
+    # Default severity is error
+    cfg = FitnessFunctionsConfig()
+    findings = c.run(models, cfg)
+    assert len(findings) == 1
+    assert findings[0].severity == "error"
+
+    # Config override with warning in model_extra dict
+    cfg.rules.__pydantic_extra__ = {"always_fail": {"severity": "warning"}}
+    findings_warn = c.run(models, cfg)
+    assert findings_warn[0].severity == "warning"
+
+
+def test_get_categories_custom():
+    from tff.core.registry import CheckDefinition, CheckRegistry
+
+    reg = CheckRegistry()
+    c = CheckDefinition(
+        id="custom_governance_check",
+        label="Custom Governance",
+        category="Custom Governance Category",
+        scope="model",
+    )
+    reg.register(c)
+    cats = reg.get_categories()
+    assert "Custom Governance Category" in cats
+    assert "custom_governance_check" in cats["Custom Governance Category"]
+
+
+def test_registry_load_entry_points_and_plugins(tmp_path: Path):
+    from tff.core.registry import CheckRegistry
+    from unittest.mock import patch
+
+    reg = CheckRegistry()
+
+    # load_entry_points
+    with patch("importlib.metadata.entry_points", return_value=[]):
+        assert reg.load_entry_points() == []
+
+    # load_plugins
+    plugin_file = tmp_path / "reg_test_plugin.py"
+    plugin_file.write_text(
+        """from tff.core.rules.base import Rule
+class RegistryTestRule(Rule):
+    name = "reg_test_rule"
+    def check_model(self, model):
+        return None
+""",
+        encoding="utf-8",
+    )
+    loaded = reg.load_plugins([plugin_file], project_root=tmp_path)
+    assert len(loaded) == 1
+    assert reg.get("reg_test_rule") is not None
+

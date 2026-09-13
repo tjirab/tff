@@ -6,7 +6,8 @@ from pathlib import Path
 from typing import Any
 
 import yaml
-from pydantic import BaseModel, Field, PrivateAttr, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, PrivateAttr, field_validator, model_validator
+
 
 DEFAULT_LAYER_ORDER: list[str] = ["staging", "intermediate", "core", "marts"]
 
@@ -107,6 +108,11 @@ rules:
     enabled: true
     layer_name: marts
     rule: prefix_with_subdirectory
+
+# External plugins and custom rules (paths to Python files or installed packages)
+# plugins:
+#   - "rules/custom_company_rules.py"
+
 
 # Health scoring configuration (weights and penalties)
 # health:
@@ -255,7 +261,9 @@ class SchemaContractsCheckConfig(LayerFilterConfig):
 
 
 class ChecksConfig(BaseModel):
+    model_config = ConfigDict(extra="allow")
     layer_integrity: CheckEnabled = Field(default_factory=CheckEnabled)
+
     custom_exclusions: CustomExclusionsCheckConfig = Field(
         default_factory=CustomExclusionsCheckConfig
     )
@@ -350,7 +358,9 @@ class EnvironmentAgnosticReferencesRuleConfig(LayerFilterConfig):
 
 
 class RulesConfig(BaseModel):
+    model_config = ConfigDict(extra="allow")
     classification_macros: ClassificationMacrosRuleConfig = Field(
+
         default_factory=ClassificationMacrosRuleConfig
     )
     sql_complexity: SqlComplexityRuleConfig = Field(
@@ -466,10 +476,12 @@ class HealthConfig(BaseModel):
 
 
 class FitnessFunctionsConfig(BaseModel):
+    model_config = ConfigDict(extra="allow")
     _project_root: Path = PrivateAttr(default_factory=Path.cwd)
     _config_file_found: bool = PrivateAttr(default=True)
     contract_groups_path: str = "linter_contract_groups.json"
     exclusions_path: str = "linter_exclusions.json"
+    plugins: list[str] = Field(default_factory=list)
     layers: LayersConfig = Field(default_factory=LayersConfig)
     checks: ChecksConfig = Field(default_factory=ChecksConfig)
     rules: RulesConfig = Field(default_factory=RulesConfig)
@@ -477,6 +489,18 @@ class FitnessFunctionsConfig(BaseModel):
     contract_groups: ContractGroupsConfig | None = None
     exclusions: list[CustomExclusionRule] | None = None
     allowed_exceptions: list[AllowedExceptionRule] | None = None
+
+    @field_validator("plugins", mode="before")
+    @classmethod
+    def _validate_plugins(cls, v: Any) -> list[str]:
+        if v is None:
+            return []
+        if isinstance(v, str):
+            return [v]
+        if isinstance(v, (list, tuple)):
+            return [str(item) for item in v]
+        raise ValueError(f"Expected list of strings for plugins, got {type(v).__name__}")
+
 
     @property
     def config_file_found(self) -> bool:
@@ -519,7 +543,14 @@ def load_fitness_config(
     config = FitnessFunctionsConfig.model_validate(data)
     config._project_root = project_root
     config._config_file_found = config_found
+
+    if config.plugins:
+        from tff.core.plugins import load_plugins
+
+        load_plugins(config.plugins, project_root=project_root)
+
     return config
+
 
 
 def init_fitness_config(

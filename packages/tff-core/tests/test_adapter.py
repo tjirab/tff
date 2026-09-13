@@ -382,3 +382,147 @@ def test_cli_info_adapter_error(tmp_path: Path):
 
 def test_cli_get_adapter():
     assert isinstance(_get_adapter("dbt"), DBTAdapter)
+
+
+def test_register_adapter_variations():
+    from tff.core.adapter import _REGISTERED_ADAPTERS, register_adapter
+
+    # 1. Register class
+    register_adapter("dummy_cls", ConcreteDummyAdapter)
+    assert isinstance(get_adapter("dummy_cls"), ConcreteDummyAdapter)
+
+    # 2. Register instance
+    dummy_inst = ConcreteDummyAdapter()
+    register_adapter("dummy_inst", dummy_inst)
+    assert get_adapter("dummy_inst") is dummy_inst
+
+    # 3. Register factory
+    register_adapter("dummy_factory", lambda: ConcreteDummyAdapter())
+    assert isinstance(get_adapter("dummy_factory"), ConcreteDummyAdapter)
+
+    # 4. Invalid factory returning non-adapter
+    register_adapter("bad_factory", lambda: "not_an_adapter")
+    with pytest.raises(TypeError, match="did not return a PipelineAdapter instance"):
+        get_adapter("bad_factory")
+
+    _REGISTERED_ADAPTERS.pop("dummy_cls", None)
+    _REGISTERED_ADAPTERS.pop("dummy_inst", None)
+    _REGISTERED_ADAPTERS.pop("dummy_factory", None)
+    _REGISTERED_ADAPTERS.pop("bad_factory", None)
+
+
+def test_adapter_entry_points_loading():
+    from tff.core.adapter import _load_adapter_from_entry_point
+
+    # 1. Class
+    ep_cls = MagicMock()
+    ep_cls.name = "ep_cls"
+    ep_cls.load.return_value = ConcreteDummyAdapter
+
+    # 2. Instance
+    ep_inst = MagicMock()
+    ep_inst.name = "ep_inst"
+    ep_inst.load.return_value = ConcreteDummyAdapter()
+
+    # 3. Factory
+    ep_factory = MagicMock()
+    ep_factory.name = "ep_factory"
+    ep_factory.load.return_value = lambda: ConcreteDummyAdapter()
+
+    # 4. Invalid type
+    ep_bad = MagicMock()
+    ep_bad.name = "ep_bad"
+    ep_bad.load.return_value = 12345
+
+    # 5. Load error
+    ep_err = MagicMock()
+    ep_err.name = "ep_err"
+    ep_err.load.side_effect = RuntimeError("Crash on import")
+
+    with patch(
+        "importlib.metadata.entry_points",
+        return_value=[ep_cls, ep_inst, ep_factory, ep_bad, ep_err],
+    ):
+        # Successful loads
+        assert isinstance(get_adapter("ep_cls"), ConcreteDummyAdapter)
+        assert isinstance(get_adapter("ep_inst"), ConcreteDummyAdapter)
+        assert isinstance(get_adapter("ep_factory"), ConcreteDummyAdapter)
+
+        # Invalid type
+        with pytest.raises(TypeError, match="did not resolve to a PipelineAdapter"):
+            get_adapter("ep_bad")
+
+        # Load error
+        with pytest.raises(ImportError, match="Failed to load adapter plugin 'ep_err'"):
+            get_adapter("ep_err")
+
+        # Not found in entry points
+        assert _load_adapter_from_entry_point("nonexistent_ep") is None
+
+    # Entry point discovery exception
+    with patch("importlib.metadata.entry_points", side_effect=Exception("Metadata fail")):
+        assert _load_adapter_from_entry_point("ep_cls") is None
+
+
+def test_get_available_providers():
+    from tff.core.adapter import _REGISTERED_ADAPTERS, get_available_providers, register_adapter
+
+    register_adapter("custom_prov_1", ConcreteDummyAdapter)
+    ep_prov = MagicMock()
+    ep_prov.name = "ep_prov_2"
+
+    with patch("importlib.metadata.entry_points", return_value=[ep_prov]):
+        provs = get_available_providers()
+        assert "dbt" in provs
+        assert "sqlmesh" in provs
+        assert "dataform" in provs
+        assert "custom_prov_1" in provs
+        assert "ep_prov_2" in provs
+
+    # Metadata error handled gracefully
+    with patch("importlib.metadata.entry_points", side_effect=Exception("EP error")):
+        provs = get_available_providers()
+        assert "dbt" in provs
+
+    _REGISTERED_ADAPTERS.pop("custom_prov_1", None)
+
+
+def test_detect_provider_with_custom_adapter(tmp_path: Path):
+    from tff.core.adapter import _REGISTERED_ADAPTERS, register_adapter
+
+    class CustomProjectAdapter(ConcreteDummyAdapter):
+        @property
+        def provider_name(self) -> str:
+            return "custom_proj"
+
+        def is_applicable(self, project_root: Path) -> bool:
+            return (project_root / "custom_proj.yml").exists()
+
+    register_adapter("custom_proj", CustomProjectAdapter)
+    assert get_adapter("custom_proj").provider_name == "custom_proj"
+    try:
+        # Detects custom project
+        (tmp_path / "custom_proj.yml").touch()
+        assert detect_provider(tmp_path) == "custom_proj"
+
+        # Multiple detected: dbt and custom_proj
+        (tmp_path / "dbt_project.yml").touch()
+        with pytest.raises(ValueError, match="Multiple pipeline configuration files were detected"):
+            detect_provider(tmp_path)
+
+        # Clean up files
+        (tmp_path / "custom_proj.yml").unlink()
+        (tmp_path / "dbt_project.yml").unlink()
+
+        # Exception in is_applicable ignored gracefully
+        class CrashingAdapter(ConcreteDummyAdapter):
+            def is_applicable(self, project_root: Path) -> bool:
+                raise RuntimeError("Crash in is_applicable")
+
+        register_adapter("crashing_adapter", CrashingAdapter)
+        with pytest.raises(ValueError, match="Could not detect project type"):
+            detect_provider(tmp_path)
+        _REGISTERED_ADAPTERS.pop("crashing_adapter", None)
+    finally:
+        _REGISTERED_ADAPTERS.pop("custom_proj", None)
+

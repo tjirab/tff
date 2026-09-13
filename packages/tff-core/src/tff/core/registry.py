@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Callable, Literal
+from typing import TYPE_CHECKING, Any, Callable, Literal
 
 if TYPE_CHECKING:
+    from pathlib import Path
+
     from tff.core.config import FitnessFunctionsConfig
     from tff.core.model import ModelRepresentation
     from tff.core.report import LintFinding, Severity
@@ -17,6 +19,42 @@ Scope = Literal["model", "dag"]
 def normalize_check_name(name: str) -> str:
     """Normalize a check name/alias for case-insensitive and separator-agnostic lookups."""
     return name.lower().replace("-", "").replace("_", "").replace(" ", "")
+
+
+def _extract_enabled(container: Any, norm_names: set[str]) -> bool | None:
+    if container is None:
+        return None
+    entries = dict(getattr(container, "__dict__", {}))
+    if hasattr(container, "model_extra") and container.model_extra:
+        entries.update(container.model_extra)
+    for k, val in entries.items():
+        if normalize_check_name(k) in norm_names:
+            if isinstance(val, bool):
+                return val
+            if isinstance(val, dict):
+                return bool(val.get("enabled", True))
+            if hasattr(val, "enabled"):
+                return bool(val.enabled)
+    return None
+
+
+def is_rule_enabled_in_config(config: FitnessFunctionsConfig, *names: str) -> bool:
+    """Check whether a check or rule is enabled in config.rules or config.checks."""
+    norm_names = {normalize_check_name(n) for n in names if n}
+    if not norm_names:
+        return True
+
+    res = _extract_enabled(getattr(config, "rules", None), norm_names)
+    if res is not None:
+        return res
+
+    res_checks = _extract_enabled(getattr(config, "checks", None), norm_names)
+    if res_checks is not None:
+        return res_checks
+
+    return True
+
+
 
 
 def run_model_rule(
@@ -108,10 +146,28 @@ class CheckDefinition:
             return getattr(mod, self.collector_func_name)
         return None
 
+    def get_severity(self, config: FitnessFunctionsConfig | None = None) -> Severity:
+        """Resolve severity from configuration override or fall back to default_severity."""
+        if config is not None:
+            rules_cfg = getattr(config, "rules", None)
+            candidates = [self.id, self.finding_id, *self.aliases]
+            norm_candidates = {normalize_check_name(c) for c in candidates if c}
+            if rules_cfg is not None:
+                entries = dict(getattr(rules_cfg, "__dict__", {}))
+                if hasattr(rules_cfg, "model_extra") and rules_cfg.model_extra:
+                    entries.update(rules_cfg.model_extra)
+                for attr, val in entries.items():
+                    if normalize_check_name(attr) in norm_candidates:
+                        sev = getattr(val, "severity", None) if not isinstance(val, dict) else val.get("severity")
+                        if sev and str(sev).lower() in ("error", "warning"):
+                            return str(sev).lower()  # type: ignore[return-value]
+
+        return self.default_severity
+
     def is_enabled(self, config: FitnessFunctionsConfig, provider: str = "dbt") -> bool:
         if self.is_enabled_fn is not None:
             return self.is_enabled_fn(config, provider)
-        return True
+        return is_rule_enabled_in_config(config, self.id, self.finding_id, *self.aliases)
 
     def run(
         self,
@@ -121,10 +177,11 @@ class CheckDefinition:
         if self.scope == "model":
             rule_cls = self.get_rule_cls()
             if rule_cls is not None:
+                severity = self.get_severity(config)
                 return run_model_rule(
                     rule_cls,
                     models,
-                    severity=self.default_severity,
+                    severity=severity,
                     check_name=self.finding_id,
                     config=config,
                 )
@@ -137,12 +194,14 @@ class CheckDefinition:
         return []
 
 
+
 class CheckRegistry:
     """Registry holding definitions of all fitness checks and rules."""
 
     def __init__(self) -> None:
         self._checks: dict[str, CheckDefinition] = {}
         self._lookup: dict[str, CheckDefinition] = {}
+        self._loaded_plugins: set[str] = set()
 
     def register(self, check: CheckDefinition) -> None:
         self._checks[check.id] = check
@@ -151,6 +210,84 @@ class CheckRegistry:
             self._lookup[normalize_check_name(check.finding_check_id)] = check
         for alias in check.aliases:
             self._lookup[normalize_check_name(alias)] = check
+
+    def register_rule(
+        self,
+        rule_cls: type[Rule],
+        id: str | None = None,
+        label: str | None = None,
+        category: str = "Custom Rules",
+        default_severity: Severity = "error",
+        aliases: tuple[str, ...] = (),
+        finding_check_id: str | None = None,
+        is_enabled_fn: Callable[[FitnessFunctionsConfig, str], bool] | None = None,
+    ) -> CheckDefinition:
+        """Convenience method to register a model-level Rule class."""
+        rule_id = (
+            id
+            or getattr(rule_cls, "rule_id", None)
+            or getattr(rule_cls, "name", None)
+            or rule_cls.__name__.lower()
+        )
+        rule_label = (
+            label
+            or getattr(rule_cls, "label", None)
+            or (rule_cls.__doc__.strip().splitlines()[0] if rule_cls.__doc__ else rule_id)
+        )
+        rule_category = getattr(rule_cls, "category", category)
+        rule_severity = getattr(
+            rule_cls,
+            "default_severity",
+            getattr(rule_cls, "severity", default_severity),
+        )
+        rule_aliases = getattr(rule_cls, "aliases", aliases)
+        rule_finding_id = (
+            finding_check_id
+            or getattr(rule_cls, "finding_check_id", None)
+            or getattr(rule_cls, "name", None)
+            or rule_id
+        )
+
+        check_def = CheckDefinition(
+            id=rule_id,
+            label=rule_label,
+            category=rule_category,
+            scope="model",
+            default_severity=rule_severity,
+            aliases=tuple(rule_aliases),
+            finding_check_id=rule_finding_id,
+            rule_cls=rule_cls,
+            is_enabled_fn=is_enabled_fn,
+        )
+        self.register(check_def)
+        return check_def
+
+    def unregister(self, check_id: str) -> None:
+        """Unregister a check or rule by id or finding_check_id."""
+        check = self._checks.pop(check_id, None)
+        if check is not None:
+            self._lookup.pop(normalize_check_name(check.id), None)
+            if check.finding_check_id:
+                self._lookup.pop(normalize_check_name(check.finding_check_id), None)
+            for alias in check.aliases:
+                self._lookup.pop(normalize_check_name(alias), None)
+
+    def load_entry_points(self) -> list[CheckDefinition]:
+        """Discover and register rules from 'tff.rules' entry points."""
+        from tff.core.plugins import discover_rule_entry_points
+
+        return discover_rule_entry_points(registry=self)
+
+    def load_plugins(
+        self,
+        plugins: list[str | Path],
+        project_root: Path | None = None,
+    ) -> list[CheckDefinition]:
+        """Load external rule/adapter plugins from file paths or module names."""
+        from tff.core.plugins import load_plugins
+
+        return load_plugins(plugins, project_root=project_root, registry=self)
+
 
     def get(self, name_or_alias: str) -> CheckDefinition | None:
         return self._lookup.get(normalize_check_name(name_or_alias))
@@ -276,9 +413,12 @@ class CheckRegistry:
         }
         for c in self.all_checks():
             key = c.finding_id
-            if c.category in cats and key not in cats[c.category]:
+            if c.category not in cats:
+                cats[c.category] = []
+            if key not in cats[c.category]:
                 cats[c.category].append(key)
         return cats
+
 
     def get_project_level_check_names(self) -> set[str]:
         return {
@@ -631,7 +771,9 @@ def create_default_registry() -> CheckRegistry:
         )
     )
 
+    reg.load_entry_points()
     return reg
+
 
 
 registry: CheckRegistry = create_default_registry()

@@ -5,7 +5,8 @@ from __future__ import annotations
 import importlib
 from abc import ABC, abstractmethod
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Callable
+
 
 if TYPE_CHECKING:
     from tff.core.config import FitnessFunctionsConfig
@@ -72,47 +73,128 @@ ADAPTER_CLASSES: dict[str, tuple[str, str]] = {
     "dataform": ("tff.dataform.adapter", "DataformAdapter"),
 }
 
+_REGISTERED_ADAPTERS: dict[
+    str,
+    type[PipelineAdapter] | PipelineAdapter | Callable[[], PipelineAdapter],
+] = {}
+
+
+def register_adapter(
+    provider: str,
+    adapter_cls_or_factory: (
+        type[PipelineAdapter] | PipelineAdapter | Callable[[], PipelineAdapter]
+    ),
+) -> None:
+    """Register an adapter class, instance, or factory under a provider name."""
+    _REGISTERED_ADAPTERS[provider] = adapter_cls_or_factory
+
+
+def _load_adapter_from_entry_point(provider: str) -> PipelineAdapter | None:
+    """Attempt to load an adapter registered via 'tff.adapters' entry points."""
+    import importlib.metadata as metadata
+
+    try:
+        eps = metadata.entry_points(group="tff.adapters")
+    except Exception:
+        return None
+
+    for ep in eps:
+        if ep.name == provider:
+            try:
+                loaded = ep.load()
+            except Exception as e:
+                raise ImportError(f"Failed to load adapter plugin '{provider}': {e}") from e
+
+            if isinstance(loaded, type) and issubclass(loaded, PipelineAdapter):
+                return loaded()
+            if isinstance(loaded, PipelineAdapter):
+                return loaded
+            if callable(loaded):
+                res = loaded()
+                if isinstance(res, PipelineAdapter):
+                    return res
+            raise TypeError(
+                f"Adapter entry point '{provider}' did not resolve to a PipelineAdapter class or instance."
+            )
+    return None
+
+
+def get_available_providers() -> list[str]:
+    """Return all available adapter provider identifiers."""
+    import importlib.metadata as metadata
+
+    providers = set(ADAPTER_CLASSES.keys())
+    providers.update(_REGISTERED_ADAPTERS.keys())
+    try:
+        eps = metadata.entry_points(group="tff.adapters")
+        for ep in eps:
+            providers.add(ep.name)
+    except Exception:
+        pass
+    return sorted(providers)
+
 
 def get_adapter(provider: str) -> PipelineAdapter:
     """Load and return the adapter instance for the specified provider."""
-    if provider not in ADAPTER_CLASSES:
-        raise ValueError(f"Unknown provider: {provider}")
+    # 1. Check custom registered adapters
+    if provider in _REGISTERED_ADAPTERS:
+        item = _REGISTERED_ADAPTERS[provider]
+        if isinstance(item, type) and issubclass(item, PipelineAdapter):
+            return item()
+        if isinstance(item, PipelineAdapter):
+            return item
+        if callable(item):
+            res = item()
+            if isinstance(res, PipelineAdapter):
+                return res
+            raise TypeError(
+                f"Adapter factory for '{provider}' did not return a PipelineAdapter instance."
+            )
 
-    module_name, class_name = ADAPTER_CLASSES[provider]
+    # 2. Check built-in and configured module/class pairs
+    if provider in ADAPTER_CLASSES:
+        module_name, class_name = ADAPTER_CLASSES[provider]
 
-    if provider == "dbt":
-        try:
+        if provider == "dbt":
+            try:
+                mod = importlib.import_module(module_name)
+            except ImportError as e:
+                raise ImportError(
+                    "dbt project detected, but tff is not installed with dbt support.\n"
+                    'Please install it using: pip install "tff-core[dbt]" or uv add "tff-core[dbt]"'
+                ) from e
+        elif provider == "sqlmesh":
+            try:
+                mod = importlib.import_module(module_name)
+            except ImportError as e:
+                raise ImportError(
+                    "SQLMesh project detected, but tff is not installed with sqlmesh support.\n"
+                    'Please install it using: pip install "tff-core[sqlmesh]" or uv add "tff-core[sqlmesh]"'
+                ) from e
+        elif provider == "dataform":
+            try:
+                mod = importlib.import_module(module_name)
+            except ImportError as e:
+                raise ImportError(
+                    "Dataform project detected, but tff is not installed with dataform support.\n"
+                    'Please install it using: pip install "tff-core[dataform]" or uv add "tff-core[dataform]"'
+                ) from e
+        else:
             mod = importlib.import_module(module_name)
-        except ImportError as e:
-            raise ImportError(
-                "dbt project detected, but tff is not installed with dbt support.\n"
-                'Please install it using: pip install "tff-core[dbt]" or uv add "tff-core[dbt]"'
-            ) from e
-    elif provider == "sqlmesh":
-        try:
-            mod = importlib.import_module(module_name)
-        except ImportError as e:
-            raise ImportError(
-                "SQLMesh project detected, but tff is not installed with sqlmesh support.\n"
-                'Please install it using: pip install "tff-core[sqlmesh]" or uv add "tff-core[sqlmesh]"'
-            ) from e
-    elif provider == "dataform":
-        try:
-            mod = importlib.import_module(module_name)
-        except ImportError as e:
-            raise ImportError(
-                "Dataform project detected, but tff is not installed with dataform support.\n"
-                'Please install it using: pip install "tff-core[dataform]" or uv add "tff-core[dataform]"'
-            ) from e
-    else:
-        mod = importlib.import_module(module_name)
 
-    adapter_cls: type[PipelineAdapter] = getattr(mod, class_name)
-    return adapter_cls()
+        adapter_cls: type[PipelineAdapter] = getattr(mod, class_name)
+        return adapter_cls()
+
+    # 3. Check entry points
+    ep_adapter = _load_adapter_from_entry_point(provider)
+    if ep_adapter is not None:
+        return ep_adapter
+
+    raise ValueError(f"Unknown provider: {provider}")
 
 
 def detect_provider(project_root: Path) -> str:
-    """Detect whether a project is dbt, SQLMesh, or Dataform."""
+    """Detect whether a project is dbt, SQLMesh, Dataform, or a custom registered adapter."""
     # Check for dbt signature file
     is_dbt = (project_root / "dbt_project.yml").exists()
 
@@ -139,7 +221,19 @@ def detect_provider(project_root: Path) -> str:
         if found
     ]
 
-    if is_dbt and is_sqlmesh and not is_dataform:
+    # Check registered or entry-point adapters
+    for prov in get_available_providers():
+        if prov in ("dbt", "sqlmesh", "dataform"):
+            continue
+        try:
+            adapter = get_adapter(prov)
+            if adapter.is_applicable(project_root):
+                if prov not in detected:
+                    detected.append(prov)
+        except Exception:
+            continue
+
+    if is_dbt and is_sqlmesh and not is_dataform and len(detected) == 2:
         raise ValueError(
             "Both dbt and SQLMesh configuration files were detected in the project root.\n"
             "Please specify the provider explicitly using the --provider option (e.g. '--provider dbt' or '--provider sqlmesh')."
@@ -150,12 +244,8 @@ def detect_provider(project_root: Path) -> str:
             f"Multiple pipeline configuration files were detected in the project root ({names}).\n"
             f"Please specify the provider explicitly using the --provider option (e.g. '--provider dbt', '--provider sqlmesh', or '--provider dataform')."
         )
-    if is_dbt:
-        return "dbt"
-    if is_sqlmesh:
-        return "sqlmesh"
-    if is_dataform:
-        return "dataform"
+    if len(detected) == 1:
+        return detected[0]
 
     raise ValueError(
         "Could not detect project type (neither dbt_project.yml, SQLMesh config, nor Dataform config was found).\n"
