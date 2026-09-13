@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.14.0](https://github.com/tjirab/tff/compare/tff-core-v0.13.0...tff-core-v0.14.0) (2026-09-13)
+
+
+### Features
+
+* **plugins:** support custom fitness rules and third-party adapters via entry points ([#160](https://github.com/tjirab/tff/issues/160)) ([#185](https://github.com/tjirab/tff/issues/185)) ([56304bf](https://github.com/tjirab/tff/commit/56304bf0b3043e62e10b02e25d401c780e785019))
+
 ## [0.13.0](https://github.com/tjirab/tff/compare/tff-core-v0.12.1...tff-core-v0.13.0) (2026-09-11)
 
 
