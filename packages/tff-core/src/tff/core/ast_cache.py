@@ -31,12 +31,13 @@ def get_ast_cache_dir(
             p = project_root / p
         if p.name == AST_CACHE_SUBDIR:
             return p
-        if (p / AST_CACHE_SUBDIR).exists() or not p.exists():
-            return p / AST_CACHE_SUBDIR
-        return p
+        return p / AST_CACHE_SUBDIR
     env_dir = os.environ.get("TFF_CACHE_DIR")
     if env_dir:
-        return Path(env_dir) / AST_CACHE_SUBDIR
+        p = Path(env_dir)
+        if p.name == AST_CACHE_SUBDIR:
+            return p
+        return p / AST_CACHE_SUBDIR
     root = project_root or Path.cwd()
     return root / DEFAULT_CACHE_DIR_NAME / AST_CACHE_SUBDIR
 

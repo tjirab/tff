@@ -51,6 +51,26 @@ def test_get_ast_cache_dir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setenv("TFF_CACHE_DIR", str(env_dir))
     assert get_ast_cache_dir(tmp_path) == env_dir / "ast"
 
+    # Environment variable already ending in 'ast'
+    env_dir_ast = tmp_path / "env_cache" / "ast"
+    monkeypatch.setenv("TFF_CACHE_DIR", str(env_dir_ast))
+    assert get_ast_cache_dir(tmp_path) == env_dir_ast
+
+
+def test_get_ast_cache_dir_existing_directory(tmp_path: Path):
+    # When custom_dir exists on disk without an ast/ subdirectory
+    existing_dir = tmp_path / ".tff_cache"
+    existing_dir.mkdir()
+    assert (existing_dir / "ast").exists() is False
+
+    # Absolute path to existing dir
+    resolved = get_ast_cache_dir(tmp_path, custom_dir=existing_dir)
+    assert resolved == existing_dir / "ast"
+
+    # Relative path to existing dir
+    resolved_rel = get_ast_cache_dir(tmp_path, custom_dir=".tff_cache")
+    assert resolved_rel == existing_dir / "ast"
+
 
 def test_is_cache_enabled(monkeypatch: pytest.MonkeyPatch):
     config = FitnessFunctionsConfig()
@@ -194,32 +214,39 @@ def test_parse_sql_with_cache_hit_and_miss(tmp_path: Path):
 
 
 def test_clear_ast_cache(tmp_path: Path):
-    cache_dir = tmp_path / "cache"
-    cache_dir.mkdir(parents=True, exist_ok=True)
+    cache_root = tmp_path / "cache"
+    cache_root.mkdir(parents=True, exist_ok=True)
+    ast_dir = get_ast_cache_dir(custom_dir=cache_root)
+    assert ast_dir == cache_root / "ast"
 
     # Empty cache returns 0
-    assert clear_ast_cache(custom_dir=cache_dir) == 0
+    assert clear_ast_cache(custom_dir=cache_root) == 0
 
     # Nonexistent cache returns 0
     nonexistent = tmp_path / "nonexistent"
     assert clear_ast_cache(custom_dir=nonexistent) == 0
 
-    # Populate cache files
+    # Populate cache files into ast_dir
     sql1 = "SELECT 1"
     sql2 = "SELECT 2"
-    parse_sql_with_cache(sql1, "duckdb", cache_dir=cache_dir)
-    parse_sql_with_cache(sql2, "duckdb", cache_dir=cache_dir)
+    parse_sql_with_cache(sql1, "duckdb", cache_dir=ast_dir)
+    parse_sql_with_cache(sql2, "duckdb", cache_dir=ast_dir)
 
     # Subdirectory that cannot be deleted because it contains a non-ast file
-    non_empty = cache_dir / "keep_dir"
-    non_empty.mkdir()
+    non_empty = ast_dir / "keep_dir"
+    non_empty.mkdir(parents=True, exist_ok=True)
     (non_empty / "other.txt").touch()
 
     # Add orphaned temp file to ensure it gets cleared
-    (cache_dir / "orphaned.tmp").touch()
+    (ast_dir / "orphaned.tmp").touch()
 
-    cleared = clear_ast_cache(custom_dir=cache_dir)
+    cleared = clear_ast_cache(custom_dir=cache_root)
     assert cleared == 3
-    assert list(cache_dir.glob("**/*.ast")) == []
-    assert list(cache_dir.glob("**/*.tmp")) == []
+    assert list(ast_dir.glob("**/*.ast")) == []
+    assert list(ast_dir.glob("**/*.tmp")) == []
     assert non_empty.exists()
+
+    # Also test clearing when custom_dir already ends in 'ast'
+    parse_sql_with_cache(sql1, "duckdb", cache_dir=ast_dir)
+    assert clear_ast_cache(custom_dir=ast_dir) == 1
+    assert list(ast_dir.glob("**/*.ast")) == []
