@@ -1,0 +1,70 @@
+site_name: TFF
+site_description: Configurable fitness functions engine and linter for transformation projects (SQLMesh, dbt, Dataform).
+site_url: https://tff.readthedocs.io/
+repo_url: https://github.com/tjirab/tff
+repo_name: tjirab/tff
+
+theme:
+  name: material
+  palette:
+    - scheme: default
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    - scheme: slate
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+  features:
+    - navigation.instant
+    - navigation.tracking
+    - navigation.sections
+    - navigation.expand
+    - content.code.copy
+    - search.suggest
+    - search.highlight
+
+markdown_extensions:
+  - admonition
+  - pymdownx.details
+  - pymdownx.superfences
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.inlinehilite
+  - pymdownx.snippets
+  - pymdownx.tabbed:
+      alternate_style: true
+  - tables
+  - attr_list
+
+plugins:
+  - search
+  - mkdocstrings:
+      handlers:
+        python:
+          paths: [packages/tff-core/src]
+          options:
+            show_root_heading: true
+            show_source: true
+            heading_level: 2
+
+nav:
+  - Home: index.md
+  - Integrations:
+      - SQLMesh: sqlmesh.md
+      - dbt: dbt.md
+      - Dataform: dataform.md
+  - Reference:
+      - CLI Commands: cli.md
+      - Rules & Checks: rules_and_checks.md
+  - API Reference:
+      - Adapters: api/adapters.md
+      - Rules: api/rules.md
+  - Guides:
+      - CI/CD Integration: ci_cd.md
+      - GitLab Case Study: case_study_gitlab.md
+  - Contributing: contributing.md

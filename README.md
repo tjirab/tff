@@ -2,6 +2,7 @@
 
 [![PyPI version](https://img.shields.io/pypi/v/tff-core.svg?logo=pypi)](https://pypi.org/project/tff-core/)
 [![Python versions](https://img.shields.io/pypi/pyversions/tff-core.svg?logo=python)](https://pypi.org/project/tff-core/)
+[![Documentation Status](https://readthedocs.org/projects/tff/badge/?version=latest)](https://tff.readthedocs.io/en/latest/?badge=latest)
 
 Configurable fitness functions engine and linter for transformation projects. 
 
@@ -26,6 +27,8 @@ TFF allows you to enforce architectural layout boundaries, layer structure polic
 ---
 
 ## Documentation
+
+Online documentation is hosted at [**tff.readthedocs.io**](https://tff.readthedocs.io/).
 
 Setup and usage details differ depending on your pipeline engine. Refer to the corresponding guide:
 

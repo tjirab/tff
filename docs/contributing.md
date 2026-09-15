@@ -42,7 +42,7 @@ graph TD
 ```
 
 ### Core Architecture Components
-1. **[tff-core](../packages/tff-core)**: Contains the base model definitions (`ModelRepresentation`), abstract rule classes, the built-in rules/checks, and the console rendering engine. It also contains the `dbt`, `sqlmesh`, and `dataform` adapters under submodules.
+1. **[tff-core](https://github.com/tjirab/tff/tree/main/packages/tff-core)**: Contains the base model definitions (`ModelRepresentation`), abstract rule classes, the built-in rules/checks, and the console rendering engine. It also contains the `dbt`, `sqlmesh`, and `dataform` adapters under submodules.
 2. **dbt Adapter (`tff.dbt`)**: Parses compile-time artifacts (`manifest.json`) and resolves references, schemas, and tests, running core rules on the compiled model layout.
 3. **SQLMesh Adapter (`tff.sqlmesh`)**: Plugs directly into SQLMesh. It maps native SQLMesh models into `ModelRepresentation` objects and wraps core rules dynamically.
 4. **Dataform Adapter (`tff.dataform`)**: Ingests Google Cloud Dataform projects via precompiled JSON manifests, CLI compilation (`dataform compile --json`), or direct static `.sqlx` AST parsing.

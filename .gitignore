@@ -12,3 +12,4 @@ coverage.xml
 **/.tff_logs/
 **/.tff_cache/
 scripts/reset-test-projects.py
+site/

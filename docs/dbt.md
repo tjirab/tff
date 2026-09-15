@@ -189,7 +189,7 @@ jobs:
 
 ### How `only-changed: true` and Baseline Diffing Work with dbt
 * **Modified-Files Gating (`only-changed: true`)**: TFF runs `git diff origin/main...HEAD` directly against git commits to detect changed SQL files. It filters findings in your compiled `target/manifest.json` to only those files. **This works out of the box and does NOT require `main` to be compiled**.
-* **Baseline Score Diffing (`+X% vs main`)**: Because `target/` is gitignored, checking out `origin/main` creates a clean worktree without `target/manifest.json`. By default, TFF gracefully skips the baseline score delta without failing the workflow. To enable baseline score diffing, cache your production manifest or pre-compile `main` using the patterns detailed in the [CI/CD Guide](ci_cd.md#4-dbt-the-manifestjson-challenge--ci-best-practices).
+* **Baseline Score Diffing (`+X% vs main`)**: Because `target/` is gitignored, checking out `origin/main` creates a clean worktree without `target/manifest.json`. By default, TFF gracefully skips the baseline score delta without failing the workflow. To enable baseline score diffing, cache your production manifest or pre-compile `main` using the patterns detailed in the [CI/CD Guide](ci_cd.md#4-dbt-the-manifestjson-challenge-ci-best-practices).
 
 For advanced inputs, monorepo matrix setups, and PR comment details, see the [CI/CD Guide](ci_cd.md).
 
