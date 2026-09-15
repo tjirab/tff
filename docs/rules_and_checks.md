@@ -490,7 +490,6 @@ For SQLMesh projects, these rules run dynamically inside SQLMesh (e.g., `sqlmesh
   rules:
     sql_complexity:
       enabled: true
-      warn_only: true
       thresholds:
         decision_points: [15, 25]  # [warn_threshold, fail_threshold]
         cte_count: [8, 12]
@@ -498,9 +497,9 @@ For SQLMesh projects, these rules run dynamically inside SQLMesh (e.g., `sqlmesh
         line_count: [250, 400]
   ```
   * **SQLMesh Rule Name**: `sqlcomplexity`
-  * `warn_only` (bool, default: `true`): If `true`, metrics exceeding warning limits but under failure limits raise warnings only (with `warning` severity). If `false`, exceeding warning limits raises failures (with `error` severity).
-  * `severity` (string, optional): Overall rule severity override (`"warning"` or `"error"`).
-  * `thresholds`: Map of metric to `[warn_threshold, fail_threshold]` integer pairs.
+  * `thresholds`: Map of metric to `[warn_threshold, fail_threshold]` integer pairs. Exceeding `warn_threshold` raises a warning; exceeding `fail_threshold` raises an error.
+  * `severity` (string, optional, default: `"error"`): Overall rule severity override (`"warning"` or `"error"`). Set to `"warning"` if you want all complexity breaches to be emitted as warnings only and never fail the run.
+  * *Note*: The legacy `warn_only` setting is deprecated and no longer supported; use `severity: warning` or threshold pairs instead.
 
 ---
 

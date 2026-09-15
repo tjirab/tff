@@ -6,7 +6,14 @@ from pathlib import Path
 from typing import Any
 
 import yaml
-from pydantic import BaseModel, ConfigDict, Field, PrivateAttr, field_validator, model_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    PrivateAttr,
+    field_validator,
+    model_validator,
+)
 
 
 DEFAULT_LAYER_ORDER: list[str] = ["staging", "intermediate", "core", "marts"]
@@ -97,7 +104,6 @@ rules:
   # Monitor SQL complexity (cyclomatic decision points, join count, line count)
   sql_complexity:
     enabled: true
-    warn_only: true
     thresholds:
       decision_points: [15, 25]
       cte_count: [8, 12]
@@ -134,9 +140,7 @@ rules:
 
 
 class LayersConfig(BaseModel):
-    order: list[str] = Field(
-        default_factory=lambda: list(DEFAULT_LAYER_ORDER)
-    )
+    order: list[str] = Field(default_factory=lambda: list(DEFAULT_LAYER_ORDER))
 
 
 class CheckEnabled(BaseModel):
@@ -290,8 +294,6 @@ class ChecksConfig(BaseModel):
     )
 
 
-
-
 class ClassificationMacrosRuleConfig(LayerFilterConfig):
     skip_layers: list[str] = Field(default_factory=lambda: ["sources"])
     columns: dict[str, str] = Field(
@@ -304,7 +306,6 @@ class ClassificationMacrosRuleConfig(LayerFilterConfig):
 
 
 class SqlComplexityRuleConfig(LayerFilterConfig):
-    warn_only: bool = True
     thresholds: dict[str, list[int]] = Field(
         default_factory=lambda: {
             "decision_points": [15, 25],
@@ -313,6 +314,33 @@ class SqlComplexityRuleConfig(LayerFilterConfig):
             "line_count": [250, 400],
         }
     )
+
+    @model_validator(mode="before")
+    @classmethod
+    def reject_warn_only(cls, data: Any) -> Any:
+        if isinstance(data, dict) and "warn_only" in data:
+            raise ValueError(
+                "'rules.sql_complexity.warn_only' is deprecated and no longer supported. "
+                "To emit warnings only, configure 'severity: warning' under 'rules.sql_complexity'. "
+                "To configure strict thresholds, define [warn, fail] values in 'thresholds'."
+            )
+        return data
+
+    @property
+    def warn_only(self) -> None:
+        raise AttributeError(
+            "'rules.sql_complexity.warn_only' is deprecated and no longer supported. "
+            "To emit warnings only, configure 'severity: warning' under 'rules.sql_complexity'. "
+            "To configure strict thresholds, define [warn, fail] values in 'thresholds'."
+        )
+
+    @warn_only.setter
+    def warn_only(self, value: Any) -> None:
+        raise ValueError(
+            "'rules.sql_complexity.warn_only' is deprecated and no longer supported. "
+            "To emit warnings only, configure 'severity: warning' under 'rules.sql_complexity'. "
+            "To configure strict thresholds, define [warn, fail] values in 'thresholds'."
+        )
 
 
 class MartNamingRuleConfig(LayerFilterConfig):
@@ -366,7 +394,6 @@ class EnvironmentAgnosticReferencesRuleConfig(LayerFilterConfig):
 class RulesConfig(BaseModel):
     model_config = ConfigDict(extra="allow")
     classification_macros: ClassificationMacrosRuleConfig = Field(
-
         default_factory=ClassificationMacrosRuleConfig
     )
     sql_complexity: SqlComplexityRuleConfig = Field(
@@ -436,7 +463,10 @@ class HealthPenaltiesConfig(BaseModel):
     def get_check_error_penalty(self, check: str, is_project_level: bool) -> float:
         norm = check.lower().replace("-", "").replace("_", "").replace(" ", "")
         for k, v in self.checks.items():
-            if k.lower().replace("-", "").replace("_", "").replace(" ", "") == norm and v.error is not None:
+            if (
+                k.lower().replace("-", "").replace("_", "").replace(" ", "") == norm
+                and v.error is not None
+            ):
                 val = v.error
                 if is_project_level and 0.0 < val <= 1.0:
                     return val * 100.0
@@ -448,7 +478,10 @@ class HealthPenaltiesConfig(BaseModel):
     def get_check_warning_penalty(self, check: str, is_project_level: bool) -> float:
         norm = check.lower().replace("-", "").replace("_", "").replace(" ", "")
         for k, v in self.checks.items():
-            if k.lower().replace("-", "").replace("_", "").replace(" ", "") == norm and v.warning is not None:
+            if (
+                k.lower().replace("-", "").replace("_", "").replace(" ", "") == norm
+                and v.warning is not None
+            ):
                 val = v.warning
                 if is_project_level and 0.0 < val <= 1.0:
                     return val * 100.0
@@ -518,8 +551,9 @@ class FitnessFunctionsConfig(BaseModel):
             return [v]
         if isinstance(v, (list, tuple)):
             return [str(item) for item in v]
-        raise ValueError(f"Expected list of strings for plugins, got {type(v).__name__}")
-
+        raise ValueError(
+            f"Expected list of strings for plugins, got {type(v).__name__}"
+        )
 
     @property
     def config_file_found(self) -> bool:
@@ -571,7 +605,6 @@ def load_fitness_config(
     return config
 
 
-
 def init_fitness_config(
     project_root: Path,
     filename: str = "fitness_functions.yaml",
@@ -594,9 +627,7 @@ def _ensure_under_root(path: Path, root: Path) -> Path:
     try:
         resolved.relative_to(root_resolved)
     except ValueError:
-        raise ValueError(
-            f"Path {path} resolves outside project root {root}"
-        ) from None
+        raise ValueError(f"Path {path} resolves outside project root {root}") from None
     return resolved
 
 

@@ -30,14 +30,6 @@ def test_format_violations_fail_threshold() -> None:
     assert "FAIL" in messages[0]
 
 
-def test_format_violations_warn_only_false() -> None:
-    metrics = {"line_count": 300, "decision_points": 0, "cte_count": 0, "join_count": 0}
-    thresholds = {"line_count": [250, 400]}
-    messages = format_violations(metrics, "schema.model", thresholds, warn_only=False)
-    assert messages
-    assert "FAIL" in messages[0]
-
-
 def test_format_violations_nested_subquery() -> None:
     metrics = {
         "line_count": 10,
@@ -47,34 +39,52 @@ def test_format_violations_nested_subquery() -> None:
         "nested_subquery_in_final_select": True,
     }
     thresholds = {"line_count": [250, 400]}
-    # warn_only = True
-    messages_warn = format_violations(metrics, "schema.model", thresholds, warn_only=True)
-    assert any("WARN: nested subquery" in m for m in messages_warn)
-
-    # warn_only = False
-    messages_fail = format_violations(metrics, "schema.model", thresholds, warn_only=False)
-    assert any("FAIL: nested subquery" in m for m in messages_fail)
+    messages = format_violations(metrics, "schema.model", thresholds)
+    assert any("WARN: nested subquery" in m for m in messages)
 
 
-def test_sql_complexity_rule_warn_only_config() -> None:
-    from tff.core.config import FitnessFunctionsConfig
-    from tff.core.model import ModelRepresentation
-    from tff.core.rules.sql_complexity import SqlComplexity
+def test_sql_complexity_rejects_warn_only() -> None:
+    import pytest
+    from pydantic import ValidationError
+    from tff.core.config import FitnessFunctionsConfig, SqlComplexityRuleConfig
 
-    config = FitnessFunctionsConfig()
-    config.rules.sql_complexity.enabled = True
-    config.rules.sql_complexity.warn_only = False
+    # Direct validation with warn_only
+    with pytest.raises(
+        ValidationError, match="warn_only.*deprecated and no longer supported"
+    ):
+        SqlComplexityRuleConfig.model_validate({"warn_only": True})
 
-    rule = SqlComplexity(config=config)
-    model = ModelRepresentation(
-        name="core.model_subquery",
-        path="models/core/model.sql",
-        dialect="bigquery",
-        query="SELECT * FROM (SELECT id FROM users)",
-    )
-    violation = rule.check_model(model)
-    assert violation is not None
-    assert "FAIL: nested subquery" in violation.violation_msg[0]
+    with pytest.raises(
+        ValidationError, match="warn_only.*deprecated and no longer supported"
+    ):
+        SqlComplexityRuleConfig.model_validate({"warn_only": False})
+
+    # Setting attribute after creation
+    cfg = SqlComplexityRuleConfig()
+    with pytest.raises(
+        ValueError, match="warn_only.*deprecated and no longer supported"
+    ):
+        cfg.warn_only = False
+
+    with pytest.raises(
+        AttributeError, match="warn_only.*deprecated and no longer supported"
+    ):
+        _ = cfg.warn_only
+
+    # In FitnessFunctionsConfig via dict
+    with pytest.raises(
+        ValidationError, match="warn_only.*deprecated and no longer supported"
+    ):
+        FitnessFunctionsConfig.model_validate(
+            {
+                "rules": {
+                    "sql_complexity": {
+                        "enabled": True,
+                        "warn_only": True,
+                    }
+                }
+            }
+        )
 
 
 def test_sql_complexity_parallel_model_rule_severities() -> None:
@@ -206,4 +216,3 @@ def test_sql_complexity_rule_read_exception(tmp_path: Path) -> None:
         query=None,
     )
     assert rule.check_model(model) is None
-

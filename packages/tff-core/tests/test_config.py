@@ -180,7 +180,10 @@ def test_schema_contract_models_parsing():
     # ColumnParityGroup with string shorthand members
     group = ColumnParityGroup(
         reference="models/ref.sql",
-        members=["models/m1.sql", {"file": "models/m2.sql", "substitutions": {"x": "y"}}],
+        members=[
+            "models/m1.sql",
+            {"file": "models/m2.sql", "substitutions": {"x": "y"}},
+        ],
     )
     assert len(group.members) == 2
     assert group.members[0].file == "models/m1.sql"
@@ -283,7 +286,11 @@ def test_context_deprecation():
         assert retrieved is cfg
         clear_ff_config()
 
-        messages = [str(item.message) for item in w if issubclass(item.category, DeprecationWarning)]
+        messages = [
+            str(item.message)
+            for item in w
+            if issubclass(item.category, DeprecationWarning)
+        ]
         assert any("set_ff_config() is deprecated" in msg for msg in messages)
         assert any("get_ff_config() is deprecated" in msg for msg in messages)
         assert any("clear_ff_config() is deprecated" in msg for msg in messages)
@@ -386,49 +393,65 @@ health:
     assert config.health.penalties.project_warning == 15.0
 
     # Negative weights rejected
-    with pytest.raises(ValueError, match="Weight for 'layer_integrity' must be non-negative"):
-        FitnessFunctionsConfig.model_validate({
-            "health": {"weights": {"layer_integrity": -1.0}}
-        })
+    with pytest.raises(
+        ValueError, match="Weight for 'layer_integrity' must be non-negative"
+    ):
+        FitnessFunctionsConfig.model_validate(
+            {"health": {"weights": {"layer_integrity": -1.0}}}
+        )
 
-    with pytest.raises(ValueError, match="Weight for 'Dynamic Coupling' must be non-negative"):
-        FitnessFunctionsConfig.model_validate({
-            "health": {"category_weights": {"Dynamic Coupling": -0.5}}
-        })
+    with pytest.raises(
+        ValueError, match="Weight for 'Dynamic Coupling' must be non-negative"
+    ):
+        FitnessFunctionsConfig.model_validate(
+            {"health": {"category_weights": {"Dynamic Coupling": -0.5}}}
+        )
 
     # Negative penalty rejected
     with pytest.raises(ValueError):
-        FitnessFunctionsConfig.model_validate({
-            "health": {"penalties": {"error": -1.0}}
-        })
+        FitnessFunctionsConfig.model_validate(
+            {"health": {"penalties": {"error": -1.0}}}
+        )
 
     # Non-dict weights / category_weights validator coverage
-    health_empty = FitnessFunctionsConfig.model_validate({
-        "health": {"weights": None, "category_weights": None}
-    })
+    health_empty = FitnessFunctionsConfig.model_validate(
+        {"health": {"weights": None, "category_weights": None}}
+    )
     assert health_empty.health.weights == {}
 
     with pytest.raises(Exception):
-        FitnessFunctionsConfig.model_validate({
-            "health": {"weights": "not-a-dict"}
-        })
+        FitnessFunctionsConfig.model_validate({"health": {"weights": "not-a-dict"}})
 
     # Check penalties with ratio for project-level check
-    ratio_cfg = FitnessFunctionsConfig.model_validate({
-        "health": {
-            "penalties": {
-                "checks": {
-                    "layer_integrity": {"error": 0.25, "warning": 0.10}
+    ratio_cfg = FitnessFunctionsConfig.model_validate(
+        {
+            "health": {
+                "penalties": {
+                    "checks": {"layer_integrity": {"error": 0.25, "warning": 0.10}}
                 }
             }
         }
-    })
-    assert ratio_cfg.health.penalties.get_check_error_penalty("layer_integrity", is_project_level=True) == 25.0
-    assert ratio_cfg.health.penalties.get_check_warning_penalty("layer_integrity", is_project_level=True) == 10.0
+    )
+    assert (
+        ratio_cfg.health.penalties.get_check_error_penalty(
+            "layer_integrity", is_project_level=True
+        )
+        == 25.0
+    )
+    assert (
+        ratio_cfg.health.penalties.get_check_warning_penalty(
+            "layer_integrity", is_project_level=True
+        )
+        == 10.0
+    )
 
 
 def test_fitness_config_plugins(tmp_path: Path):
-    from tff.core.config import FitnessFunctionsConfig, STARTER_CONFIG_YAML, load_fitness_config
+    from tff.core.config import (
+        FitnessFunctionsConfig,
+        STARTER_CONFIG_YAML,
+        load_fitness_config,
+    )
     from tff.core.registry import registry
 
     # 1. plugins as list
@@ -482,12 +505,14 @@ def test_rule_get_rule_config():
     class TestCustomRule(Rule):
         name = "test_custom_rule"
 
-    cfg = FitnessFunctionsConfig.model_validate({
-        "rules": {
-            "test_custom_rule": {"threshold": 42, "enabled": True},
-            "other_rule": {"threshold": 100},
+    cfg = FitnessFunctionsConfig.model_validate(
+        {
+            "rules": {
+                "test_custom_rule": {"threshold": 42, "enabled": True},
+                "other_rule": {"threshold": 100},
+            }
         }
-    })
+    )
 
     rule = TestCustomRule(config=cfg)
     rule_cfg = rule.get_rule_config()
@@ -528,7 +553,19 @@ def test_config_workers_and_cache():
         FitnessFunctionsConfig(workers=0)
 
 
-
-
-
-
+def test_sql_complexity_warn_only_in_yaml_raises_error(tmp_path: Path) -> None:
+    yaml_path = tmp_path / "fitness_functions.yaml"
+    yaml_path.write_text(
+        """
+rules:
+  sql_complexity:
+    enabled: true
+    warn_only: true
+""",
+        encoding="utf-8",
+    )
+    with pytest.raises(
+        ValidationError,
+        match="rules.sql_complexity.warn_only' is deprecated and no longer supported",
+    ):
+        load_fitness_config(tmp_path)
