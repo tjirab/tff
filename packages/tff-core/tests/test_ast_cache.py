@@ -144,6 +144,38 @@ def test_parse_sql_with_cache_empty_and_disabled(tmp_path: Path):
     assert parse_sql_with_cache("SELECT FROM WHERE", "duckdb", cache_dir=cache_dir) is None
 
 
+def test_parse_sql_with_cache_respects_no_cache_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    cache_dir = tmp_path / "cache"
+    sql = "SELECT 42"
+
+    # Test TFF_NO_CACHE=1
+    monkeypatch.setenv("TFF_NO_CACHE", "1")
+    parsed = parse_sql_with_cache(sql, "duckdb", cache_dir=cache_dir)
+    assert parsed is not None
+    assert not cache_dir.exists()
+
+    # Invalid SQL when TFF_NO_CACHE=1
+    assert parse_sql_with_cache("SELECT FROM WHERE", "duckdb", cache_dir=cache_dir) is None
+
+    # Test TFF_DISABLE_CACHE=1
+    monkeypatch.delenv("TFF_NO_CACHE")
+    monkeypatch.setenv("TFF_DISABLE_CACHE", "1")
+    parsed2 = parse_sql_with_cache(sql, "duckdb", cache_dir=cache_dir)
+    assert parsed2 is not None
+    assert not cache_dir.exists()
+
+
+def test_model_representation_ast_respects_no_cache_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    from tff.core.model import ModelRepresentation
+
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("TFF_NO_CACHE", "1")
+    m = ModelRepresentation(name="test", path="test.sql", dialect="duckdb", query="SELECT 42")
+    ast = m.ast
+    assert ast is not None
+    assert not (tmp_path / ".tff_cache").exists()
+
+
 def test_parse_sql_with_cache_hit_and_miss(tmp_path: Path):
     cache_dir = tmp_path / "cache"
     sql = "SELECT id, name FROM users WHERE active = true"

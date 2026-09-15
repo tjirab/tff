@@ -119,13 +119,13 @@ def parse_sql_with_cache(
     project_root: Path | None = None,
     enabled: bool = True,
 ) -> exp.Expression | None:
-    """Parse SQL using SQLGlot, using disk cache if enabled."""
+    """Parse SQL using SQLGlot, using disk cache if enabled and allowed by environment."""
     import sqlglot
 
     if not sql or not sql.strip():
         return None
 
-    if not enabled:
+    if not enabled or not is_cache_enabled():
         try:
             return sqlglot.parse_one(sql, read=dialect)
         except Exception:
