@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.16.0](https://github.com/tjirab/tff/compare/tff-core-v0.15.1...tff-core-v0.16.0) (2026-09-15)
+
+
+### Features
+
+* **rules:** deprecate and remove warn_only in sql_complexity ([#202](https://github.com/tjirab/tff/issues/202)) ([779e574](https://github.com/tjirab/tff/commit/779e57432d120b0a863529df400f7a676a10d9fa))
+
 ## [0.15.1](https://github.com/tjirab/tff/compare/tff-core-v0.15.0...tff-core-v0.15.1) (2026-09-15)
 
 
