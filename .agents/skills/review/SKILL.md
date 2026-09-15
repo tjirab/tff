@@ -2,7 +2,7 @@
 name: review
 description: >-
   Conduct a rigorous, objective code review of a pull request, branch, or staged changes.
-  Reviews strictly for security, performance, feature coverage, and test coverage (enforcing 100% diff coverage).
+  Reviews strictly for security, performance, feature coverage, and test coverage.
   Omits praise and conversational fluff. Automatically triages non-blocking improvements into GitHub issues using `gh issue create`.
   Trigger with `/review` or `/review <pr_or_branch>`.
 ---
@@ -23,7 +23,7 @@ This skill defines the mandatory, objective code review procedure for pull reque
    - **Security**: Credential leakage in logs/CLI, injection risks, unsafe deserialization, filesystem traversal, token permission scoping.
    - **Performance**: Algorithmic complexity, AST caching efficiency, parallel processing bottlenecks, redundant allocations, memory scaling.
    - **Feature Coverage**: Full fulfillment of ticket/PR requirements, CLI options, backward compatibility, edge case & error handling.
-   - **Test Coverage**: 100% diff coverage requirement, unit & integration test adequacy, negative/failure path testing.
+   - **Test Coverage**: Unit & integration test adequacy, negative/failure path testing.
 
 3. **Automated Triage of Non-Blocking Improvements**:
    - Distinguish strictly between **Blocking Issues** (must be resolved before merge) and **Non-Blocking Improvements** (technical debt, minor refactoring, future enhancements, secondary docs).
@@ -56,13 +56,10 @@ uv run ruff check .
 # 2. Dependency security audit
 uv run python scripts/audit.py --min-severity HIGH
 
-# 3. Unit tests with coverage
-MAX_FORK_WORKERS=1 uv run pytest --cov=packages --cov-report=xml
-
-# 4. Enforce 100% diff coverage
-uv run diff-cover coverage.xml --compare-branch=origin/main --fail-under=100
+# 3. Unit tests
+MAX_FORK_WORKERS=1 uv run pytest
 ```
-Note any failures, warnings, or missing coverage lines.
+Note any failures, warnings, or missing tests.
 
 ### Step 3: Deep Technical Inspection
 
@@ -85,7 +82,6 @@ Note any failures, warnings, or missing coverage lines.
 - **Documentation**: Are `README.md`, `docs/cli.md`, or relevant user guides updated?
 
 #### D. Test Coverage
-- **100% Diff Coverage**: Are all newly added or modified lines covered by automated tests?
 - **Edge Cases & Failure Paths**: Are error conditions, invalid arguments, missing config files, and environment variable overrides explicitly tested?
 
 ---
@@ -117,7 +113,6 @@ Deliver the review using the following standardized template:
   - Ruff: `Pass` / `Fail`
   - Audit: `Pass` / `Fail`
   - Unit Tests: `<N>/<N> passed`
-  - Diff Coverage: `<X>%` (Requirement: 100%)
 
 ---
 

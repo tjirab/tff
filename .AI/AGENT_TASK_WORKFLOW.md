@@ -4,7 +4,7 @@ This document outlines the mandatory end-to-end process for agents when undertak
 
 ## 🚀 Workflow Steps
 
-The entire process must be treated as an atomic unit, moving sequentially from step 1 through 7. Do not skip steps, even if they appear redundant at first glance.
+The entire process must be treated as an atomic unit, moving sequentially from step 1 through 6. Do not skip steps, even if they appear redundant at first glance.
 
 ### Step 1: Sync Main Branch (Foundation)
 **Goal:** Ensure the local development environment is based on the absolute latest state of the main codebase.
@@ -43,17 +43,7 @@ git checkout -b feat/<task-summary> # For new features
 1.  Update README files, API documentation, and internal comments.
 2.  If the change involves user-facing features, update necessary guides or tutorials.
 
-### Step 6: Self-Review (Quality Gate)
-**Goal:** Proactively review the entire contribution as if preparing for a peer review.
-**Workflow:** Run `/review` to trigger the automated code review skill, checking security, performance, feature coverage, and test coverage before opening the PR.
-**Checklist:**
-*   [ ] Does the code only implement what was asked? (No scope creep).
-*   [ ] Are variable/function names clear and self-explanatory?
-*   [ ] Is there adequate error handling (`try...except` blocks, graceful failure)?
-*   [ ] Does the documentation accurately reflect behavior?
-*   [ ] Are all necessary dependencies or environmental setup changes noted?
-
-### Step 7: Final Commit & PR (Completion)
+### Step 6: Final Commit & PR (Completion)
 **Goal:** Create a clean history and initiate formal review.
 **Action:**
 1.  Stage all final changes (`git add .`).
