@@ -26,6 +26,7 @@ class ModelRepresentation:
     expression: sqlglot.expressions.Expression | None = field(default=None, repr=False, compare=False)
     tags: list[str] = field(default_factory=list)
     meta: dict[str, Any] = field(default_factory=dict)
+    provider: str | None = None
 
     @property
     def ast(self) -> sqlglot.expressions.Expression | None:
@@ -50,7 +51,7 @@ class ModelRepresentation:
 
         cleaned_sql = re.sub(r"^MODEL\s*\(.*?\)\s*;", "", sql, flags=re.DOTALL | re.IGNORECASE).strip()
         cleaned_sql = clean_dataform_for_parsing(cleaned_sql)
-        cleaned_sql = clean_jinja_for_parsing(cleaned_sql)
+        cleaned_sql = clean_jinja_for_parsing(cleaned_sql, provider=self.provider)
         try:
             from tff.core.ast_cache import parse_sql_with_cache
 

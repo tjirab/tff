@@ -136,6 +136,7 @@ def load_dbt_models(
             expression=None,
             tags=node.get("tags") or [],
             meta={**config_meta, **meta},
+            provider="dbt",
         )
 
     # 3. Map sources to ModelRepresentation so graph checks resolve them
@@ -159,6 +160,7 @@ def load_dbt_models(
             materialized="table",
             tags=source.get("tags") or [],
             meta=source.get("meta") or {},
+            provider="dbt",
         )
 
     logger.debug("Mapped %d models/seeds from dbt manifest", len(mapped_models))

@@ -51,7 +51,7 @@ class EnvironmentAgnosticReferences(Rule):
             # Strip SQLMesh MODEL block if present
             sql = re.sub(r"^MODEL\s*\(.*?\)\s*;", "", sql, flags=re.DOTALL | re.IGNORECASE).strip()
             # Clean Jinja and SQLMesh macro templates
-            sql_clean = clean_jinja_for_parsing(sql)
+            sql_clean = clean_jinja_for_parsing(sql, provider=model.provider)
             parsed = sqlglot.parse_one(sql_clean, read=model.dialect)
         except Exception:
             return None

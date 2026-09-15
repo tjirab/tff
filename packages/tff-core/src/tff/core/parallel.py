@@ -62,11 +62,11 @@ def get_max_workers(
     return max(1, min(cpu_count, 8))
 
 
-def _clean_sql_for_model(sql: str) -> str:
+def _clean_sql_for_model(sql: str, provider: str | None = None) -> str:
     """Strip Jinja/Dataform/SQLMesh syntax noise for AST parsing."""
     cleaned = re.sub(r"^MODEL\s*\(.*?\)\s*;", "", sql, flags=re.DOTALL | re.IGNORECASE).strip()
     cleaned = clean_dataform_for_parsing(cleaned)
-    cleaned = clean_jinja_for_parsing(cleaned)
+    cleaned = clean_jinja_for_parsing(cleaned, provider=provider)
     return cleaned
 
 
@@ -120,7 +120,7 @@ def precompute_model_asts(
         if not sql or not sql.strip():
             continue
 
-        cleaned_sql = _clean_sql_for_model(sql)
+        cleaned_sql = _clean_sql_for_model(sql, provider=model.provider)
         if not cleaned_sql:
             continue
 

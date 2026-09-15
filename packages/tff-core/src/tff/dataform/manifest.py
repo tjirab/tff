@@ -295,6 +295,7 @@ def _parse_compiled_graph(
             expression=expression,
             tags=tags,
             meta={**bq_labels},
+            provider="dataform",
         )
 
     # 3. Map declarations (external sources)
@@ -321,6 +322,7 @@ def _parse_compiled_graph(
             materialized="table",
             tags=decl.get("tags") or [],
             meta={},
+            provider="dataform",
         )
 
     # Ensure dependencies that refer to un-prefixed names resolve if possible
@@ -520,6 +522,7 @@ def _load_models_from_sources(
             expression=expression,
             tags=config.get("tags") or [],
             meta=meta,
+            provider="dataform",
         )
 
     # 2. Search for declarations in .js files
@@ -559,6 +562,7 @@ def _load_models_from_sources(
                             materialized="table",
                             tags=decl_info.get("tags") or [],
                             meta={},
+                            provider="dataform",
                         )
             except Exception:
                 pass

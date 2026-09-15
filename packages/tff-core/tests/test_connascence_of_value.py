@@ -394,3 +394,51 @@ def test_cov_negated_with_parentheses():
 def test_is_ignored_literal_standalone_node():
     node = exp.Literal.number(42)
     assert is_ignored_literal(node) is False
+
+
+def test_cov_does_not_rewrite_email_or_regex_at_symbols():
+    config = FitnessFunctionsConfig()
+    config.checks.connascence_of_value.enabled = True
+    config.checks.connascence_of_value.min_occurrences = 2
+
+    model1 = ModelRepresentation(
+        name="model1",
+        path="models/marts/model1.sql",
+        dialect="postgres",
+        query="SELECT * FROM {{ ref('stg_a') }} WHERE regexp_like(email, '.@gmail.com')",
+        provider="dbt",
+    )
+    model2 = ModelRepresentation(
+        name="model2",
+        path="models/marts/model2.sql",
+        dialect="postgres",
+        query="SELECT * FROM {{ ref('stg_b') }} WHERE regexp_like(email, '.@gmail.com')",
+        provider="dbt",
+    )
+
+    models = {"model1": model1, "model2": model2}
+    findings = collect_connascence_of_value_findings(models, config)
+    assert len(findings) == 2
+    for f in findings:
+        assert "__sqlmesh_macro__" not in f.message
+        assert "Literal '.@gmail.com'" in f.message
+
+    # Also test without provider specified (defaulting to provider=None)
+    model3 = ModelRepresentation(
+        name="model3",
+        path="models/marts/model3.sql",
+        dialect="postgres",
+        query="SELECT * FROM {{ ref('stg_a') }} WHERE email = 'support@company.com'",
+    )
+    model4 = ModelRepresentation(
+        name="model4",
+        path="models/marts/model4.sql",
+        dialect="postgres",
+        query="SELECT * FROM {{ ref('stg_b') }} WHERE email = 'support@company.com'",
+    )
+    findings_none = collect_connascence_of_value_findings({"model3": model3, "model4": model4}, config)
+    assert len(findings_none) == 2
+    for f in findings_none:
+        assert "__sqlmesh_macro__" not in f.message
+        assert "Literal 'support@company.com'" in f.message
+

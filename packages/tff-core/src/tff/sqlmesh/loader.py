@@ -59,6 +59,7 @@ def map_sqlmesh_model(model: SqlMeshModel) -> ModelRepresentation:
         expression=query_obj,
         tags=getattr(model, "tags", []) or [],
         meta=getattr(model, "meta", {}) or {},
+        provider="sqlmesh",
     )
 
 
