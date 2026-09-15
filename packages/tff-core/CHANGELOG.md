@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.15.1](https://github.com/tjirab/tff/compare/tff-core-v0.15.0...tff-core-v0.15.1) (2026-09-15)
+
+
+### Bug Fixes
+
+* **rules:** resolve warning vs error severity mismatch in sql_complexity ([#198](https://github.com/tjirab/tff/issues/198)) ([f6f20f4](https://github.com/tjirab/tff/commit/f6f20f44e4cde39e67a027feb35d4d52bd50ca76))
+
 ## [0.15.0](https://github.com/tjirab/tff/compare/tff-core-v0.14.0...tff-core-v0.15.0) (2026-09-13)
 
 
