@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.16.1](https://github.com/tjirab/tff/compare/tff-core-v0.16.0...tff-core-v0.16.1) (2026-09-15)
+
+
+### Bug Fixes
+
+* **core:** resolve get_ast_cache_dir to ast subdirectory when directory exists ([#189](https://github.com/tjirab/tff/issues/189)) ([#209](https://github.com/tjirab/tff/issues/209)) ([c3ded50](https://github.com/tjirab/tff/commit/c3ded5034fe9d4922967edbdd146ab78b0d8855d))
+* **core:** respect TFF_NO_CACHE in parse_sql_with_cache ([#188](https://github.com/tjirab/tff/issues/188)) ([#207](https://github.com/tjirab/tff/issues/207)) ([78d9410](https://github.com/tjirab/tff/commit/78d941077a035aceacee3dfb1020c8c1d625263e))
+* **cov:** preserve literals containing '@' and skip SQLMesh macro cleanup in dbt ([#175](https://github.com/tjirab/tff/issues/175)) ([#204](https://github.com/tjirab/tff/issues/204)) ([b4934ca](https://github.com/tjirab/tff/commit/b4934ca6140dfd4ebb41fd8f479ffec39f7a8baa))
+
 ## [0.16.0](https://github.com/tjirab/tff/compare/tff-core-v0.15.1...tff-core-v0.16.0) (2026-09-15)
 
 
