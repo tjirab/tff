@@ -145,6 +145,7 @@ class CheckEnabled(BaseModel):
 
 class LayerFilterConfig(BaseModel):
     enabled: bool = True
+    severity: str | None = None
     skip_layers: list[str] = Field(default_factory=list)
     only_layers: list[str] | None = None
 

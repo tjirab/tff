@@ -23,7 +23,7 @@ if TYPE_CHECKING:
     from tff.core.config import FitnessFunctionsConfig
     from tff.core.model import ModelRepresentation
     from tff.core.report import LintFinding, Severity
-    from tff.core.rules.base import Rule
+    from tff.core.rules.base import Rule, RuleViolation
 
 logger = logging.getLogger(__name__)
 
@@ -166,23 +166,51 @@ def precompute_model_asts(
                 models[m_name].expression = expr
 
 
-def _check_single_model(
-    args: tuple[type[Rule], Any, ModelRepresentation, Severity, str],
+def _extract_model_findings(
+    rule_cls: type[Rule],
+    model: ModelRepresentation,
+    violation: RuleViolation | None,
+    severity: Severity,
+    finding_check: str,
 ) -> list[LintFinding]:
-    rule_cls, config, model, severity, finding_check = args
     from tff.core.report import LintFinding
     from tff.core.utils.paths import model_path_relative
 
+    if not violation:
+        return []
+
     findings: list[LintFinding] = []
-    rule = rule_cls(config=config)
-    violation = rule.check_model(model)
-    if violation:
-        msgs = violation.violation_msg
-        if isinstance(msgs, str):
-            msgs = [msgs]
-        for msg in msgs:
-            model_label = f"{model.name}: "
-            clean_msg = msg.removeprefix(model_label)
+    msgs = violation.violation_msg
+    if isinstance(msgs, str):
+        msgs = [msgs]
+
+    is_sql_complexity = (
+        finding_check in ("sqlcomplexity", "sql_complexity")
+        or getattr(rule_cls, "name", "") == "sqlcomplexity"
+        or rule_cls.__name__ == "SqlComplexity"
+    )
+
+    for msg in msgs:
+        model_label = f"{model.name}: "
+        clean_msg = msg.removeprefix(model_label)
+        if is_sql_complexity:
+            parts = [p.strip() for p in clean_msg.split(";") if p.strip()]
+            for part in parts:
+                part_severity = severity
+                if part.startswith("WARN:"):
+                    part_severity = "warning"
+                elif part.startswith("FAIL:"):
+                    part_severity = "error" if severity == "error" else severity
+                findings.append(
+                    LintFinding(
+                        check=finding_check,
+                        severity=part_severity,
+                        model=model.name,
+                        path=model_path_relative(model),
+                        message=part,
+                    )
+                )
+        else:
             findings.append(
                 LintFinding(
                     check=finding_check,
@@ -195,6 +223,21 @@ def _check_single_model(
     return findings
 
 
+def _check_single_model(
+    args: tuple[type[Rule], Any, ModelRepresentation, Severity, str],
+) -> list[LintFinding]:
+    rule_cls, config, model, severity, finding_check = args
+    rule = rule_cls(config=config)
+    violation = rule.check_model(model)
+    return _extract_model_findings(
+        rule_cls=rule_cls,
+        model=model,
+        violation=violation,
+        severity=severity,
+        finding_check=finding_check,
+    )
+
+
 def run_parallel_model_rule(
     rule_cls: type[Rule],
     models: list[ModelRepresentation],
@@ -204,9 +247,6 @@ def run_parallel_model_rule(
     max_workers: int | None = None,
 ) -> list[LintFinding]:
     """Execute a single model rule across models, parallelizing across threads if beneficial."""
-    from tff.core.report import LintFinding
-    from tff.core.utils.paths import model_path_relative
-
     finding_check = check_name or getattr(rule_cls, "name", rule_cls.__name__.lower())
     eligible_models = [m for m in models if not m.is_external and not m.is_symbolic]
 
@@ -219,22 +259,15 @@ def run_parallel_model_rule(
         findings: list[LintFinding] = []
         for model in eligible_models:
             violation = rule.check_model(model)
-            if violation:
-                msgs = violation.violation_msg
-                if isinstance(msgs, str):
-                    msgs = [msgs]
-                for msg in msgs:
-                    model_label = f"{model.name}: "
-                    clean_msg = msg.removeprefix(model_label)
-                    findings.append(
-                        LintFinding(
-                            check=finding_check,
-                            severity=severity,
-                            model=model.name,
-                            path=model_path_relative(model),
-                            message=clean_msg,
-                        )
-                    )
+            findings.extend(
+                _extract_model_findings(
+                    rule_cls=rule_cls,
+                    model=model,
+                    violation=violation,
+                    severity=severity,
+                    finding_check=finding_check,
+                )
+            )
         return findings
 
     # Parallelize model rule execution using thread pool

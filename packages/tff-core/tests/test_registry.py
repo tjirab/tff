@@ -844,3 +844,31 @@ def test_check_definition_run_with_workers():
     assert len(findings_dag2) == 1
 
 
+def test_check_definition_get_severity_overrides():
+    import yaml
+    from tff.core.config import FitnessFunctionsConfig
+
+    data = yaml.safe_load("""
+rules:
+  ban_select_star:
+    enabled: true
+    severity: warning
+checks:
+  duplicate_ctes:
+    enabled: true
+    severity: error
+""")
+    cfg = FitnessFunctionsConfig.model_validate(data)
+
+    # Model rule with override in rules section
+    c_rule = registry.get("ban_select_star")
+    assert c_rule is not None
+    assert c_rule.get_severity(cfg) == "warning"
+
+    # DAG check with override in checks section
+    c_check = registry.get("duplicate_ctes")
+    assert c_check is not None
+    assert c_check.get_severity(cfg) == "error"
+
+
+

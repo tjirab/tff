@@ -498,7 +498,8 @@ For SQLMesh projects, these rules run dynamically inside SQLMesh (e.g., `sqlmesh
         line_count: [250, 400]
   ```
   * **SQLMesh Rule Name**: `sqlcomplexity`
-  * `warn_only` (bool, default: `true`): If `true`, metrics exceeding warning limits but under failure limits raise warnings only.
+  * `warn_only` (bool, default: `true`): If `true`, metrics exceeding warning limits but under failure limits raise warnings only (with `warning` severity). If `false`, exceeding warning limits raises failures (with `error` severity).
+  * `severity` (string, optional): Overall rule severity override (`"warning"` or `"error"`).
   * `thresholds`: Map of metric to `[warn_threshold, fail_threshold]` integer pairs.
 
 ---

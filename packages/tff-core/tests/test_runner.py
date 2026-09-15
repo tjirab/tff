@@ -55,3 +55,74 @@ def test_cli_lint_with_group_by():
             fail_level="error",
             group_by="model",
         )
+
+
+def test_collect_sqlmesh_findings_severities():
+    from unittest.mock import MagicMock
+    from sqlmesh.core.linter.definition import AnnotatedRuleViolation
+    from tff.core.config import FitnessFunctionsConfig
+    from tff.sqlmesh.runner import collect_sqlmesh_findings
+
+    mock_context = MagicMock()
+    mock_model = MagicMock()
+    mock_model.name = "test_model"
+    mock_model.project = "default"
+    mock_model.kind.is_symbolic = False
+    mock_model._path = Path("models/test_model.sql")
+    mock_context.models = {"test_model": mock_model}
+
+    mock_linter = MagicMock()
+    mock_linter.enabled = True
+    mock_context._linters = {"default": mock_linter}
+
+    mock_rule_complexity = MagicMock()
+    mock_rule_complexity.name = "sqlcomplexity"
+
+    mock_rule_other = MagicMock()
+    mock_rule_other.name = "ban_select_star"
+
+    v_complexity = AnnotatedRuleViolation(
+        rule=mock_rule_complexity,
+        violation_msg="WARN: cte_count=9 (warn>8, fail>12); FAIL: line_count=500 (warn>250, fail>400); other_metric=1",
+        model=mock_model,
+        violation_type="error",
+    )
+    v_other = AnnotatedRuleViolation(
+        rule=mock_rule_other,
+        violation_msg="SELECT * is banned",
+        model=mock_model,
+        violation_type="error",
+    )
+    mock_linter.lint_model.return_value = (True, [v_complexity, v_other])
+
+    # Case 1: Config passed in, ban_select_star overridden to warning
+    cfg = FitnessFunctionsConfig()
+    cfg.rules.ban_select_star.severity = "warning"
+
+    findings = collect_sqlmesh_findings(mock_context, config=cfg)
+    assert len(findings) == 4
+
+    # sqlcomplexity WARN -> warning
+    assert findings[0].check == "sqlcomplexity"
+    assert findings[0].severity == "warning"
+    assert "WARN: cte_count=9" in findings[0].message
+
+    # sqlcomplexity FAIL -> error
+    assert findings[1].check == "sqlcomplexity"
+    assert findings[1].severity == "error"
+    assert "FAIL: line_count=500" in findings[1].message
+
+    # sqlcomplexity other -> rule_severity ("error")
+    assert findings[2].check == "sqlcomplexity"
+    assert findings[2].severity == "error"
+    assert "other_metric=1" in findings[2].message
+
+    # ban_select_star -> configured warning
+    assert findings[3].check == "ban_select_star"
+    assert findings[3].severity == "warning"
+
+    # Case 2: Config resolved from context.loader._ff_config
+    mock_context.loader._ff_config = cfg
+    findings_loader = collect_sqlmesh_findings(mock_context, config=None)
+    assert len(findings_loader) == 4
+

@@ -134,18 +134,19 @@ class CheckDefinition:
     def get_severity(self, config: FitnessFunctionsConfig | None = None) -> Severity:
         """Resolve severity from configuration override or fall back to default_severity."""
         if config is not None:
-            rules_cfg = getattr(config, "rules", None)
             candidates = [self.id, self.finding_id, *self.aliases]
             norm_candidates = {normalize_check_name(c) for c in candidates if c}
-            if rules_cfg is not None:
-                entries = dict(getattr(rules_cfg, "__dict__", {}))
-                if hasattr(rules_cfg, "model_extra") and rules_cfg.model_extra:
-                    entries.update(rules_cfg.model_extra)
-                for attr, val in entries.items():
-                    if normalize_check_name(attr) in norm_candidates:
-                        sev = getattr(val, "severity", None) if not isinstance(val, dict) else val.get("severity")
-                        if sev and str(sev).lower() in ("error", "warning"):
-                            return str(sev).lower()  # type: ignore[return-value]
+            for section_name in ("rules", "checks"):
+                cfg_section = getattr(config, section_name, None)
+                if cfg_section is not None:
+                    entries = dict(getattr(cfg_section, "__dict__", {}))
+                    if hasattr(cfg_section, "model_extra") and cfg_section.model_extra:
+                        entries.update(cfg_section.model_extra)
+                    for attr, val in entries.items():
+                        if normalize_check_name(attr) in norm_candidates:
+                            sev = getattr(val, "severity", None) if not isinstance(val, dict) else val.get("severity")
+                            if sev and str(sev).lower() in ("error", "warning"):
+                                return str(sev).lower()  # type: ignore[return-value]
 
         return self.default_severity
 

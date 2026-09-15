@@ -29,9 +29,15 @@ class _SilentLinterConsole:
         return None
 
 
-def collect_sqlmesh_findings(context: Context) -> list[LintFinding]:
+def collect_sqlmesh_findings(
+    context: Context,
+    config: FitnessFunctionsConfig | None = None,
+) -> list[LintFinding]:
     findings: list[LintFinding] = []
     silent_console = _SilentLinterConsole()
+
+    if config is None and hasattr(context, "loader") and hasattr(context.loader, "_ff_config"):
+        config = getattr(context.loader, "_ff_config", None)
 
     for model in context.models.values():
         if model.kind.is_symbolic:
@@ -47,21 +53,40 @@ def collect_sqlmesh_findings(context: Context) -> list[LintFinding]:
             if not isinstance(violation, AnnotatedRuleViolation):
                 continue
 
+            rule_name = violation.rule.name
+            c_def = registry.get(rule_name)
+            rule_severity = (
+                c_def.get_severity(config)
+                if c_def and config
+                else violation.violation_type
+            )
+
             message = format_message(violation.violation_msg)
             if message.startswith(f"{model_label}: "):
                 message = message[len(model_label) + 2 :]
 
+            is_sql_complexity = rule_name == "sqlcomplexity"
             messages = (
                 [part.strip() for part in message.split(";") if part.strip()]
-                if violation.rule.name == "sqlcomplexity"
+                if is_sql_complexity
                 else [message]
             )
 
             for part in messages:
+                if is_sql_complexity:
+                    if part.startswith("WARN:"):
+                        part_severity = "warning"
+                    elif part.startswith("FAIL:"):
+                        part_severity = "error" if rule_severity == "error" else rule_severity
+                    else:
+                        part_severity = rule_severity
+                else:
+                    part_severity = rule_severity
+
                 findings.append(
                     LintFinding(
                         check=violation.rule.name,
-                        severity=violation.violation_type,
+                        severity=part_severity,
                         model=str(model.name),
                         path=model_path_relative(model),
                         message=part,
@@ -110,7 +135,7 @@ def run_all_checks(
             )
 
         if context is not None:
-            findings.extend(collect_sqlmesh_findings(context))
+            findings.extend(collect_sqlmesh_findings(context, config=config))
 
         mapped_models = (
             models if models is not None else map_sqlmesh_context_models(context)
@@ -148,10 +173,10 @@ def run_all_checks(
         # Run SQLMesh linter / model rules
         if "sqlmesh" in selected:
             if context is not None:
-                findings.extend(collect_sqlmesh_findings(context))
+                findings.extend(collect_sqlmesh_findings(context, config=config))
         elif model_rules_requested:
             if context is not None:
-                all_sqlmesh_findings = collect_sqlmesh_findings(context)
+                all_sqlmesh_findings = collect_sqlmesh_findings(context, config=config)
                 if any(normalize_check_name(c) == "rules" for c in checks):
                     findings.extend(all_sqlmesh_findings)
                 else:

@@ -22,6 +22,128 @@ def test_format_violations_warn_threshold() -> None:
     assert "WARN" in messages[0]
 
 
+def test_format_violations_fail_threshold() -> None:
+    metrics = {"line_count": 500, "decision_points": 0, "cte_count": 0, "join_count": 0}
+    thresholds = {"line_count": [250, 400]}
+    messages = format_violations(metrics, "schema.model", thresholds)
+    assert messages
+    assert "FAIL" in messages[0]
+
+
+def test_format_violations_warn_only_false() -> None:
+    metrics = {"line_count": 300, "decision_points": 0, "cte_count": 0, "join_count": 0}
+    thresholds = {"line_count": [250, 400]}
+    messages = format_violations(metrics, "schema.model", thresholds, warn_only=False)
+    assert messages
+    assert "FAIL" in messages[0]
+
+
+def test_format_violations_nested_subquery() -> None:
+    metrics = {
+        "line_count": 10,
+        "decision_points": 0,
+        "cte_count": 0,
+        "join_count": 0,
+        "nested_subquery_in_final_select": True,
+    }
+    thresholds = {"line_count": [250, 400]}
+    # warn_only = True
+    messages_warn = format_violations(metrics, "schema.model", thresholds, warn_only=True)
+    assert any("WARN: nested subquery" in m for m in messages_warn)
+
+    # warn_only = False
+    messages_fail = format_violations(metrics, "schema.model", thresholds, warn_only=False)
+    assert any("FAIL: nested subquery" in m for m in messages_fail)
+
+
+def test_sql_complexity_rule_warn_only_config() -> None:
+    from tff.core.config import FitnessFunctionsConfig
+    from tff.core.model import ModelRepresentation
+    from tff.core.rules.sql_complexity import SqlComplexity
+
+    config = FitnessFunctionsConfig()
+    config.rules.sql_complexity.enabled = True
+    config.rules.sql_complexity.warn_only = False
+
+    rule = SqlComplexity(config=config)
+    model = ModelRepresentation(
+        name="core.model_subquery",
+        path="models/core/model.sql",
+        dialect="bigquery",
+        query="SELECT * FROM (SELECT id FROM users)",
+    )
+    violation = rule.check_model(model)
+    assert violation is not None
+    assert "FAIL: nested subquery" in violation.violation_msg[0]
+
+
+def test_sql_complexity_parallel_model_rule_severities() -> None:
+    from tff.core.config import FitnessFunctionsConfig
+    from tff.core.model import ModelRepresentation
+    from tff.core.parallel import run_parallel_model_rule
+    from tff.core.rules.sql_complexity import SqlComplexity
+
+    config = FitnessFunctionsConfig()
+    config.rules.sql_complexity.enabled = True
+
+    # SQL with 9 CTEs (warn>8, fail>12) and 26 decision points (warn>15, fail>25)
+    ctes = ", ".join(f"cte_{i} AS (SELECT {i})" for i in range(9))
+    cases = " ".join(f"CASE WHEN id = {i} THEN {i} ELSE 0 END +" for i in range(26))
+    sql = f"WITH {ctes} SELECT {cases} 0 FROM cte_0"
+
+    model = ModelRepresentation(
+        name="core.complex_model",
+        path="models/core/complex_model.sql",
+        dialect="duckdb",
+        query=sql,
+    )
+
+    # Sequential execution
+    findings_seq = run_parallel_model_rule(
+        SqlComplexity,
+        [model],
+        config=config,
+        max_workers=1,
+    )
+    # Findings should be split into individual items
+    warn_findings = [f for f in findings_seq if f.severity == "warning"]
+    fail_findings = [f for f in findings_seq if f.severity == "error"]
+
+    assert len(warn_findings) >= 1
+    assert any("WARN: cte_count=9" in f.message for f in warn_findings)
+    assert len(fail_findings) >= 1
+    assert any("FAIL: decision_points=" in f.message for f in fail_findings)
+
+    # When rule severity is overridden to warning
+    findings_override = run_parallel_model_rule(
+        SqlComplexity,
+        [model],
+        severity="warning",
+        config=config,
+        max_workers=1,
+    )
+    assert all(f.severity == "warning" for f in findings_override)
+
+    # Multithreaded execution
+    models = [
+        ModelRepresentation(
+            name=f"core.complex_model_{i}",
+            path=f"models/core/complex_model_{i}.sql",
+            dialect="duckdb",
+            query=sql,
+        )
+        for i in range(25)
+    ]
+    findings_mt = run_parallel_model_rule(
+        SqlComplexity,
+        models,
+        config=config,
+        max_workers=4,
+    )
+    assert any(f.severity == "warning" for f in findings_mt)
+    assert any(f.severity == "error" for f in findings_mt)
+
+
 def test_sql_complexity_rule_missing_or_non_sql_file() -> None:
     from tff.core.rules.sql_complexity import SqlComplexity
     from tff.core.model import ModelRepresentation

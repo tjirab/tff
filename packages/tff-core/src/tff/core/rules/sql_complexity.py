@@ -96,6 +96,7 @@ def format_violations(
     metrics: dict[str, int | bool],
     model_name: str,
     thresholds: dict[str, list[int]],
+    warn_only: bool = True,
 ) -> list[str]:
     messages: list[str] = []
     for metric, (warn_at, fail_at) in thresholds.items():
@@ -103,13 +104,14 @@ def format_violations(
         if not isinstance(value, int):
             continue
         if value > warn_at:
-            level = "FAIL" if value > fail_at else "WARN"
+            level = "FAIL" if (value > fail_at or not warn_only) else "WARN"
             messages.append(
                 f"{level}: {metric}={value} (warn>{warn_at}, fail>{fail_at})"
             )
     if metrics.get("nested_subquery_in_final_select"):
+        level = "WARN" if warn_only else "FAIL"
         messages.append(
-            "WARN: nested subquery in final SELECT — prefer CTEs per style guide"
+            f"{level}: nested subquery in final SELECT — prefer CTEs per style guide"
         )
     if messages:
         return [f"{model_name}: " + "; ".join(messages)]
@@ -146,7 +148,10 @@ class SqlComplexity(Rule):
 
         metrics = analyze_sql(sql, dialect=model.dialect, parsed=model.ast)
         violations = format_violations(
-            metrics, str(model.name), rule_config.thresholds
+            metrics,
+            str(model.name),
+            rule_config.thresholds,
+            warn_only=rule_config.warn_only,
         )
         if violations:
             return self.violation(violations)
