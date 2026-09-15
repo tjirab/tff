@@ -25,7 +25,7 @@ classifiers = [
 
 [project.optional-dependencies]
 sqlmesh = [
-    "sqlmesh>=0.236.1",
+    "sqlmesh>=0.236.2",
 ]
 dbt = []
 dataform = []
