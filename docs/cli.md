@@ -56,7 +56,7 @@ tff lint [options]
 | `--group-by` | `model`, `connascence` | `model` | How to group violations in the console report. |
 | `--dialect DIALECT` | String | (auto-inferred) | SQL dialect of models (e.g. `duckdb`, `snowflake`, `bigquery`). |
 | `--manifest PATH` | File Path | (auto-discovered) | Path to precompiled manifest (dbt `manifest.json` or Dataform `compilation_result.json`). |
-| `--fix` | Flag | `false` | Automatically fix simple violations (e.g. rewrite positional `GROUP BY`/`ORDER BY` and scaffold missing metadata). |
+| `--fix` | Flag | `false` | Automatically fix simple violations (e.g. rewrite positional `GROUP BY`/`ORDER BY`, lift nested subqueries in final `SELECT` to CTEs, and scaffold missing metadata). |
 | `--format` | `text`, `json`, `sarif`, `github` | `text` | Output format to stdout. |
 | `--json` | Flag | `false` | Shorthand for `--format json`. |
 | `--github-annotations` | Flag | (auto if CI) | Emit GitHub Actions workflow commands (`::error` / `::warning`) to stderr. |

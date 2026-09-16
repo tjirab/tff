@@ -9,6 +9,7 @@ TFF runs two categories of quality guardrails: **Architectural Checks** and **Li
 TFF includes a built-in auto-fixer that can automatically resolve simple violations. By running `tff lint --fix`, TFF will modify your source files to fix the following issues:
 
 *   **[No Positional GROUP BY/ORDER BY](#no-positional-group-byorder-by-no_positional_group_by_or_order_by-auto-fixable)** (`nopositionalgroupbyororderby`): Rewrites integer positional references in `GROUP BY` and `ORDER BY` clauses to explicit column names or select aliases using AST modification.
+*   **[Nested Subqueries in Final SELECT](#sql-complexity-sql_complexity)** (`sqlcomplexity`): Refactors inline subqueries in `FROM (SELECT ...) alias` and `JOIN (SELECT ...) alias` clauses of the final `SELECT` statement into named Common Table Expressions (`WITH alias AS (...)`).
 *   **Metadata (`nomissingowner`, `nomissingdescription`)**:
     *   **dbt**: Automatically appends or scaffolds `schema.yml` metadata configs with `"TODO: Add owner"` and `"TODO: Add description"` templates.
     *   **SQLMesh**: Inline-updates the `MODEL` block in the model `.sql` file to add `owner` and `description` headers.
@@ -484,7 +485,7 @@ For SQLMesh projects, these rules run dynamically inside SQLMesh (e.g., `sqlmesh
     * `join_count`: Number of `JOIN` statements.
     * `line_count`: Total lines of code (ignoring empty lines and SQLMesh `MODEL` blocks).
     * `decision_points`: Number of logical conditional statements (`CASE`, `IF` and boolean operators `AND`/`OR` in `WHERE` clauses).
-    * `nested_subquery_in_final_select`: Warns if a subquery is nested in the final SELECT statement FROM clause.
+    * `nested_subquery_in_final_select`: Warns if a subquery is nested in the final SELECT statement FROM or JOIN clauses. (Auto-fixable via `tff lint --fix`)
 * **How to configure**:
   Defined under `rules.sql_complexity` in `fitness_functions.yaml`.
   ```yaml

@@ -60,19 +60,21 @@ def parse_model_block_args(block_text: str) -> list[tuple[str, str]]:
     return parsed_pairs
 
 
-def fix_positional_clauses(sql: str, dialect: str) -> str:
-    """Rewrite positional GROUP BY and ORDER BY integers to explicit columns."""
+def _resolve_dialect(dialect: str) -> str | None:
+    """Resolve and validate a dialect string for sqlglot."""
     from sqlglot.dialects.dialect import Dialect
 
-    resolved_dialect = None
     if dialect:
         try:
             Dialect.get_or_raise(dialect)
-            resolved_dialect = dialect
+            return dialect
         except ValueError:
             pass
+    return None
 
-    # 1. Extract the SQLMesh MODEL or Dataform config block if present
+
+def _extract_model_or_config_block(sql: str) -> tuple[str, str]:
+    """Extract SQLMesh MODEL or Dataform config block if present, returning (block, query_part)."""
     model_block_match = re.match(
         r"^\s*(MODEL\s*\(.*?\)\s*;)", sql, flags=re.DOTALL | re.IGNORECASE
     )
@@ -112,26 +114,49 @@ def fix_positional_clauses(sql: str, dialect: str) -> str:
     else:
         model_block = ""
         query_part = sql
+    return model_block, query_part
 
-    # 2. Extract macros/Jinja to placeholders to prevent parsing errors
-    patterns = [
-        r"\{#.*?#\}",
-        r"\{\{.*?\}\}",
-        r"\{%.*?%\}",
-        r"@\w+\([^)]*\)",
-        r"@\w+",
-        r"\$\{.*?\}",
-    ]
-    combined_pattern = re.compile("|".join(patterns), re.DOTALL)
-    placeholders = {}
 
-    def repl(match):
+_MACRO_PATTERNS = [
+    r"\{#.*?#\}",
+    r"\{\{.*?\}\}",
+    r"\{%.*?%\}",
+    r"@\w+\([^)]*\)",
+    r"@\w+",
+    r"\$\{.*?\}",
+]
+_MACRO_COMBINED_PATTERN = re.compile("|".join(_MACRO_PATTERNS), re.DOTALL)
+
+
+def _mask_macros(query: str) -> tuple[str, dict[str, str]]:
+    """Replace macros/Jinja with unique placeholder tokens to prevent SQL parsing errors."""
+    placeholders: dict[str, str] = {}
+
+    def repl(match: re.Match) -> str:
         idx = len(placeholders)
         ph = f"__TFF_MACRO_PH_{idx}__"
         placeholders[ph] = match.group(0)
         return ph
 
-    temp_query = combined_pattern.sub(repl, query_part)
+    return _MACRO_COMBINED_PATTERN.sub(repl, query), placeholders
+
+
+def _unmask_macros(query: str, placeholders: dict[str, str]) -> str:
+    """Restore macro/Jinja placeholders back to their original strings."""
+    for ph, orig in placeholders.items():
+        query = query.replace(ph, orig)
+    return query
+
+
+def fix_positional_clauses(sql: str, dialect: str) -> str:
+    """Rewrite positional GROUP BY and ORDER BY integers to explicit columns."""
+    resolved_dialect = _resolve_dialect(dialect)
+
+    # 1. Extract the SQLMesh MODEL or Dataform config block if present
+    model_block, query_part = _extract_model_or_config_block(sql)
+
+    # 2. Extract macros/Jinja to placeholders to prevent parsing errors
+    temp_query, placeholders = _mask_macros(query_part)
 
     # 3. Parse with sqlglot
     try:
@@ -182,8 +207,107 @@ def fix_positional_clauses(sql: str, dialect: str) -> str:
 
     # 5. Format back and restore placeholders
     modified_query = parsed.sql(dialect=resolved_dialect)
-    for ph, orig in placeholders.items():
-        modified_query = modified_query.replace(ph, orig)
+    modified_query = _unmask_macros(modified_query, placeholders)
+
+    if model_block:
+        return model_block + "\n\n" + modified_query
+    return modified_query
+
+
+def lift_nested_subqueries(sql: str, dialect: str) -> str:
+    """Refactor nested subqueries in FROM and JOIN clauses of the final SELECT into named CTEs."""
+    resolved_dialect = _resolve_dialect(dialect)
+    model_block, query_part = _extract_model_or_config_block(sql)
+    temp_query, placeholders = _mask_macros(query_part)
+
+    try:
+        parsed = sqlglot.parse_one(temp_query, read=resolved_dialect)
+    except Exception:
+        return sql
+
+    final_select = parsed.this if isinstance(parsed, exp.With) else parsed
+    if not isinstance(final_select, exp.Select):
+        return sql
+
+    from_clause = final_select.args.get("from_") or final_select.args.get("from")
+    joins = final_select.args.get("joins") or []
+
+    subqueries_to_lift: list[exp.Subquery] = []
+    if (
+        from_clause
+        and isinstance(from_clause.this, exp.Subquery)
+        and isinstance(from_clause.this.this, exp.Query)
+    ):
+        subqueries_to_lift.append(from_clause.this)
+
+    for join in joins:
+        if isinstance(join.this, exp.Subquery) and isinstance(
+            join.this.this, exp.Query
+        ):
+            subqueries_to_lift.append(join.this)
+
+    if not subqueries_to_lift:
+        return sql
+
+    with_clause = (
+        parsed
+        if isinstance(parsed, exp.With)
+        else (final_select.args.get("with_") or final_select.args.get("with"))
+    )
+    existing_cte_names: set[str] = set()
+    if with_clause:
+        for cte in with_clause.expressions:
+            if cte.alias:
+                existing_cte_names.add(cte.alias.lower())
+
+    new_ctes: list[exp.CTE] = []
+    extracted_counter = 1
+
+    for sub in subqueries_to_lift:
+        orig_alias = sub.alias
+        if not orig_alias:
+            while f"__extracted_cte_{extracted_counter}".lower() in existing_cte_names:
+                extracted_counter += 1
+            alias = f"__extracted_cte_{extracted_counter}"
+            extracted_counter += 1
+        elif orig_alias.lower() in existing_cte_names:
+            base = orig_alias
+            idx = 1
+            while f"{base}_{idx}".lower() in existing_cte_names:
+                idx += 1
+            alias = f"{base}_{idx}"
+        else:
+            alias = orig_alias
+
+        existing_cte_names.add(alias.lower())
+
+        alias_node = sub.args.get("alias")
+        if alias_node and alias_node.this and alias_node.name == alias:
+            cte_alias = alias_node.copy()
+        else:
+            cte_alias = exp.TableAlias(this=exp.to_identifier(alias))
+
+        cte = exp.CTE(this=sub.this.copy(), alias=cte_alias)
+        new_ctes.append(cte)
+
+        if orig_alias and alias != orig_alias:
+            table_node = exp.Table(
+                this=exp.to_identifier(alias),
+                alias=exp.TableAlias(this=exp.to_identifier(orig_alias)),
+            )
+        else:
+            table_node = exp.Table(this=exp.to_identifier(alias))
+
+        sub.replace(table_node)
+
+    if with_clause:
+        for cte in new_ctes:
+            with_clause.append("expressions", cte)
+    else:
+        final_select.set("with_", exp.With(expressions=new_ctes))
+
+    modified_query = parsed.sql(dialect=resolved_dialect)
+    modified_query = _unmask_macros(modified_query, placeholders)
 
     if model_block:
         return model_block + "\n\n" + modified_query
@@ -645,7 +769,34 @@ def apply_autofixes(
                     f"Failed to fix positional references in {abs_path.name}: {e}"
                 )
 
-        # 2. Fix metadata issues (owner, description)
+        # 2. Fix nested subqueries in final SELECT
+        subquery_findings = [
+            f
+            for f in file_findings
+            if f.check == "sqlcomplexity"
+            and "nested subquery in final SELECT" in f.message
+        ]
+        if subquery_findings and abs_path.suffix in (".sql", ".sqlx"):
+            dialect = "ansi"
+            for model in models.values():
+                if Path(model.path).resolve() == abs_path:
+                    dialect = model.dialect
+                    break
+
+            try:
+                sql = abs_path.read_text(encoding="utf-8")
+                fixed_sql = lift_nested_subqueries(sql, dialect)
+                if fixed_sql != sql:
+                    abs_path.write_text(fixed_sql, encoding="utf-8")
+                    applied_logs.append(
+                        f"Refactored nested subqueries in final SELECT to CTEs in {abs_path.name}"
+                    )
+            except Exception as e:
+                applied_logs.append(
+                    f"Failed to refactor nested subqueries in {abs_path.name}: {e}"
+                )
+
+        # 3. Fix metadata issues (owner, description)
         missing_owner = any(f.check == "nomissingowner" for f in file_findings)
         missing_description = any(
             f.check == "nomissingdescription" for f in file_findings

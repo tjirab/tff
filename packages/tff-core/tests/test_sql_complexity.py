@@ -216,3 +216,29 @@ def test_sql_complexity_rule_read_exception(tmp_path: Path) -> None:
         query=None,
     )
     assert rule.check_model(model) is None
+
+
+def test_has_nested_subquery_in_final_select() -> None:
+    import sqlglot
+    from tff.core.rules.sql_complexity import has_nested_subquery_in_final_select
+
+    # Subquery in FROM
+    q1 = sqlglot.parse_one("SELECT * FROM (SELECT 1) sub")
+    assert has_nested_subquery_in_final_select(q1) is True
+
+    # Subquery in JOIN
+    q2 = sqlglot.parse_one("SELECT * FROM t JOIN (SELECT 1) sub ON true")
+    assert has_nested_subquery_in_final_select(q2) is True
+
+    # Subquery inside CTE, but final SELECT has no subqueries in FROM/JOIN
+    q3 = sqlglot.parse_one("WITH cte AS (SELECT * FROM (SELECT 1) s) SELECT * FROM cte")
+    assert has_nested_subquery_in_final_select(q3) is False
+
+    # Subquery in WHERE clause
+    q4 = sqlglot.parse_one("SELECT * FROM t WHERE id IN (SELECT id FROM other)")
+    assert has_nested_subquery_in_final_select(q4) is False
+
+    # Subquery in SELECT expressions
+    q5 = sqlglot.parse_one("SELECT (SELECT 1) AS x FROM t")
+    assert has_nested_subquery_in_final_select(q5) is False
+

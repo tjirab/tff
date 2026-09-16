@@ -55,7 +55,10 @@ def has_nested_subquery_in_final_select(expression: exp.Expression) -> bool:
     for node in final_select.find_all(exp.Subquery):
         parent = node.parent
         while parent and parent is not final_select:
-            if isinstance(parent, exp.From):
+            if (
+                isinstance(parent, (exp.From, exp.Join))
+                and parent.parent is final_select
+            ):
                 return True
             parent = parent.parent
     return False

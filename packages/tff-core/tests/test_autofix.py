@@ -11,6 +11,7 @@ from tff.core.autofix import (
     fix_dataform_metadata,
     _find_matching_brace,
     apply_autofixes,
+    lift_nested_subqueries,
 )
 
 
@@ -747,6 +748,149 @@ SELECT id, count(*) AS cnt FROM orders GROUP BY 1
     assert 'description: "TODO: Add description"' in content
     assert 'owner: "TODO: Add owner"' in content
     assert "GROUP BY id" in content
+
+
+def test_lift_nested_subqueries_from_clause():
+    # 1. With alias
+    sql1 = "SELECT * FROM (SELECT 1 AS a) sub"
+    expected1 = "WITH sub AS (SELECT 1 AS a) SELECT * FROM sub"
+    assert lift_nested_subqueries(sql1, "ansi") == expected1
+
+    # 2. Without alias
+    sql2 = "SELECT * FROM (SELECT 1 AS a)"
+    expected2 = "WITH __extracted_cte_1 AS (SELECT 1 AS a) SELECT * FROM __extracted_cte_1"
+    assert lift_nested_subqueries(sql2, "ansi") == expected2
+
+    # 3. With table alias containing column list
+    sql3 = "SELECT * FROM (SELECT 1, 2) sub(a, b)"
+    expected3 = "WITH sub(a, b) AS (SELECT 1, 2) SELECT * FROM sub"
+    assert lift_nested_subqueries(sql3, "ansi") == expected3
+
+
+def test_lift_nested_subqueries_joins():
+    # 1. LEFT JOIN
+    sql_left = "SELECT * FROM t LEFT JOIN (SELECT 2 AS b) sub ON t.id = sub.b"
+    assert lift_nested_subqueries(sql_left, "ansi") == "WITH sub AS (SELECT 2 AS b) SELECT * FROM t LEFT JOIN sub ON t.id = sub.b"
+
+    # 2. RIGHT JOIN
+    sql_right = "SELECT * FROM t RIGHT JOIN (SELECT 2 AS b) sub ON t.id = sub.b"
+    assert lift_nested_subqueries(sql_right, "ansi") == "WITH sub AS (SELECT 2 AS b) SELECT * FROM t RIGHT JOIN sub ON t.id = sub.b"
+
+    # 3. FULL JOIN
+    sql_full = "SELECT * FROM t FULL JOIN (SELECT 2 AS b) sub ON t.id = sub.b"
+    assert lift_nested_subqueries(sql_full, "ansi") == "WITH sub AS (SELECT 2 AS b) SELECT * FROM t FULL JOIN sub ON t.id = sub.b"
+
+    # 4. CROSS JOIN
+    sql_cross = "SELECT * FROM t CROSS JOIN (SELECT 2 AS b) sub"
+    assert lift_nested_subqueries(sql_cross, "ansi") == "WITH sub AS (SELECT 2 AS b) SELECT * FROM t CROSS JOIN sub"
+
+    # 5. INNER JOIN with USING
+    sql_using = "SELECT * FROM t JOIN (SELECT 2 AS id) sub USING (id)"
+    assert lift_nested_subqueries(sql_using, "ansi") == "WITH sub AS (SELECT 2 AS id) SELECT * FROM t JOIN sub USING (id)"
+
+
+def test_lift_nested_subqueries_multiple_subqueries():
+    sql = "SELECT * FROM (SELECT 1 AS a) sub1 LEFT JOIN (SELECT 2 AS b) sub2 ON sub1.a = sub2.b"
+    expected = "WITH sub1 AS (SELECT 1 AS a), sub2 AS (SELECT 2 AS b) SELECT * FROM sub1 LEFT JOIN sub2 ON sub1.a = sub2.b"
+    assert lift_nested_subqueries(sql, "ansi") == expected
+
+
+def test_lift_nested_subqueries_existing_ctes_and_collision():
+    # 1. Preserves existing CTEs and appends
+    sql1 = "WITH existing AS (SELECT 0) SELECT * FROM (SELECT 1 AS a) sub"
+    expected1 = "WITH existing AS (SELECT 0), sub AS (SELECT 1 AS a) SELECT * FROM sub"
+    assert lift_nested_subqueries(sql1, "ansi") == expected1
+
+    # 2. Disambiguates CTE alias when name collides with existing CTE
+    sql2 = "WITH sub AS (SELECT 0) SELECT * FROM (SELECT 1 AS a) sub"
+    expected2 = "WITH sub AS (SELECT 0), sub_1 AS (SELECT 1 AS a) SELECT * FROM sub_1 AS sub"
+    assert lift_nested_subqueries(sql2, "ansi") == expected2
+
+    # 3. Disambiguates when __extracted_cte_1 is already an existing CTE name
+    sql3 = "WITH __extracted_cte_1 AS (SELECT 0) SELECT * FROM (SELECT 1 AS a)"
+    expected3 = "WITH __extracted_cte_1 AS (SELECT 0), __extracted_cte_2 AS (SELECT 1 AS a) SELECT * FROM __extracted_cte_2"
+    assert lift_nested_subqueries(sql3, "ansi") == expected3
+
+    # 4. Disambiguates when both sub and sub_1 already exist
+    sql4 = "WITH sub AS (SELECT 0), sub_1 AS (SELECT 0) SELECT * FROM (SELECT 1 AS a) sub"
+    expected4 = "WITH sub AS (SELECT 0), sub_1 AS (SELECT 0), sub_2 AS (SELECT 1 AS a) SELECT * FROM sub_2 AS sub"
+    assert lift_nested_subqueries(sql4, "ansi") == expected4
+
+
+def test_lift_nested_subqueries_templating_and_blocks():
+    # 1. Jinja templating preserved
+    sql_jinja = "SELECT * FROM (SELECT {{ ref('other_model') }}.col FROM {{ ref('other_model') }}) sub"
+    expected_jinja = "WITH sub AS (SELECT {{ ref('other_model') }}.col FROM {{ ref('other_model') }}) SELECT * FROM sub"
+    assert lift_nested_subqueries(sql_jinja, "ansi") == expected_jinja
+
+    # 2. SQLMesh macro and MODEL block preserved
+    sql_mesh = "MODEL (\n  name my_model\n);\n\nSELECT * FROM (SELECT @my_macro(val) AS x FROM my_table) sub"
+    expected_mesh = "MODEL (\n  name my_model\n);\n\nWITH sub AS (SELECT @my_macro(val) AS x FROM my_table) SELECT * FROM sub"
+    assert lift_nested_subqueries(sql_mesh, "duckdb") == expected_mesh
+
+    # 3. Dataform ${ref(...)} and config block preserved
+    sql_df = 'config {\n  type: "table"\n}\n\nSELECT * FROM (SELECT ${ref("other_model")}.col FROM ${ref("other_model")}) sub'
+    expected_df = 'config {\n  type: "table"\n}\n\nWITH sub AS (SELECT ${ref("other_model")}.col FROM ${ref("other_model")}) SELECT * FROM sub'
+    assert lift_nested_subqueries(sql_df, "bigquery") == expected_df
+
+
+def test_lift_nested_subqueries_edge_cases():
+    # 1. No subqueries
+    sql_plain = "SELECT a, b FROM my_table"
+    assert lift_nested_subqueries(sql_plain, "ansi") == sql_plain
+
+    # 2. Invalid SQL parsing exception
+    sql_invalid = "SELECT FROM WHERE"
+    assert lift_nested_subqueries(sql_invalid, "ansi") == sql_invalid
+
+    # 3. Non-SELECT statement
+    sql_create = "CREATE TABLE foo AS SELECT 1"
+    assert lift_nested_subqueries(sql_create, "duckdb") == sql_create
+
+
+def test_apply_autofixes_lift_nested_subqueries(tmp_path: Path):
+    sql_file = tmp_path / "models/complex_subquery.sql"
+    sql_file.parent.mkdir(parents=True, exist_ok=True)
+    sql_file.write_text("SELECT * FROM (SELECT 1 AS a) sub", encoding="utf-8")
+
+    findings = [
+        LintFinding(
+            check="sqlcomplexity",
+            severity="warning",
+            model="complex_subquery",
+            path="models/complex_subquery.sql",
+            message="complex_subquery: WARN: nested subquery in final SELECT — prefer CTEs per style guide",
+        )
+    ]
+
+    models = {
+        "complex_subquery": ModelRepresentation(
+            name="complex_subquery",
+            path=str(sql_file),
+            dialect="ansi",
+        )
+    }
+
+    logs = apply_autofixes(tmp_path, "dbt", findings, models)
+    assert any("Refactored nested subqueries in final SELECT to CTEs" in log for log in logs)
+    assert sql_file.read_text(encoding="utf-8") == "WITH sub AS (SELECT 1 AS a) SELECT * FROM sub"
+
+    # Running again when file is already clean produces no changes and no log
+    logs_noop = apply_autofixes(tmp_path, "dbt", findings, models)
+    assert not any("Refactored nested subqueries" in log for log in logs_noop)
+
+    # Exception during write logs failure
+    sql_file.chmod(0o444)
+    # Put unrefactored content using write_bytes with chmod override
+    try:
+        sql_file.chmod(0o644)
+        sql_file.write_text("SELECT * FROM (SELECT 1 AS a) sub", encoding="utf-8")
+        sql_file.chmod(0o444)
+        logs_fail = apply_autofixes(tmp_path, "dbt", findings, models)
+        assert any("Failed to refactor nested subqueries" in log for log in logs_fail)
+    finally:
+        sql_file.chmod(0o644)
+
 
 
 
