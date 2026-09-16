@@ -53,10 +53,6 @@ Run the repository validation suite locally (or inspect CI checks if review targ
 # 1. Dependency security audit
 uv run python scripts/audit.py --min-severity HIGH
 
-# 2. Unit tests
-MAX_FORK_WORKERS=1 uv run pytest
-```
-Note any failures, warnings, or missing tests.
 
 ### Step 3: Deep Technical Inspection
 
