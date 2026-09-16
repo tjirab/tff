@@ -1,3 +1,8 @@
+<p align="center">
+  <img src="assets/tff.svg#only-light" alt="TFF Logo" width="160">
+  <img src="assets/tff-white.svg#only-dark" alt="TFF Logo" width="160">
+</p>
+
 # TFF: Transformation Fitness Functions
 
 [![PyPI version](https://img.shields.io/pypi/v/tff-core.svg?logo=pypi)](https://pypi.org/project/tff-core/)

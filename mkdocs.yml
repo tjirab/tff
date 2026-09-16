@@ -6,6 +6,8 @@ repo_name: tjirab/tff
 
 theme:
   name: material
+  logo: assets/tff-white.svg
+  favicon: assets/favicon.svg
   palette:
     - scheme: default
       primary: indigo
