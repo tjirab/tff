@@ -48,15 +48,12 @@ This skill defines the mandatory, objective code review procedure for pull reque
 2. View the complete diff and all modified/added files in detail.
 
 ### Step 2: Automated Verification Run
-Run the repository validation suite locally (or inspect CI checks if review target is a remote PR):
+Run the repository validation suite locally (or inspect CI checks if review target is a remote PR). Note that linting (Ruff) is skipped during review as it is already enforced in CI:
 ```bash
-# 1. Linting
-uv run ruff check .
-
-# 2. Dependency security audit
+# 1. Dependency security audit
 uv run python scripts/audit.py --min-severity HIGH
 
-# 3. Unit tests
+# 2. Unit tests
 MAX_FORK_WORKERS=1 uv run pytest
 ```
 Note any failures, warnings, or missing tests.
@@ -110,7 +107,6 @@ Deliver the review using the following standardized template:
 - **Target**: PR #<number> (`<head-branch>` -> `<base-branch>`)
 - **Diff Stat**: <X> files changed, <+Y> additions, <-Z> deletions
 - **Automated Validation**:
-  - Ruff: `Pass` / `Fail`
   - Audit: `Pass` / `Fail`
   - Unit Tests: `<N>/<N> passed`
 
