@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.17.0](https://github.com/tjirab/tff/compare/tff-core-v0.16.1...tff-core-v0.17.0) (2026-09-16)
+
+
+### Features
+
+* **autofix:** [1/5] Close Dataform metadata auto-fix parity gap ([#212](https://github.com/tjirab/tff/issues/212)) ([2a29f84](https://github.com/tjirab/tff/commit/2a29f84afbb270ee80c4b45ca9582e9a79bfbb86))
+* **autofix:** refactor nested subqueries in final SELECT to named CTEs ([#216](https://github.com/tjirab/tff/issues/216)) ([2da4f59](https://github.com/tjirab/tff/commit/2da4f59fd600f561dc52f5a6935709675ae13d43))
+
 ## [0.16.1](https://github.com/tjirab/tff/compare/tff-core-v0.16.0...tff-core-v0.16.1) (2026-09-15)
 
 
