@@ -54,7 +54,7 @@ Run the repository validation suite locally (or inspect CI checks if review targ
 uv run python scripts/audit.py --min-severity HIGH
 
 
-### Step 3: Deep Technical Inspection
+### Step 2: Deep Technical Inspection
 
 #### A. Security Review
 - **Credentials & Secrets**: Are API tokens, keys, passwords, or auth headers printed to stdout/stderr or written into logs, cache files, or error messages? (e.g., `--github-token`, webhook URLs).
@@ -79,7 +79,7 @@ uv run python scripts/audit.py --min-severity HIGH
 
 ---
 
-### Step 4: Triage Non-Blocking Improvements to GitHub Issues
+### Step 3: Triage Non-Blocking Improvements to GitHub Issues
 For every valid suggestion, optimization, or follow-up task that is **not** a blocker for merging the current PR:
 1. Formulate a clear title using conventional commits: `chore(<scope>): ...`, `docs(<scope>): ...`, `perf(<scope>): ...`, or `security(<scope>): ...`.
 2. Construct a detailed markdown body explaining the context, problem, and proposed solution.
@@ -92,7 +92,7 @@ For every valid suggestion, optimization, or follow-up task that is **not** a bl
 
 ---
 
-### Step 5: Format the Review Report
+### Step 4: Format the Review Report
 
 Deliver the review using the following standardized template:
 
