@@ -12,6 +12,7 @@ TFF includes a built-in auto-fixer that can automatically resolve simple violati
 *   **Metadata (`nomissingowner`, `nomissingdescription`)**:
     *   **dbt**: Automatically appends or scaffolds `schema.yml` metadata configs with `"TODO: Add owner"` and `"TODO: Add description"` templates.
     *   **SQLMesh**: Inline-updates the `MODEL` block in the model `.sql` file to add `owner` and `description` headers.
+    *   **Dataform**: Injects `description: "TODO: Add description"` and `bigquery: { labels: { owner: "TODO: Add owner" } }` inside `.sqlx` `config { ... }` blocks, or scaffolds a minimal `config { ... }` header if absent.
 
 ---
 

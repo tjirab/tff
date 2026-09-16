@@ -92,9 +92,17 @@ tff lint --provider dataform
 # Use a precompiled compilation result:
 tff lint --manifest compilation_result.json
 
-# Automatically fix positional GROUP BY / ORDER BY in .sqlx files:
+# Automatically fix positional GROUP BY / ORDER BY and metadata violations in .sqlx files:
 tff lint --fix
 ```
+
+When running `tff lint --fix` on Dataform projects:
+* **Metadata remediation (`nomissingowner`, `nomissingdescription`)**:
+  * Injects `description: "TODO: Add description"` inside existing `config { ... }` blocks.
+  * Injects BigQuery labels `bigquery: { labels: { owner: "TODO: Add owner" } }` inside `config { ... }` (or nests inside existing `bigquery` or `labels` structures).
+  * If no `config { ... }` block exists, scaffolds a minimal `config { ... }` header at the top of the `.sqlx` file while preserving existing SQL, Javascript, and comments.
+* **SQL normalization (`nopositionalgroupbyororderby`)**:
+  * Rewrites positional ordinal integers in `GROUP BY` and `ORDER BY` to explicit column names.
 
 ### Health & Architecture Score
 ```bash

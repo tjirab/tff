@@ -59,6 +59,23 @@ class DataformAdapter(PipelineAdapter):
             models=models,
         )
 
+    def apply_metadata_fix(
+        self,
+        project_root: Path,
+        abs_path: Path,
+        model_name: str,
+        missing_owner: bool,
+        missing_description: bool,
+    ) -> str | None:
+        from tff.core.autofix import fix_dataform_metadata
+
+        return fix_dataform_metadata(
+            abs_path=abs_path,
+            missing_owner=missing_owner,
+            missing_description=missing_description,
+            model_name=model_name,
+        )
+
     def get_diagnostic_files(self, project_root: Path) -> list[tuple[str, str]]:
         ws_yaml = project_root / "workflow_settings.yaml"
         df_json = project_root / "dataform.json"

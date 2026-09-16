@@ -334,6 +334,265 @@ def fix_dbt_metadata(
         return f"Failed to write/scaffold schema.yml in {abs_path.parent}: {e}"
 
 
+def _find_matching_brace(text: str, open_brace_idx: int) -> int:
+    """Find the index of the matching closing brace '}' for the open brace at open_brace_idx."""
+    if open_brace_idx < 0 or open_brace_idx >= len(text) or text[open_brace_idx] != "{":
+        return -1
+    depth = 0
+    in_quote = None
+    i = open_brace_idx
+    length = len(text)
+    while i < length:
+        ch = text[i]
+        if in_quote:
+            if ch == "\\" and i + 1 < length:
+                i += 2
+                continue
+            if ch == in_quote:
+                in_quote = None
+        elif ch in ('"', "'", "`"):
+            in_quote = ch
+        elif ch == "/" and i + 1 < length and text[i + 1] == "/":
+            nl = text.find("\n", i)
+            if nl == -1:
+                break
+            i = nl
+            continue
+        elif ch == "/" and i + 1 < length and text[i + 1] == "*":
+            end_c = text.find("*/", i + 2)
+            if end_c == -1:
+                break
+            i = end_c + 2
+            continue
+        elif ch == "{":
+            depth += 1
+        elif ch == "}":
+            depth -= 1
+            if depth == 0:
+                return i
+        i += 1
+    return -1
+
+
+def fix_dataform_metadata(
+    abs_path: Path,
+    missing_owner: bool,
+    missing_description: bool,
+    model_name: str | None = None,
+) -> str | None:
+    """Scaffold or update metadata fields (owner, description) in a Dataform .sqlx file."""
+    if not missing_owner and not missing_description:
+        return None
+
+    if abs_path.suffix not in (".sqlx", ".sql") or not abs_path.exists() or abs_path.is_dir():
+        return None
+
+    try:
+        content = abs_path.read_text(encoding="utf-8")
+    except Exception:
+        return None
+
+    # Check for existing config { ... } block
+    match = re.search(r"^\s*config\s*\{", content, re.MULTILINE | re.IGNORECASE)
+    if not match:
+        match = re.search(r"\bconfig\s*\{", content, re.IGNORECASE)
+
+    if not match:
+        # Scaffold a minimal config block header
+        scaffold_lines = ["config {", '  type: "view",']
+        if missing_description and missing_owner:
+            scaffold_lines.append('  description: "TODO: Add description",')
+            scaffold_lines.append("  bigquery: {")
+            scaffold_lines.append("    labels: {")
+            scaffold_lines.append('      owner: "TODO: Add owner"')
+            scaffold_lines.append("    }")
+            scaffold_lines.append("  }")
+        elif missing_description:
+            scaffold_lines.append('  description: "TODO: Add description"')
+        elif missing_owner:
+            scaffold_lines.append("  bigquery: {")
+            scaffold_lines.append("    labels: {")
+            scaffold_lines.append('      owner: "TODO: Add owner"')
+            scaffold_lines.append("    }")
+            scaffold_lines.append("  }")
+        scaffold_lines.append("}")
+        scaffold_str = "\n".join(scaffold_lines)
+
+        stripped = content.strip()
+        if stripped:
+            new_content = scaffold_str + "\n\n" + stripped + "\n"
+        else:
+            new_content = scaffold_str + "\n"
+
+        try:
+            abs_path.write_text(new_content, encoding="utf-8")
+            return f"Scaffolded config block in {abs_path.name}"
+        except Exception as e:
+            return f"Failed to write Dataform metadata for {abs_path.name}: {e}"
+
+    # Existing config block found
+    brace_start = match.end() - 1
+    brace_end = _find_matching_brace(content, brace_start)
+    if brace_end == -1:
+        return None
+
+    config_str = content[brace_start : brace_end + 1]
+
+    # Parse what is currently configured
+    from tff.dataform.manifest import _parse_sqlx_config
+
+    parsed, _ = _parse_sqlx_config(content)
+
+    has_desc = bool(parsed.get("description")) if isinstance(parsed, dict) else False
+    if not has_desc:
+        has_desc = bool(
+            re.search(r'\bdescription\s*:\s*(["\'])(?!\1).+?\1', config_str)
+        )
+
+    has_owner = False
+    if isinstance(parsed, dict):
+        meta = parsed.get("bigquery", {}) or {}
+        has_owner = bool(
+            meta.get("labels", {}).get("owner")
+            or meta.get("owner")
+            or parsed.get("owner")
+        )
+    if not has_owner:
+        has_owner = bool(
+            re.search(r'\bowner\s*:\s*(["\'])(?!\1).+?\1', config_str)
+        )
+
+    need_desc = missing_description and not has_desc
+    need_owner = missing_owner and not has_owner
+
+    if not need_desc and not need_owner:
+        return None
+
+    # Handle empty string values if already present
+    modified_config = config_str
+    if need_desc and re.search(r'\bdescription\s*:\s*(["\'])\s*\1', modified_config):
+        modified_config = re.sub(
+            r'(\bdescription\s*:\s*)(["\'])\s*\2',
+            r'\1"TODO: Add description"',
+            modified_config,
+            count=1,
+        )
+        need_desc = False
+
+    if need_owner and re.search(r'\bowner\s*:\s*(["\'])\s*\1', modified_config):
+        modified_config = re.sub(
+            r'(\bowner\s*:\s*)(["\'])\s*\2',
+            r'\1"TODO: Add owner"',
+            modified_config,
+            count=1,
+        )
+        need_owner = False
+
+    if not need_desc and not need_owner:
+        new_content = content[:brace_start] + modified_config + content[brace_end + 1 :]
+        try:
+            abs_path.write_text(new_content, encoding="utf-8")
+            return f"Added missing metadata to config block in {abs_path.name}"
+        except Exception as e:
+            return f"Failed to write Dataform metadata for {abs_path.name}: {e}"
+
+    # Determine indentation
+    indent = "  "
+    for line in modified_config.splitlines()[1:]:
+        m = re.match(r"^(\s+)\S", line)
+        if m:
+            indent = m.group(1)
+            break
+
+    # If owner needed, check if bigquery: { ... } already exists
+    bq_match = re.search(r"\bbigquery\s*:\s*\{", modified_config)
+    if need_owner and bq_match:
+        bq_brace_start = bq_match.end() - 1
+        bq_brace_end = _find_matching_brace(modified_config, bq_brace_start)
+        if bq_brace_end != -1:
+            bq_inner = modified_config[bq_brace_start : bq_brace_end + 1]
+            labels_match = re.search(r"\blabels\s*:\s*\{", bq_inner)
+            if labels_match:
+                lbl_brace_start = bq_brace_start + labels_match.end() - 1
+                lbl_brace_end = _find_matching_brace(modified_config, lbl_brace_start)
+                if lbl_brace_end != -1:
+                    lbl_nl = modified_config.find("\n", lbl_brace_start, lbl_brace_end)
+                    if lbl_nl != -1:
+                        insert_at = lbl_nl + 1
+                        injection = f'{indent * 3}owner: "TODO: Add owner",\n'
+                    else:
+                        insert_at = lbl_brace_start + 1
+                        injection = ' owner: "TODO: Add owner", '
+                    modified_config = (
+                        modified_config[:insert_at]
+                        + injection
+                        + modified_config[insert_at:]
+                    )
+                    need_owner = False
+            else:
+                bq_nl = modified_config.find("\n", bq_brace_start, bq_brace_end)
+                if bq_nl != -1:
+                    insert_at = bq_nl + 1
+                    injection = (
+                        f"{indent * 2}labels: {{\n"
+                        f'{indent * 3}owner: "TODO: Add owner"\n'
+                        f"{indent * 2}}},\n"
+                    )
+                else:
+                    insert_at = bq_brace_start + 1
+                    injection = ' labels: { owner: "TODO: Add owner" }, '
+                modified_config = (
+                    modified_config[:insert_at]
+                    + injection
+                    + modified_config[insert_at:]
+                )
+                need_owner = False
+
+    fields_to_inject = []
+    if need_desc:
+        fields_to_inject.append(f'{indent}description: "TODO: Add description",\n')
+    if need_owner:
+        fields_to_inject.append(
+            f"{indent}bigquery: {{\n"
+            f"{indent * 2}labels: {{\n"
+            f'{indent * 3}owner: "TODO: Add owner"\n'
+            f"{indent * 2}}}\n"
+            f"{indent}}},\n"
+        )
+
+    if fields_to_inject:
+        nl_idx = modified_config.find("\n")
+        inner_content = modified_config[1:-1].strip()
+        if not inner_content:
+            cleaned_injection = "".join(fields_to_inject).rstrip()
+            if cleaned_injection.endswith(","):
+                cleaned_injection = cleaned_injection[:-1]
+            modified_config = "{\n" + cleaned_injection + "\n}"
+        elif nl_idx != -1:
+            insert_at = nl_idx + 1
+            modified_config = (
+                modified_config[:insert_at]
+                + "".join(fields_to_inject)
+                + modified_config[insert_at:]
+            )
+        else:
+            modified_config = (
+                "{\n"
+                + "".join(fields_to_inject)
+                + indent
+                + modified_config[1:-1].strip()
+                + "\n}"
+            )
+
+    new_content = content[:brace_start] + modified_config + content[brace_end + 1 :]
+    try:
+        abs_path.write_text(new_content, encoding="utf-8")
+        return f"Added missing metadata to config block in {abs_path.name}"
+    except Exception as e:
+        return f"Failed to write Dataform metadata for {abs_path.name}: {e}"
+
+
+
 def apply_autofixes(
     project_root: Path,
     provider: str | PipelineAdapter,

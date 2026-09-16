@@ -1,5 +1,6 @@
 import yaml
 from pathlib import Path
+from unittest.mock import patch
 from tff.core.model import ModelRepresentation
 from tff.core.report import LintFinding
 from tff.core.autofix import (
@@ -7,6 +8,8 @@ from tff.core.autofix import (
     fix_positional_clauses,
     fix_sqlmesh_metadata,
     fix_dbt_metadata,
+    fix_dataform_metadata,
+    _find_matching_brace,
     apply_autofixes,
 )
 
@@ -442,6 +445,308 @@ SELECT a FROM t GROUP BY 1"""
 SELECT a FROM t GROUP BY 1"""
     fixed_unclosed = fix_positional_clauses(sql_unclosed, "bigquery")
     assert fixed_unclosed == sql_unclosed
+
+
+def test_find_matching_brace_edge_cases():
+    assert _find_matching_brace("", 0) == -1
+    assert _find_matching_brace("abc", -1) == -1
+    assert _find_matching_brace("abc", 5) == -1
+    assert _find_matching_brace("abc", 0) == -1
+
+    # Unclosed brace
+    assert _find_matching_brace("{ abc", 0) == -1
+
+    # Line comment until EOF (no newline)
+    assert _find_matching_brace("{ // no newline at all", 0) == -1
+
+    # Block comment until EOF (no */)
+    assert _find_matching_brace("{ /* unclosed block comment", 0) == -1
+
+    # Escaped quote inside string
+    code = '{"hello \\" world"}'
+    assert _find_matching_brace(code, 0) == len(code) - 1
+
+    # Block comment with braces
+    code2 = '{ /* { inside } */ }'
+    assert _find_matching_brace(code2, 0) == len(code2) - 1
+
+    # Line comment with braces
+    code3 = "{\n // { line comment\n}"
+    assert _find_matching_brace(code3, 0) == len(code3) - 1
+
+
+def test_fix_dataform_metadata_no_missing_or_invalid_path(tmp_path: Path):
+    # None missing
+    sqlx_file = tmp_path / "test.sqlx"
+    sqlx_file.write_text("SELECT 1", encoding="utf-8")
+    assert fix_dataform_metadata(sqlx_file, False, False) is None
+
+    # Invalid extension (.txt)
+    txt_file = tmp_path / "test.txt"
+    txt_file.write_text("SELECT 1", encoding="utf-8")
+    assert fix_dataform_metadata(txt_file, True, True) is None
+
+    # Directory
+    sub_dir = tmp_path / "subdir"
+    sub_dir.mkdir()
+    assert fix_dataform_metadata(sub_dir, True, True) is None
+
+    # Non-existent
+    assert fix_dataform_metadata(tmp_path / "does_not_exist.sqlx", True, True) is None
+
+    # Read error
+    with patch.object(Path, "read_text", side_effect=OSError("Read error")):
+        assert fix_dataform_metadata(sqlx_file, True, True) is None
+
+
+def test_fix_dataform_metadata_scaffold(tmp_path: Path):
+    # 1. Missing both on file with SQL
+    f1 = tmp_path / "model1.sqlx"
+    f1.write_text("SELECT 1 AS id\n", encoding="utf-8")
+    log1 = fix_dataform_metadata(f1, missing_owner=True, missing_description=True)
+    assert log1 == "Scaffolded config block in model1.sqlx"
+    content1 = f1.read_text(encoding="utf-8")
+    assert 'description: "TODO: Add description"' in content1
+    assert 'owner: "TODO: Add owner"' in content1
+    assert 'type: "view"' in content1
+    assert "SELECT 1 AS id" in content1
+
+    # 2. Missing only description
+    f2 = tmp_path / "model2.sqlx"
+    f2.write_text("SELECT 2 AS id", encoding="utf-8")
+    log2 = fix_dataform_metadata(f2, missing_owner=False, missing_description=True)
+    assert log2 == "Scaffolded config block in model2.sqlx"
+    content2 = f2.read_text(encoding="utf-8")
+    assert 'description: "TODO: Add description"' in content2
+    assert "bigquery:" not in content2
+
+    # 3. Missing only owner
+    f3 = tmp_path / "model3.sqlx"
+    f3.write_text("SELECT 3 AS id", encoding="utf-8")
+    log3 = fix_dataform_metadata(f3, missing_owner=True, missing_description=False)
+    assert log3 == "Scaffolded config block in model3.sqlx"
+    content3 = f3.read_text(encoding="utf-8")
+    assert 'owner: "TODO: Add owner"' in content3
+    assert "description:" not in content3
+
+    # 4. Empty file scaffolding
+    f4 = tmp_path / "model4.sqlx"
+    f4.write_text("", encoding="utf-8")
+    log4 = fix_dataform_metadata(f4, missing_owner=True, missing_description=True)
+    assert log4 == "Scaffolded config block in model4.sqlx"
+    content4 = f4.read_text(encoding="utf-8")
+    assert content4.endswith("}\n")
+
+    # 5. Write failure during scaffolding
+    f5 = tmp_path / "model5.sqlx"
+    f5.write_text("SELECT 5", encoding="utf-8")
+    f5.chmod(0o444)
+    try:
+        log5 = fix_dataform_metadata(f5, True, True)
+        assert log5 is not None
+        assert "Failed to write Dataform metadata" in log5
+    finally:
+        f5.chmod(0o644)
+
+
+def test_fix_dataform_metadata_existing_config(tmp_path: Path):
+    # 1. Missing both in standard config
+    f1 = tmp_path / "stg_orders.sqlx"
+    f1.write_text("""config {
+  type: "table",
+  // Table comment
+  tags: ["daily"]
+}
+
+SELECT 1 AS id""", encoding="utf-8")
+
+    log1 = fix_dataform_metadata(f1, missing_owner=True, missing_description=True)
+    assert log1 == "Added missing metadata to config block in stg_orders.sqlx"
+    c1 = f1.read_text(encoding="utf-8")
+    assert 'description: "TODO: Add description"' in c1
+    assert 'owner: "TODO: Add owner"' in c1
+    assert '// Table comment' in c1
+    assert 'tags: ["daily"]' in c1
+
+    # 2. Existing bigquery block without labels
+    f2 = tmp_path / "stg_bq.sqlx"
+    f2.write_text("""config {
+  type: "table",
+  bigquery: {
+    partitionBy: "DATE(created_at)"
+  }
+}
+SELECT 1""", encoding="utf-8")
+    log2 = fix_dataform_metadata(f2, missing_owner=True, missing_description=False)
+    assert log2 == "Added missing metadata to config block in stg_bq.sqlx"
+    c2 = f2.read_text(encoding="utf-8")
+    assert 'owner: "TODO: Add owner"' in c2
+    assert 'partitionBy: "DATE(created_at)"' in c2
+
+    # 3. Existing bigquery block with labels (multi-line)
+    f3 = tmp_path / "stg_labels.sqlx"
+    f3.write_text("""config {
+  type: "table",
+  bigquery: {
+    labels: {
+      env: "prod"
+    }
+  }
+}
+SELECT 1""", encoding="utf-8")
+    log3 = fix_dataform_metadata(f3, missing_owner=True, missing_description=False)
+    assert log3 == "Added missing metadata to config block in stg_labels.sqlx"
+    c3 = f3.read_text(encoding="utf-8")
+    assert 'owner: "TODO: Add owner"' in c3
+    assert 'env: "prod"' in c3
+
+    # 4. Existing bigquery block with labels (single-line)
+    f4 = tmp_path / "stg_labels_single.sqlx"
+    f4.write_text("""config {
+  type: "table",
+  bigquery: { labels: { env: "prod" } }
+}
+SELECT 1""", encoding="utf-8")
+    log4 = fix_dataform_metadata(f4, missing_owner=True, missing_description=False)
+    assert log4 == "Added missing metadata to config block in stg_labels_single.sqlx"
+    c4 = f4.read_text(encoding="utf-8")
+    assert 'owner: "TODO: Add owner"' in c4
+    assert 'env: "prod"' in c4
+
+    # 5. Existing bigquery block (single-line without labels)
+    f5 = tmp_path / "stg_bq_single.sqlx"
+    f5.write_text("""config {
+  type: "table",
+  bigquery: { partitionBy: "dt" }
+}
+SELECT 1""", encoding="utf-8")
+    log5 = fix_dataform_metadata(f5, missing_owner=True, missing_description=False)
+    assert log5 == "Added missing metadata to config block in stg_bq_single.sqlx"
+    c5 = f5.read_text(encoding="utf-8")
+    assert 'owner: "TODO: Add owner"' in c5
+    assert 'partitionBy: "dt"' in c5
+
+    # 6. Existing empty description and owner strings
+    f6 = tmp_path / "empty_strings.sqlx"
+    f6.write_text("""config {
+  description: "",
+  owner: ''
+}
+SELECT 1""", encoding="utf-8")
+    log6 = fix_dataform_metadata(f6, missing_owner=True, missing_description=True)
+    assert log6 == "Added missing metadata to config block in empty_strings.sqlx"
+    c6 = f6.read_text(encoding="utf-8")
+    assert 'description: "TODO: Add description"' in c6
+    assert 'owner: "TODO: Add owner"' in c6
+
+    # 7. Unclosed brace in existing config block
+    f7 = tmp_path / "unclosed.sqlx"
+    f7.write_text("config { type: 'view'\nSELECT 1", encoding="utf-8")
+    assert fix_dataform_metadata(f7, True, True) is None
+
+    # 8. Single-line config block: config { type: "view" }
+    f8 = tmp_path / "single_line.sqlx"
+    f8.write_text("config { type: 'view' }\nSELECT 1", encoding="utf-8")
+    log8 = fix_dataform_metadata(f8, True, True)
+    assert log8 == "Added missing metadata to config block in single_line.sqlx"
+    c8 = f8.read_text(encoding="utf-8")
+    assert 'description: "TODO: Add description"' in c8
+    assert 'owner: "TODO: Add owner"' in c8
+
+    # 9. Empty config block: config {}
+    f9 = tmp_path / "empty_config.sqlx"
+    f9.write_text("config {}\nSELECT 1", encoding="utf-8")
+    log9 = fix_dataform_metadata(f9, True, True)
+    assert log9 == "Added missing metadata to config block in empty_config.sqlx"
+    c9 = f9.read_text(encoding="utf-8")
+    assert 'description: "TODO: Add description"' in c9
+    assert 'owner: "TODO: Add owner"' in c9
+
+    # 10. Already has owner and description
+    f10 = tmp_path / "complete.sqlx"
+    f10.write_text("""config {
+  description: "Complete model",
+  bigquery: {
+    labels: {
+      owner: "data_team"
+    }
+  }
+}
+SELECT 1""", encoding="utf-8")
+    assert fix_dataform_metadata(f10, True, True) is None
+
+    # 11. Write failure on existing config
+    f11 = tmp_path / "fail_write.sqlx"
+    f11.write_text("config { type: 'view' }\nSELECT 1", encoding="utf-8")
+    f11.chmod(0o444)
+    try:
+        log11 = fix_dataform_metadata(f11, True, True)
+        assert log11 is not None
+        assert "Failed to write Dataform metadata" in log11
+    finally:
+        f11.chmod(0o644)
+
+    # 12. Write failure on existing config with empty strings
+    f12 = tmp_path / "fail_write_empty_strings.sqlx"
+    f12.write_text("config { description: '' }\nSELECT 1", encoding="utf-8")
+    f12.chmod(0o444)
+    try:
+        log12 = fix_dataform_metadata(f12, missing_owner=False, missing_description=True)
+        assert log12 is not None
+        assert "Failed to write Dataform metadata" in log12
+    finally:
+        f12.chmod(0o644)
+
+
+def test_apply_autofixes_dataform(tmp_path: Path):
+    sqlx_file = tmp_path / "definitions/marts/orders.sqlx"
+    sqlx_file.parent.mkdir(parents=True, exist_ok=True)
+    sqlx_file.write_text("""config {
+  type: "view"
+}
+SELECT id, count(*) AS cnt FROM orders GROUP BY 1
+""", encoding="utf-8")
+
+    findings = [
+        LintFinding(
+            check="nopositionalgroupbyororderby",
+            severity="error",
+            model="orders",
+            path="definitions/marts/orders.sqlx",
+            message="Use column name instead."
+        ),
+        LintFinding(
+            check="nomissingowner",
+            severity="error",
+            model="orders",
+            path="definitions/marts/orders.sqlx",
+            message="Owner missing."
+        ),
+        LintFinding(
+            check="nomissingdescription",
+            severity="error",
+            model="orders",
+            path="definitions/marts/orders.sqlx",
+            message="Description missing."
+        )
+    ]
+
+    models = {
+        "orders": ModelRepresentation(
+            name="orders",
+            path=str(sqlx_file),
+            dialect="bigquery"
+        )
+    }
+
+    logs = apply_autofixes(tmp_path, "dataform", findings, models)
+    assert any("Fixed positional GROUP BY/ORDER BY" in item for item in logs)
+    assert any("Added missing metadata to config block" in item for item in logs)
+
+    content = sqlx_file.read_text(encoding="utf-8")
+    assert 'description: "TODO: Add description"' in content
+    assert 'owner: "TODO: Add owner"' in content
+    assert "GROUP BY id" in content
 
 
 
