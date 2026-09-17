@@ -252,6 +252,8 @@ def test_help_docs_subcommand(capsys):
     assert main(["help", "docs"]) == 0
     captured = capsys.readouterr()
     assert "Generate HTML documentation and health dashboard" in captured.out
+    assert "-p" in captured.out
+    assert "--project" in captured.out
 
 
 @patch("tff.core.cli._detect_provider")
@@ -275,5 +277,54 @@ def test_generate_docs_dashboard_workers(tmp_path: Path):
     )
     res = generate_docs_dashboard(tmp_path, workers=2, no_log=True)
     assert res.exists()
+
+
+@patch("tff.core.cli._detect_provider")
+@patch("tff.core.docs.generate_docs_dashboard")
+def test_cli_docs_command_multi_project(
+    mock_generate_docs,
+    mock_detect_provider,
+    tmp_path: Path,
+):
+    r1 = tmp_path / "repo1"
+    r2 = tmp_path / "repo2"
+    r1.mkdir()
+    r2.mkdir()
+    mock_detect_provider.return_value = "sqlmesh"
+    mock_generate_docs.return_value = r1 / "tff_report.html"
+
+    exit_code = main(["docs", "-p", str(r1), "-p", str(r2)])
+    assert exit_code == 0
+    mock_detect_provider.assert_called_once_with([r1.resolve(), r2.resolve()])
+    mock_generate_docs.assert_called_once_with(
+        project_root=[r1.resolve(), r2.resolve()],
+        output_path=None,
+        provider="sqlmesh",
+        dialect=None,
+        config_path="fitness_functions.yaml",
+    )
+
+
+def test_generate_docs_dashboard_multi_project(tmp_path: Path):
+    r1 = tmp_path / "repo1"
+    r2 = tmp_path / "repo2"
+    r1.mkdir()
+    r2.mkdir()
+    (r1 / "dbt_project.yml").touch()
+    (r2 / "dbt_project.yml").touch()
+    (r1 / "fitness_functions.yaml").touch()
+    (r1 / "target").mkdir()
+    (r1 / "target" / "manifest.json").write_text(
+        '{"metadata": {"adapter_type": "duckdb"}, "nodes": {}, "sources": {}}',
+        encoding="utf-8",
+    )
+    (r2 / "target").mkdir()
+    (r2 / "target" / "manifest.json").write_text(
+        '{"metadata": {"adapter_type": "duckdb"}, "nodes": {}, "sources": {}}',
+        encoding="utf-8",
+    )
+    res = generate_docs_dashboard([r1, r2], no_log=True)
+    assert res.exists()
+    assert res == r1 / "tff_report.html"
 
 

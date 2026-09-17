@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any
+from typing import Any, Sequence
 
 import yaml
 from pydantic import (
@@ -571,18 +571,31 @@ def _deep_merge(base: dict[str, Any], override: dict[str, Any]) -> dict[str, Any
 
 
 def load_fitness_config(
-    project_root: Path,
+    project_root: Path | Sequence[Path | str] | str,
     config_path: str | Path | None = "fitness_functions.yaml",
     overrides: dict[str, Any] | None = None,
 ) -> FitnessFunctionsConfig:
     """Load fitness config with defaults, yaml file, and optional overrides."""
+    from tff.core.adapter import normalize_project_roots
+
+    roots = normalize_project_roots(project_root)
+    primary_root = roots[0]
+
     data: dict[str, Any] = {}
     config_found = False
 
     if config_path is not None:
         yaml_path = Path(config_path)
         if not yaml_path.is_absolute():
-            yaml_path = project_root / yaml_path
+            found = False
+            for r in roots:
+                candidate = r / yaml_path
+                if candidate.exists():
+                    yaml_path = candidate
+                    found = True
+                    break
+            if not found:
+                yaml_path = primary_root / yaml_path
         if yaml_path.exists():
             config_found = True
             loaded = yaml.safe_load(yaml_path.read_text(encoding="utf-8")) or {}
@@ -594,13 +607,13 @@ def load_fitness_config(
         data = _deep_merge(data, overrides)
 
     config = FitnessFunctionsConfig.model_validate(data)
-    config._project_root = project_root
+    config._project_root = primary_root
     config._config_file_found = config_found
 
     if config.plugins:
         from tff.core.plugins import load_plugins
 
-        load_plugins(config.plugins, project_root=project_root)
+        load_plugins(config.plugins, project_root=primary_root)
 
     return config
 

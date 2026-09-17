@@ -515,9 +515,12 @@ def _main_impl(argv: list[str] | None = None) -> int:
     )
     stats_parser.add_argument(
         "--project",
+        "-p",
+        action="append",
+        dest="projects",
         type=Path,
-        default=Path.cwd(),
-        help="Project root directory (default: current directory)",
+        default=None,
+        help="Project root directory (can be specified multiple times; default: current directory)",
     )
     stats_parser.add_argument(
         "--days",
@@ -540,9 +543,12 @@ def _main_impl(argv: list[str] | None = None) -> int:
     )
     docs_parser.add_argument(
         "--project",
+        "-p",
+        action="append",
+        dest="projects",
         type=Path,
-        default=Path.cwd(),
-        help="Project root directory (default: current directory)",
+        default=None,
+        help="Project root directory (can be specified multiple times; default: current directory)",
     )
     docs_parser.add_argument(
         "--config",
@@ -958,12 +964,11 @@ def _main_impl(argv: list[str] | None = None) -> int:
         return 0
 
     if args.command == "stats":
-        project_root = args.project.resolve()
         from tff.core.logs import collect_stats, render_ascii_chart
         from datetime import datetime
         import json
 
-        history = collect_stats(project_root, args.days)
+        history = collect_stats(project_roots, args.days)
         if not history:
             print("No tff run logs found under .tff_logs/.", file=sys.stderr)
             print(
@@ -973,13 +978,16 @@ def _main_impl(argv: list[str] | None = None) -> int:
             return 1
 
         if args.json:
+            result_payload: dict[str, Any] = {
+                "project_root": str(project_root),
+                "days": args.days,
+                "history": history,
+            }
+            if len(project_roots) > 1:
+                result_payload["project_roots"] = [str(p) for p in project_roots]
             print(
                 json.dumps(
-                    {
-                        "project_root": str(project_root),
-                        "days": args.days,
-                        "history": history,
-                    },
+                    result_payload,
                     indent=2,
                 )
             )
@@ -1082,19 +1090,22 @@ def _main_impl(argv: list[str] | None = None) -> int:
         return 0
 
     if args.command == "docs":
-        project_root = args.project.resolve()
         provider = args.provider
         if provider == "auto":
             try:
-                provider = _detect_provider(project_root)
+                provider = _detect_provider(project_roots)
             except ValueError as e:
                 print(f"Error: {e}", file=sys.stderr)
                 return 1
 
         from tff.core.docs import generate_docs_dashboard
 
+        target_project_root = (
+            project_roots if len(project_roots) > 1 else project_root
+        )
+
         docs_kwargs: dict[str, Any] = {
-            "project_root": project_root,
+            "project_root": target_project_root,
             "output_path": args.output,
             "provider": provider,
             "dialect": args.dialect,

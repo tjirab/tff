@@ -8,7 +8,7 @@ import os
 import time
 from datetime import date, datetime, timedelta
 from pathlib import Path
-from typing import Any
+from typing import Any, Sequence
 
 from tff.core.report import LintFinding
 
@@ -162,76 +162,118 @@ def save_log(
     return log_file
 
 
-def collect_stats(project_root: Path, days: int) -> list[dict[str, Any]]:
+def collect_stats(
+    project_root: Path | Sequence[Path | str] | str,
+    days: int,
+) -> list[dict[str, Any]]:
     """Collect tff health and lint history over the last N days from log files."""
+    from tff.core.adapter import normalize_project_roots
+
+    roots = normalize_project_roots(project_root)
+
     # Generate list of dates from (today - days + 1) to today
     today = date.today()
     dates = [today - timedelta(days=d) for d in range(days - 1, -1, -1)]
 
-    # Read all health logs and sort them by timestamp
-    health_logs: list[dict[str, Any]] = []
-    health_dir = project_root / ".tff_logs" / "health"
-    if health_dir.exists():
-        for file in health_dir.glob("*.log"):
-            try:
-                with open(file, "r", encoding="utf-8") as f:
-                    data = json.load(f)
-                    dt = datetime.fromisoformat(data["timestamp"])
-                    health_logs.append({
-                        "dt": dt,
-                        "date": dt.date(),
-                        "overall_score": data.get("overall_score")
-                    })
-            except Exception:
-                pass
-    health_logs.sort(key=lambda x: x["dt"])
+    # Read all health logs and lint logs for each root
+    health_logs_by_root: dict[Path, list[dict[str, Any]]] = {}
+    lint_logs_by_root: dict[Path, list[dict[str, Any]]] = {}
 
-    # Read all lint logs and sort by timestamp
-    lint_logs: list[dict[str, Any]] = []
-    lint_dir = project_root / ".tff_logs" / "lint"
-    if lint_dir.exists():
-        for file in lint_dir.glob("*.log"):
-            try:
-                with open(file, "r", encoding="utf-8") as f:
-                    data = json.load(f)
-                    dt = datetime.fromisoformat(data["timestamp"])
-                    lint_logs.append({
-                        "dt": dt,
-                        "date": dt.date(),
-                        "errors_count": data.get("errors_count", 0),
-                        "warnings_count": data.get("warnings_count", 0)
-                    })
-            except Exception:
-                pass
-    lint_logs.sort(key=lambda x: x["dt"])
+    for root in roots:
+        h_logs: list[dict[str, Any]] = []
+        health_dir = root / ".tff_logs" / "health"
+        if health_dir.exists():
+            for file in health_dir.glob("*.log"):
+                try:
+                    with open(file, "r", encoding="utf-8") as f:
+                        data = json.load(f)
+                        dt = datetime.fromisoformat(data["timestamp"])
+                        h_logs.append({
+                            "dt": dt,
+                            "date": dt.date(),
+                            "overall_score": data.get("overall_score"),
+                            "models_checked": data.get("models_checked", 0),
+                        })
+                except Exception:
+                    pass
+        h_logs.sort(key=lambda x: x["dt"])
+        if h_logs:
+            health_logs_by_root[root] = h_logs
+
+        l_logs: list[dict[str, Any]] = []
+        lint_dir = root / ".tff_logs" / "lint"
+        if lint_dir.exists():
+            for file in lint_dir.glob("*.log"):
+                try:
+                    with open(file, "r", encoding="utf-8") as f:
+                        data = json.load(f)
+                        dt = datetime.fromisoformat(data["timestamp"])
+                        l_logs.append({
+                            "dt": dt,
+                            "date": dt.date(),
+                            "errors_count": data.get("errors_count", 0),
+                            "warnings_count": data.get("warnings_count", 0),
+                        })
+                except Exception:
+                    pass
+        l_logs.sort(key=lambda x: x["dt"])
+        if l_logs:
+            lint_logs_by_root[root] = l_logs
 
     # If no logs exist at all, return empty list
-    if not health_logs and not lint_logs:
+    if not health_logs_by_root and not lint_logs_by_root:
         return []
 
     history = []
     for d in dates:
-        # Find latest health log on or before date d
-        latest_health = None
-        for log in health_logs:
-            if log["date"] <= d:
-                latest_health = log
-            else:
-                break
+        # Find latest health log on or before date d for each root
+        latest_healths = []
+        for root, h_logs in health_logs_by_root.items():
+            latest = None
+            for log in h_logs:
+                if log["date"] <= d:
+                    latest = log
+                else:
+                    break
+            if latest is not None:
+                latest_healths.append(latest)
 
-        # Find latest lint log on or before date d
-        latest_lint = None
-        for log in lint_logs:
-            if log["date"] <= d:
-                latest_lint = log
-            else:
-                break
+        # Find latest lint log on or before date d for each root
+        latest_lints = []
+        for root, l_logs in lint_logs_by_root.items():
+            latest = None
+            for log in l_logs:
+                if log["date"] <= d:
+                    latest = log
+                else:
+                    break
+            if latest is not None:
+                latest_lints.append(latest)
+
+        health_score = None
+        if latest_healths:
+            valid_scores = [h for h in latest_healths if h["overall_score"] is not None]
+            if valid_scores:
+                total_models = sum(h["models_checked"] for h in valid_scores)
+                if total_models > 0:
+                    combined_score = sum(
+                        h["overall_score"] * h["models_checked"] for h in valid_scores
+                    ) / total_models
+                else:
+                    combined_score = sum(h["overall_score"] for h in valid_scores) / len(valid_scores)
+                health_score = round(combined_score, 2)
+
+        errors_count = None
+        warnings_count = None
+        if latest_lints:
+            errors_count = sum(lint_log["errors_count"] for lint_log in latest_lints)
+            warnings_count = sum(lint_log["warnings_count"] for lint_log in latest_lints)
 
         history.append({
             "date": d.isoformat(),
-            "health_score": latest_health["overall_score"] if latest_health else None,
-            "errors_count": latest_lint["errors_count"] if latest_lint else None,
-            "warnings_count": latest_lint["warnings_count"] if latest_lint else None,
+            "health_score": health_score,
+            "errors_count": errors_count,
+            "warnings_count": warnings_count,
         })
 
     return history

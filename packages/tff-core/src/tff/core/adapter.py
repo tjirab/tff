@@ -12,7 +12,14 @@ def normalize_project_roots(project_root: Path | Sequence[Path | str] | str) -> 
     """Normalize a single Path or a sequence of paths into a list of resolved Path objects."""
     if isinstance(project_root, (str, Path)):
         return [Path(project_root).resolve()]
-    return [Path(p).resolve() for p in project_root]
+    seen: set[Path] = set()
+    roots: list[Path] = []
+    for p in project_root:
+        resolved = Path(p).resolve()
+        if resolved not in seen:
+            seen.add(resolved)
+            roots.append(resolved)
+    return roots
 
 
 if TYPE_CHECKING:

@@ -541,6 +541,9 @@ def test_normalize_project_roots(tmp_path: Path):
     p2 = tmp_path / "proj2"
     assert normalize_project_roots([p1, str(p2)]) == [p1.resolve(), p2.resolve()]
 
+    # Duplicates are deduplicated while preserving order
+    assert normalize_project_roots([p1, str(p2), p1, str(p1)]) == [p1.resolve(), p2.resolve()]
+
 
 def test_detect_provider_multiple_roots(tmp_path: Path):
     r1 = tmp_path / "repo1"

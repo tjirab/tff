@@ -569,3 +569,34 @@ rules:
         match="rules.sql_complexity.warn_only' is deprecated and no longer supported",
     ):
         load_fitness_config(tmp_path)
+
+
+def test_load_fitness_config_multiple_project_roots(tmp_path: Path) -> None:
+    r1 = tmp_path / "repo1"
+    r2 = tmp_path / "repo2"
+    r1.mkdir()
+    r2.mkdir()
+
+    # Case 1: config file in second root
+    cfg_file = r2 / "fitness_functions.yaml"
+    cfg_file.write_text("workers: 5\n", encoding="utf-8")
+
+    cfg = load_fitness_config([r1, r2])
+    assert cfg._config_file_found is True
+    assert cfg.workers == 5
+    assert cfg._project_root == r1.resolve()
+
+    # Case 2: config file in first root takes precedence
+    (r1 / "fitness_functions.yaml").write_text("workers: 3\n", encoding="utf-8")
+    cfg2 = load_fitness_config([r1, r2])
+    assert cfg2._config_file_found is True
+    assert cfg2.workers == 3
+
+    # Case 3: config file not found in any root
+    r3 = tmp_path / "repo3"
+    r4 = tmp_path / "repo4"
+    r3.mkdir()
+    r4.mkdir()
+    cfg3 = load_fitness_config([r3, r4])
+    assert cfg3._config_file_found is False
+    assert cfg3._project_root == r3.resolve()

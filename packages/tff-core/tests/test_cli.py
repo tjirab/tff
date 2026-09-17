@@ -740,6 +740,8 @@ def test_help_stats_subcommand(capsys):
     captured = capsys.readouterr()
     assert "Show history and trends of fitness checks" in captured.out
     assert "--days" in captured.out
+    assert "-p" in captured.out
+    assert "--project" in captured.out
 
 
 def test_main_stats_variations(tmp_path: Path, capsys):
@@ -1684,6 +1686,39 @@ def test_cli_project_list_attribute(tmp_path: Path):
             mock_adapter.run_checks.assert_called_once()
             _, kwargs = mock_adapter.run_checks.call_args
             assert kwargs["project_root"] == [r1.resolve(), r2.resolve()]
+
+
+def test_cli_multi_project_stats(tmp_path: Path, capsys):
+    r1 = tmp_path / "repo1"
+    r2 = tmp_path / "repo2"
+    r1.mkdir()
+    r2.mkdir()
+    (r1 / ".tff_logs" / "health").mkdir(parents=True)
+    (r2 / ".tff_logs" / "health").mkdir(parents=True)
+
+    from datetime import datetime
+    import json
+    today = datetime.now()
+    with open(r1 / ".tff_logs" / "health" / "h1.log", "w", encoding="utf-8") as f:
+        json.dump({"timestamp": today.astimezone().isoformat(), "overall_score": 90.0, "models_checked": 10}, f)
+    with open(r2 / ".tff_logs" / "health" / "h2.log", "w", encoding="utf-8") as f:
+        json.dump({"timestamp": today.astimezone().isoformat(), "overall_score": 80.0, "models_checked": 10}, f)
+
+    # 1. Text / ASCII output
+    exit_code = main(["stats", "-p", str(r1), "-p", str(r2)])
+    assert exit_code == 0
+    captured = capsys.readouterr()
+    assert "tff Project Health Score Trend" in captured.out
+    assert "85.0%" in captured.out
+
+    # 2. JSON output with project_roots
+    exit_code_json = main(["stats", "-p", str(r1), "-p", str(r2), "--json"])
+    assert exit_code_json == 0
+    captured_json = capsys.readouterr()
+    data = json.loads(captured_json.out)
+    assert data["project_root"] == str(r1.resolve())
+    assert data["project_roots"] == [str(r1.resolve()), str(r2.resolve())]
+    assert data["history"][-1]["health_score"] == 85.0
 
 
 

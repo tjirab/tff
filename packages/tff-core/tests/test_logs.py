@@ -269,6 +269,59 @@ def test_collect_stats_corrupt_files(tmp_path: Path):
     assert stats == []
 
 
+def test_collect_stats_multiple_project_roots(tmp_path: Path):
+    r1 = tmp_path / "repo1"
+    r2 = tmp_path / "repo2"
+    r1.mkdir()
+    r2.mkdir()
+
+    # Empty roots return empty list
+    assert collect_stats([r1, r2], days=7) == []
+
+    import json
+    # Setup directories
+    (r1 / ".tff_logs" / "health").mkdir(parents=True)
+    (r1 / ".tff_logs" / "lint").mkdir(parents=True)
+    (r2 / ".tff_logs" / "health").mkdir(parents=True)
+    (r2 / ".tff_logs" / "lint").mkdir(parents=True)
+
+    today = datetime.now()
+    # repo1 log: score 80.0, models_checked 10, errors 1, warnings 2
+    with open(r1 / ".tff_logs" / "health" / "h1.log", "w", encoding="utf-8") as f:
+        json.dump({"timestamp": today.astimezone().isoformat(), "overall_score": 80.0, "models_checked": 10}, f)
+    with open(r1 / ".tff_logs" / "lint" / "l1.log", "w", encoding="utf-8") as f:
+        json.dump({"timestamp": today.astimezone().isoformat(), "errors_count": 1, "warnings_count": 2}, f)
+
+    # repo2 log: score 100.0, models_checked 10, errors 2, warnings 1
+    with open(r2 / ".tff_logs" / "health" / "h2.log", "w", encoding="utf-8") as f:
+        json.dump({"timestamp": today.astimezone().isoformat(), "overall_score": 100.0, "models_checked": 10}, f)
+    with open(r2 / ".tff_logs" / "lint" / "l2.log", "w", encoding="utf-8") as f:
+        json.dump({"timestamp": today.astimezone().isoformat(), "errors_count": 2, "warnings_count": 1}, f)
+
+    stats = collect_stats([r1, r2], days=1)
+    assert len(stats) == 1
+    # Aggregated health score: (80*10 + 100*10) / 20 = 90.0
+    assert stats[0]["health_score"] == 90.0
+    # Aggregated errors: 1 + 2 = 3
+    assert stats[0]["errors_count"] == 3
+    # Aggregated warnings: 2 + 1 = 3
+    assert stats[0]["warnings_count"] == 3
+
+    # Test when models_checked is not present
+    r3 = tmp_path / "repo3"
+    r4 = tmp_path / "repo4"
+    r3.mkdir()
+    r4.mkdir()
+    (r3 / ".tff_logs" / "health").mkdir(parents=True)
+    (r4 / ".tff_logs" / "health").mkdir(parents=True)
+    with open(r3 / ".tff_logs" / "health" / "h.log", "w", encoding="utf-8") as f:
+        json.dump({"timestamp": today.astimezone().isoformat(), "overall_score": 70.0}, f)
+    with open(r4 / ".tff_logs" / "health" / "h.log", "w", encoding="utf-8") as f:
+        json.dump({"timestamp": today.astimezone().isoformat(), "overall_score": 90.0}, f)
+    stats2 = collect_stats([r3, r4], days=1)
+    assert stats2[0]["health_score"] == 80.0
+
+
 def test_is_logging_disabled(monkeypatch):
     monkeypatch.delenv("TFF_NO_LOG", raising=False)
     assert not is_logging_disabled()

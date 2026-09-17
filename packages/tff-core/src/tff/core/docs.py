@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from datetime import date
 from pathlib import Path
-from typing import Any
+from typing import Any, Sequence
 
 from tff.core.config import load_fitness_config
 from tff.core.health import calculate_health_scores
@@ -14,7 +14,7 @@ from tff.core.utils.paths import model_path_relative
 
 
 def generate_docs_dashboard(
-    project_root: Path,
+    project_root: Path | Sequence[Path | str] | str,
     output_path: Path | None = None,
     provider: str = "auto",
     dialect: str | None = None,
@@ -24,8 +24,13 @@ def generate_docs_dashboard(
     workers: int | None = None,
 ) -> Path:
     """Run checks, compile, and output a standalone interactive HTML dashboard."""
+    from tff.core.adapter import normalize_project_roots
+
+    roots = normalize_project_roots(project_root)
+    primary_root = roots[0]
+
     # 1. Load config
-    config = load_fitness_config(project_root, config_path=config_path)
+    config = load_fitness_config(roots, config_path=config_path)
     if workers is not None:
         config.workers = workers
 
@@ -33,7 +38,7 @@ def generate_docs_dashboard(
     if provider == "auto":
         from tff.core.adapter import detect_provider
 
-        provider = detect_provider(project_root)
+        provider = detect_provider(roots)
 
     from tff.core.cli import _get_adapter
 
@@ -41,14 +46,14 @@ def generate_docs_dashboard(
 
     # 3. Load models mapping
     models = adapter.load_models(
-        project_root=project_root,
+        project_root=roots,
         dialect=dialect,
         manifest_path=manifest_path,
     )
 
     # 4. Run all checks reusing preloaded models
     findings, models_checked, executed_checks = adapter.run_checks(
-        project_root=project_root,
+        project_root=roots,
         config=config,
         dialect=dialect,
         manifest_path=manifest_path,
@@ -58,10 +63,10 @@ def generate_docs_dashboard(
     # 5. Calculate scores and save health log
     scores = calculate_health_scores(findings, models_checked, config, provider)
     json_data = get_health_json_data(scores, models_checked)
-    save_log(project_root, "health", json_data, no_log=no_log)
+    save_log(primary_root, "health", json_data, no_log=no_log)
 
     # 6. Collect history (60 days)
-    history = collect_stats(project_root, days=60)
+    history = collect_stats(roots, days=60)
     if not history:
         history = [
             {
@@ -145,10 +150,11 @@ def generate_docs_dashboard(
     )
 
     if output_path is None:
-        output_path = project_root / "tff_report.html"
+        output_path = primary_root / "tff_report.html"
     else:
+        output_path = Path(output_path)
         if not output_path.is_absolute():
-            output_path = project_root / output_path
+            output_path = primary_root / output_path
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
     with open(output_path, "w", encoding="utf-8") as f:

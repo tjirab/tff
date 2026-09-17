@@ -100,7 +100,7 @@ tff health [options]
 
 | Option | Type / Choices | Default | Description |
 | :--- | :--- | :--- | :--- |
-| `--project PATH` | Directory Path | `.` (current dir) | Project root directory. |
+| `--project PATH`, `-p PATH` | Directory Path | `.` (current dir) | Project root directory (can be specified multiple times for multi-repo projects). |
 | `--config PATH` | File Path | `fitness_functions.yaml` | Path to fitness functions config (relative to project root). |
 | `--provider` | `auto`, `dbt`, `sqlmesh`, `dataform` | `auto` | Pipeline engine provider. |
 | `--fail-under SCORE` | Float (`0.0` - `100.0`) | `0.0` | Exit with code `1` if overall health score is below this threshold. |
@@ -184,7 +184,7 @@ tff docs [options]
 
 | Option | Type / Choices | Default | Description |
 | :--- | :--- | :--- | :--- |
-| `--project PATH` | Directory Path | `.` | Project root directory. |
+| `--project PATH`, `-p PATH` | Directory Path | `.` (current dir) | Project root directory (can be specified multiple times for multi-repo projects). |
 | `--output PATH`, `-o` | File Path | `tff_report.html` | Destination path for generated HTML file. |
 | `--config PATH` | File Path | `fitness_functions.yaml` | Path to fitness functions config. |
 | `--provider` | `auto`, `dbt`, `sqlmesh`, `dataform` | `auto` | Pipeline engine provider. |
@@ -244,7 +244,7 @@ tff stats [options]
 
 | Option | Type / Choices | Default | Description |
 | :--- | :--- | :--- | :--- |
-| `--project PATH` | Directory Path | `.` | Project root directory. |
+| `--project PATH`, `-p PATH` | Directory Path | `.` (current dir) | Project root directory (can be specified multiple times for multi-repo projects). |
 | `--days DAYS` | Integer | `7` | Number of days of historical execution logs to analyze. |
 | `--json` | Flag | `false` | Output stats summary as JSON to stdout. |
 
@@ -275,7 +275,7 @@ tff info [options]
 
 | Option | Type / Choices | Default | Description |
 | :--- | :--- | :--- | :--- |
-| `--project PATH` | Directory Path | `.` | Project root directory. |
+| `--project PATH`, `-p PATH` | Directory Path | `.` (current dir) | Project root directory (can be specified multiple times for multi-repo projects). |
 | `--config PATH` | File Path | `fitness_functions.yaml` | Path to fitness functions config. |
 | `--provider` | `auto`, `dbt`, `sqlmesh`, `dataform` | `auto` | Pipeline engine provider. |
 
