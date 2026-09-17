@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.19.0](https://github.com/tjirab/tff/compare/tff-core-v0.18.0...tff-core-v0.19.0) (2026-09-17)
+
+
+### Features
+
+* **cli:** support multi-project flags (-p / --project) in docs and stats commands ([#225](https://github.com/tjirab/tff/issues/225)) ([#229](https://github.com/tjirab/tff/issues/229)) ([d00577a](https://github.com/tjirab/tff/commit/d00577af7c4a006610c609a60bfb901385398845))
+* **docs:** add VHS terminal demo GIFs and check CLI alias ([#232](https://github.com/tjirab/tff/issues/232)) ([8828dd7](https://github.com/tjirab/tff/commit/8828dd757a6b9447ed4e7a5866bbcafd5e00c9a9))
+* **sqlmesh:** support multi-repo projects and repeatable CLI project flags ([#223](https://github.com/tjirab/tff/issues/223)) ([29dc5ed](https://github.com/tjirab/tff/commit/29dc5ed4dec9b569ba693ffd587f0fa3745ba330))
+
+
+### Performance Improvements
+
+* **core:** deduplicate project roots in normalize_project_roots ([#228](https://github.com/tjirab/tff/issues/228)) ([3b21faf](https://github.com/tjirab/tff/commit/3b21faf28afbbd6d470e1e01c271eb5b957a3bbf))
+
 ## [0.18.0](https://github.com/tjirab/tff/compare/tff-core-v0.17.0...tff-core-v0.18.0) (2026-09-17)
 
 
