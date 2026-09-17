@@ -786,12 +786,12 @@ def _main_impl(argv: list[str] | None = None) -> int:
         )
         config_exists = resolved_config.is_file()
         logo = (
-            " [cyan]  ██╗   [/cyan][green]  █████╗  █████╗ [/green]\n"
-            " [cyan]  ██║   [/cyan][green]  ██╔══╝  ██╔══╝ [/green]\n"
-            " [cyan]████████[/cyan][green]████████████████╗[/green]\n"
-            " [cyan]╚═██╔═══[/cyan][green]══██╔═════██╔══╝ [/green]\n"
-            " [cyan]  ██║   [/cyan][green]  ██║     ██║    [/green]\n"
-            " [cyan]  ╚██══╝[/cyan][green]  ╚═╝     ╚═╝    [/green]"
+            " [cyan]            [/cyan][green]▄███▄   ▄███▄   [/green]\n"
+            " [cyan]    ██      [/cyan][green]██  ▀   ██  ▀   [/green]\n"
+            " [cyan]█████████[/cyan][green]█████████████████[/green]\n"
+            " [cyan]    ██      [/cyan][green]██      ██      [/green]\n"
+            " [cyan]    ██      [/cyan][green]██      ██      [/green]\n"
+            " [cyan]    ██▄▄▄   [/cyan][green]██      ██      [/green]"
         )
         console.print(logo)
         console.print()
