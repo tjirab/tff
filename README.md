@@ -15,13 +15,22 @@ Configurable fitness functions engine and linter for transformation projects.
 
 tff allows you to enforce architectural layout boundaries, layer structure policies, schema contracts, and code formatting rules across data pipelines. It ships with dedicated plugins for **SQLMesh**, **dbt**, and **Google Cloud Dataform**, supports custom adapters and proprietary rules via entry points and plugins, and outputs clean, color-coded lint reports to the terminal.
 
-<img width="1280" height="708" alt="20260629_tff-health" src="https://github.com/user-attachments/assets/2302a3dc-595f-4726-94ba-6c2aaf838bd4" />
+<p align="center">
+  <img width="850" alt="tff demo" src="docs/assets/demo.gif" />
+</p>
 
 <details>
-<summary>More screenshots</summary>
+<summary>More demos & screenshots</summary>
 
-#### tff lint
-<img width="1280" height="570" alt="20260629_tff-lint" src="https://github.com/user-attachments/assets/2abf306d-bfc1-4c1e-a67c-31a0c97a69c8" />
+#### tff check (SQLMesh: duplicate CTEs & layer integrity)
+<p align="center">
+  <img width="850" alt="tff sqlmesh demo" src="docs/assets/demo-sqlmesh.gif" />
+</p>
+
+#### tff health (project health score & breakdown)
+<p align="center">
+  <img width="850" alt="tff health demo" src="docs/assets/demo-health.gif" />
+</p>
 
 #### tff info
 <img width="672" height="326" alt="20260629_tff-info" src="https://github.com/user-attachments/assets/8426540f-da9d-4bc1-8d73-ea12c0553c6c" />
@@ -98,7 +107,7 @@ tff [command] [options]
 
 | Command | Description | Quick Example |
 | :--- | :--- | :--- |
-| **`lint`** | Run architectural fitness checks and output lint reports | `tff lint --fix` |
+| **`lint`** (or **`check`**) | Run architectural fitness checks and output lint reports | `tff check --project examples/minimal-dbt-project` |
 | **`health`** | Calculate overall project fitness health score (0–100) | `tff health --fail-under 80` |
 | **`action`** | Run official GitHub Action pipeline (score, diff, PR comments) | `tff action --only-changed` |
 | **`docs`** | Generate standalone interactive HTML dashboard with lineage graphs | `tff docs --output docs/index.html` |

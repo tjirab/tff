@@ -231,12 +231,12 @@ class TffArgumentParser(argparse.ArgumentParser):
         # If the prog is already subcommand-specific (e.g. 'tff lint'), use it.
         # Otherwise, check the arguments to see if a subcommand was targetted.
         if hint_cmd == "tff" and TffArgumentParser._current_argv is not None:
-            for sub in ("lint", "health", "info", "help", "stats", "docs", "init", "action"):
+            for sub in ("lint", "check", "health", "info", "help", "stats", "docs", "init", "action"):
                 if sub in TffArgumentParser._current_argv:
                     hint_cmd = f"tff {sub}"
                     break
         elif hint_cmd == "tff":
-            for sub in ("lint", "health", "info", "help", "stats", "docs", "init", "action"):
+            for sub in ("lint", "check", "health", "info", "help", "stats", "docs", "init", "action"):
                 if sub in sys.argv:
                     hint_cmd = f"tff {sub}"
                     break
@@ -293,7 +293,10 @@ def _main_impl(argv: list[str] | None = None) -> int:
     )
 
     lint_parser = subparsers.add_parser(
-        "lint", parents=[debug_parent], help="Run all enabled fitness checks"
+        "lint",
+        aliases=["check"],
+        parents=[debug_parent],
+        help="Run all enabled fitness checks (alias: check)",
     )
     lint_parser.add_argument(
         "--project",
@@ -729,7 +732,7 @@ def _main_impl(argv: list[str] | None = None) -> int:
     help_parser.add_argument(
         "subcommand",
         nargs="?",
-        choices=["lint", "health", "info", "stats", "docs", "init", "action"],
+        choices=["lint", "check", "health", "info", "stats", "docs", "init", "action"],
         help="Specific command to get help for",
     )
 
@@ -740,7 +743,7 @@ def _main_impl(argv: list[str] | None = None) -> int:
     logger.debug("tff v%s initialized with command: %s (args: %s)", __version__, args.command, args_list)
 
     if args.command == "help":
-        if args.subcommand == "lint":
+        if args.subcommand in ("lint", "check"):
             lint_parser.print_help()
         elif args.subcommand == "health":
             health_parser.print_help()
@@ -1135,7 +1138,7 @@ def _main_impl(argv: list[str] | None = None) -> int:
 
         return execute_action(args)
 
-    if args.command in ("lint", "health"):
+    if args.command in ("lint", "check", "health"):
         logger.debug("Project root directories: %s", project_roots)
 
         # 1. Determine provider
@@ -1196,7 +1199,7 @@ def _main_impl(argv: list[str] | None = None) -> int:
             if not getattr(args, "json", False):
                 print(f"Cleared {cleared} AST cache file(s).")
 
-        if args.command == "lint":
+        if args.command in ("lint", "check"):
             checks = _parse_checks(args.checks)
         else:
             checks = None  # Always run all checks for health report
@@ -1237,7 +1240,7 @@ def _main_impl(argv: list[str] | None = None) -> int:
             return 1
 
         # Apply auto-fixes if --fix is set
-        if args.command == "lint" and getattr(args, "fix", False) and findings:
+        if args.command in ("lint", "check") and getattr(args, "fix", False) and findings:
             try:
                 models = adapter.load_models(
                     project_root=project_roots,
@@ -1277,7 +1280,7 @@ def _main_impl(argv: list[str] | None = None) -> int:
                         )
                         return 1
 
-        if args.command == "lint":
+        if args.command in ("lint", "check"):
             # 5. Render report
             from tff.core.logs import get_lint_json_data, save_log
             from tff.core.formatters import (

@@ -1686,6 +1686,21 @@ def test_cli_project_list_attribute(tmp_path: Path):
             assert kwargs["project_root"] == [r1.resolve(), r2.resolve()]
 
 
+def test_cli_check_alias(tmp_path: Path):
+    (tmp_path / "dbt_project.yml").touch()
+    with patch("tff.core.cli.get_adapter") as mock_get_adapter:
+        mock_adapter = MagicMock()
+        mock_adapter.provider_name = "dbt"
+        mock_adapter.run_checks.return_value = ([], 0, [])
+        mock_get_adapter.return_value = mock_adapter
+
+        with patch("tff.core.cli.render_lint_report", return_value=True):
+            exit_code = main(["check", "--project", str(tmp_path)])
+            assert exit_code == 0
+            mock_adapter.run_checks.assert_called_once()
+
+
+
 
 
 
