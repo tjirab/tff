@@ -1,0 +1,51 @@
+name: Generate Demos
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - 'packages/tff-core/src/**'
+      - 'demos/**'
+      - 'examples/**'
+
+jobs:
+  generate-demos:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Install dependencies
+        run: uv sync --all-extras --frozen
+
+      - name: Generate dbt demo GIF
+        uses: charmbracelet/vhs-action@v2
+        with:
+          path: 'demos/demo-check-dbt.tape'
+
+      - name: Generate SQLMesh demo GIF
+        uses: charmbracelet/vhs-action@v2
+        with:
+          path: 'demos/demo-sqlmesh.tape'
+
+      - name: Generate Health demo GIF
+        uses: charmbracelet/vhs-action@v2
+        with:
+          path: 'demos/demo-health.tape'
+
+      - name: Commit updated demo GIFs
+        uses: stefanzweifel/git-auto-commit-action@v5
+        with:
+          commit_message: 'chore(docs): automatically regenerate VHS terminal demo GIFs'
+          file_pattern: 'docs/assets/*.gif'

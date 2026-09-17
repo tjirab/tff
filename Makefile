@@ -1,4 +1,4 @@
-.PHONY: help init lint test coverage docs-serve docs-build
+.PHONY: help init lint test coverage docs-serve docs-build demos
 
 help:
 	@echo "Usage: make [target]"
@@ -10,6 +10,7 @@ help:
 	@echo "  coverage    Run tests and print diff coverage report"
 	@echo "  docs-serve  Run local documentation server"
 	@echo "  docs-build  Build documentation in strict mode"
+	@echo "  demos       Regenerate animated VHS terminal demo GIFs"
 	@echo "  help        Show this help message"
 
 init:
@@ -31,3 +32,6 @@ docs-serve:
 
 docs-build:
 	uv run --group docs mkdocs build --strict
+
+demos:
+	./demos/generate_demos.sh
