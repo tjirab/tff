@@ -1,0 +1,116 @@
+/* Color palette based on brand identity:
+   Deep Espresso: #30231b
+   Muted Teal (t): #6f9990
+   Olive Green (ff): #99a667
+*/
+
+:root {
+  --md-primary-fg-color: #30231b;
+  --md-primary-fg-color--light: #3d2d23;
+  --md-primary-fg-color--dark: #221812;
+  --md-primary-bg-color: #faf7f2;
+  --md-primary-bg-color--light: #ffffff;
+  --md-accent-fg-color: #6f9990;
+  --md-accent-fg-color--transparent: rgba(111, 153, 144, 0.15);
+  --md-accent-bg-color: #faf7f2;
+}
+
+/* Light Theme */
+[data-md-color-scheme="default"] {
+  /* Header & Navigation */
+  --md-primary-fg-color: #30231b;
+  --md-primary-fg-color--light: #3d2d23;
+  --md-primary-fg-color--dark: #221812;
+  --md-primary-bg-color: #faf7f2;
+  --md-primary-bg-color--light: #ffffff;
+
+  /* Accents & Links */
+  --md-accent-fg-color: #6f9990;
+  --md-accent-bg-color: #f7f4ed;
+  --md-typeset-a-color: #3c6e66;
+  --md-typeset-mark-color: rgba(153, 166, 103, 0.25);
+
+  /* Page background & text */
+  --md-default-bg-color: #faf7f2;
+  --md-default-bg-color--light: #f3eee6;
+  --md-default-bg-color--lighter: #ebe4d8;
+  --md-default-bg-color--lightest: #e0d7c8;
+
+  --md-default-fg-color: #30231b;
+  --md-default-fg-color--light: #59463b;
+  --md-default-fg-color--lighter: #7d6b5e;
+  --md-default-fg-color--lightest: #b0a194;
+
+  /* Code blocks */
+  --md-code-bg-color: #f0ebe2;
+  --md-code-bg-color--light: #e8e2d7;
+  --md-code-bg-color--lighter: #ded6c9;
+  --md-code-fg-color: #30231b;
+  --md-code-hl-color: #6f9990;
+  --md-code-hl-color--light: rgba(111, 153, 144, 0.12);
+  --md-code-hl-keyword-color: #3c6e66;
+  --md-code-hl-function-color: #5c7538;
+  --md-code-hl-string-color: #5a743a;
+  --md-code-hl-number-color: #995533;
+  --md-code-hl-comment-color: #8c7c70;
+
+  /* Admonitions & Tables */
+  --md-admonition-bg-color: #f5f0e8;
+  --md-admonition-fg-color: #30231b;
+  --md-typeset-table-color: rgba(48, 35, 27, 0.08);
+  --md-typeset-table-color--light: rgba(48, 35, 27, 0.03);
+
+  /* Footer */
+  --md-footer-bg-color: #261c15;
+  --md-footer-bg-color--dark: #1d1510;
+}
+
+/* Dark Theme */
+[data-md-color-scheme="slate"] {
+  /* Header & Navigation */
+  --md-primary-fg-color: #241b15;
+  --md-primary-fg-color--light: #30231b;
+  --md-primary-fg-color--dark: #1b130e;
+  --md-primary-bg-color: #ede7df;
+  --md-primary-bg-color--light: #f7f4ed;
+
+  /* Accents & Links */
+  --md-accent-fg-color: #99a667;
+  --md-accent-bg-color: #30231b;
+  --md-typeset-a-color: #7eb0a6;
+  --md-typeset-mark-color: rgba(111, 153, 144, 0.3);
+
+  /* Page background & text */
+  --md-default-bg-color: #30231b;
+  --md-default-bg-color--light: #382b22;
+  --md-default-bg-color--lighter: #42342b;
+  --md-default-bg-color--lightest: #544439;
+
+  --md-default-fg-color: #ede7df;
+  --md-default-fg-color--light: #b8aea3;
+  --md-default-fg-color--lighter: #8f8478;
+  --md-default-fg-color--lightest: #5e544a;
+
+  /* Code blocks */
+  --md-code-bg-color: #231913;
+  --md-code-bg-color--light: #2b2019;
+  --md-code-bg-color--lighter: #352820;
+  --md-code-fg-color: #ede7df;
+  --md-code-hl-color: #6f9990;
+  --md-code-hl-color--light: rgba(111, 153, 144, 0.2);
+  --md-code-hl-keyword-color: #84b8ae;
+  --md-code-hl-function-color: #b2c27c;
+  --md-code-hl-string-color: #99a667;
+  --md-code-hl-number-color: #d48b6a;
+  --md-code-hl-comment-color: #8f8478;
+
+  /* Admonitions & Tables */
+  --md-admonition-bg-color: #362921;
+  --md-admonition-fg-color: #ede7df;
+  --md-typeset-table-color: rgba(237, 231, 223, 0.12);
+  --md-typeset-table-color--light: rgba(237, 231, 223, 0.04);
+
+  /* Footer */
+  --md-footer-bg-color: #201712;
+  --md-footer-bg-color--dark: #17100c;
+}

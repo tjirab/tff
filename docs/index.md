@@ -1,6 +1,5 @@
 <p align="center">
-  <img src="assets/tff.svg#only-light" alt="tff logo" width="160">
-  <img src="assets/tff-white.svg#only-dark" alt="tff logo" width="160">
+  <img src="assets/tff.svg" alt="tff logo" width="160">
 </p>
 
 # tff: Transformation Fitness Functions
