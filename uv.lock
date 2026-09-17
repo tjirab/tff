@@ -1460,7 +1460,7 @@ wheels = [
 
 [[package]]
 name = "tff-core"
-version = "0.18.0"
+version = "0.19.0"
 source = { editable = "packages/tff-core" }
 dependencies = [
     { name = "pydantic" },

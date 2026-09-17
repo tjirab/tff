@@ -9,43 +9,68 @@ Welcome! This document outlines the codebase architecture, package layout, and l
 tff is structured to separate the core, adapter-agnostic logic of parsing and checking rules from any specific data orchestrator or engine.
 
 ```mermaid
-graph TD
-    subgraph Core Engine [tff.core]
-        Model[ModelRepresentation]
-        Rules[Linter Rules]
-        Checks[Architectural Checks]
-        Report[Rich Lint Reporter]
+flowchart TD
+    subgraph CLI ["CLI & Orchestration"]
+        TFF_CLI["Unified tff CLI<br/>(Provider Auto-Detection)"]
+        Legacy_CLI["tff-dbt / tff-sqlmesh / tff-dataform"]
+        Config["fitness_functions.yaml<br/>(FitnessFunctionsConfig)"]
     end
 
-    subgraph SQLMesh Adapter [tff.sqlmesh]
-        SM_Loader[FitnessLoader] -->|"Wraps via type()"| Rules
-        SM_Runner[Runner] -->|"Maps SQLMesh Model"| Model
-        SM_CLI[tff-sqlmesh CLI] --> SM_Runner
+    subgraph Adapters ["Pipeline Adapters (tff.core.adapter.PipelineAdapter)"]
+        direction TB
+        subgraph DBT_Box ["dbt Adapter (tff.dbt)"]
+            DBT_Ad["DBTAdapter"]
+            DBT_Parser["Manifest Parser<br/>(manifest.json & tests)"]
+            DBT_Ad --> DBT_Parser
+        end
+
+        subgraph SM_Box ["SQLMesh Adapter (tff.sqlmesh)"]
+            SM_Ad["SqlmeshAdapter"]
+            SM_Loader["FitnessLoader<br/>(Dynamic SqlMeshRule wrapper)"]
+            SM_Ad --> SM_Loader
+        end
+
+        subgraph DF_Box ["Dataform Adapter (tff.dataform)"]
+            DF_Ad["DataformAdapter"]
+            DF_Parser["Manifest & AST Parser<br/>(JSON manifest / CLI / .sqlx)"]
+            DF_Ad --> DF_Parser
+        end
     end
 
-    subgraph dbt Adapter [tff.dbt]
-        DBT_Manifest[Manifest Parser] -->|"Maps nodes & tests"| Model
-        DBT_Runner[Runner] --> DBT_Manifest
-        DBT_CLI[tff-dbt CLI] --> DBT_Runner
+    subgraph Core ["tff.core Engine"]
+        Model["ModelRepresentation<br/>(AST, columns, audits, depends_on)"]
+        Rules["Single-Model Rules<br/>(Naming, contracts, docs, types)"]
+        Checks["Architectural DAG Checks<br/>(Layer integrity, cycles, depth, CTEs)"]
     end
 
-    subgraph Dataform Adapter [tff.dataform]
-        DF_Manifest[Manifest & Source Parser] -->|"Maps actions & .sqlx"| Model
-        DF_Runner[Runner] --> DF_Manifest
-        DF_CLI[tff-dataform CLI] --> DF_Runner
+    subgraph Outputs ["Outputs & Actions"]
+        Reporter["Rich Lint Reporter<br/>(Console, JSON, SARIF, Markdown)"]
+        Autofix["Autofix Engine<br/>(AST & YAML schema auto-mutations)"]
     end
-    
+
+    TFF_CLI --> Adapters
+    Legacy_CLI --> Adapters
+    Config -.-> Rules
+    Config -.-> Checks
+
+    DBT_Parser -->|"Maps nodes & tests"| Model
+    SM_Loader -->|"Maps models & audits"| Model
+    DF_Parser -->|"Maps actions & .sqlx"| Model
+
     Model --> Rules
     Model --> Checks
-    Rules --> Report
-    Checks --> Report
+
+    Rules --> Reporter
+    Checks --> Reporter
+    Rules --> Autofix
+    Checks --> Autofix
 ```
 
 ### Core Architecture Components
-1. **[tff-core](https://github.com/tjirab/tff/tree/main/packages/tff-core)**: Contains the base model definitions (`ModelRepresentation`), abstract rule classes, the built-in rules/checks, and the console rendering engine. It also contains the `dbt`, `sqlmesh`, and `dataform` adapters under submodules.
-2. **dbt Adapter (`tff.dbt`)**: Parses compile-time artifacts (`manifest.json`) and resolves references, schemas, and tests, running core rules on the compiled model layout.
-3. **SQLMesh Adapter (`tff.sqlmesh`)**: Plugs directly into SQLMesh. It maps native SQLMesh models into `ModelRepresentation` objects and wraps core rules dynamically.
-4. **Dataform Adapter (`tff.dataform`)**: Ingests Google Cloud Dataform projects via precompiled JSON manifests, CLI compilation (`dataform compile --json`), or direct static `.sqlx` AST parsing.
+1. **[tff-core](https://github.com/tjirab/tff/tree/main/packages/tff-core)**: Contains the base model definitions (`ModelRepresentation`), abstract rule and check classes, the built-in rules/checks, the unified `tff` CLI entry point, configuration loader (`fitness_functions.yaml`), reporting engine, and the autofix engine. It also defines the abstract `PipelineAdapter` interface.
+2. **dbt Adapter (`tff.dbt`)**: Implements `DBTAdapter`. Parses compile-time artifacts (`manifest.json`) and resolves references, schemas, and tests, mapping them into `ModelRepresentation` objects.
+3. **SQLMesh Adapter (`tff.sqlmesh`)**: Implements `SqlmeshAdapter`. Connects directly to SQLMesh contexts, mapping native SQLMesh models into `ModelRepresentation` objects. It also provides `FitnessLoader` to dynamically wrap core rules into native `SqlMeshRule` classes for SQLMesh's built-in linter and CI workflows.
+4. **Dataform Adapter (`tff.dataform`)**: Implements `DataformAdapter`. Ingests Google Cloud Dataform projects via precompiled JSON manifests, CLI compilation (`dataform compile --json`), or direct static `.sqlx` AST parsing.
 
 
 ---
