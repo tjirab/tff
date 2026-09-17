@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.18.0](https://github.com/tjirab/tff/compare/tff-core-v0.17.0...tff-core-v0.18.0) (2026-09-17)
+
+
+### Features
+
+* **branding:** refactor TFF to lowercase tff and update info logo ([#219](https://github.com/tjirab/tff/issues/219)) ([ce2f975](https://github.com/tjirab/tff/commit/ce2f975857f6dfec81769aa9abf108acc96b3262))
+
 ## [0.17.0](https://github.com/tjirab/tff/compare/tff-core-v0.16.1...tff-core-v0.17.0) (2026-09-16)
 
 
