@@ -541,6 +541,16 @@ def test_normalize_project_roots(tmp_path: Path):
     p2 = tmp_path / "proj2"
     assert normalize_project_roots([p1, str(p2)]) == [p1.resolve(), p2.resolve()]
 
+    # Deduplication and order preservation
+    p1.mkdir(parents=True, exist_ok=True)
+    symlink_p1 = tmp_path / "symlink_proj1"
+    symlink_p1.symlink_to(p1)
+
+    assert normalize_project_roots([p2, p1, str(p2), p1, symlink_p1, str(p1)]) == [
+        p2.resolve(),
+        p1.resolve(),
+    ]
+
 
 def test_detect_provider_multiple_roots(tmp_path: Path):
     r1 = tmp_path / "repo1"

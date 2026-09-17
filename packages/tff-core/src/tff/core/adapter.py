@@ -9,10 +9,10 @@ from typing import TYPE_CHECKING, Callable, Sequence
 
 
 def normalize_project_roots(project_root: Path | Sequence[Path | str] | str) -> list[Path]:
-    """Normalize a single Path or a sequence of paths into a list of resolved Path objects."""
+    """Normalize a single Path or a sequence of paths into a list of unique, resolved Path objects."""
     if isinstance(project_root, (str, Path)):
         return [Path(project_root).resolve()]
-    return [Path(p).resolve() for p in project_root]
+    return list(dict.fromkeys(Path(p).resolve() for p in project_root))
 
 
 if TYPE_CHECKING:
