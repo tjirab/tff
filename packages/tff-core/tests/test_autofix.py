@@ -1,6 +1,6 @@
 import yaml
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 from tff.core.model import ModelRepresentation
 from tff.core.report import LintFinding
 from tff.core.autofix import (
@@ -890,6 +890,63 @@ def test_apply_autofixes_lift_nested_subqueries(tmp_path: Path):
         assert any("Failed to refactor nested subqueries" in log for log in logs_fail)
     finally:
         sql_file.chmod(0o644)
+
+
+def test_apply_autofixes_multiple_project_roots(tmp_path: Path):
+    r1 = tmp_path / "repo1"
+    r2 = tmp_path / "repo2"
+    r1.mkdir()
+    r2.mkdir()
+
+    m1_file = r1 / "models" / "m1.sql"
+    m1_file.parent.mkdir(parents=True, exist_ok=True)
+    m1_file.write_text("SELECT a, b FROM table GROUP BY 1, 2", encoding="utf-8")
+
+    m2_file = r2 / "models" / "m2.sql"
+    m2_file.parent.mkdir(parents=True, exist_ok=True)
+    m2_file.write_text("MODEL (name m2); SELECT 1 AS x", encoding="utf-8")
+
+    findings = [
+        LintFinding(
+            check="nopositionalgroupbyororderby",
+            severity="error",
+            model="m1",
+            path=str(m1_file.resolve()),
+            message="Avoid positional group by",
+        ),
+        LintFinding(
+            check="nomissingowner",
+            severity="error",
+            model="m2",
+            path="models/m2.sql",
+            message="Model is missing owner",
+        ),
+    ]
+
+    models = {
+        "m1": ModelRepresentation(name="m1", path=str(m1_file), dialect="ansi"),
+        "m2": ModelRepresentation(name="m2", path=str(m2_file), dialect="ansi"),
+    }
+
+    mock_adapter = MagicMock()
+    mock_adapter.apply_metadata_fix.return_value = "Fixed metadata in m2.sql"
+
+    logs = apply_autofixes([r1, r2], mock_adapter, findings, models)
+    assert any("Fixed positional GROUP BY/ORDER BY in m1.sql" in log for log in logs)
+    assert "Fixed metadata in m2.sql" in logs
+
+    # Check that m1 was written
+    assert "GROUP BY a, b" in m1_file.read_text(encoding="utf-8")
+
+    # Check that apply_metadata_fix was called with matching_root=r2
+    mock_adapter.apply_metadata_fix.assert_called_once_with(
+        project_root=r2.resolve(),
+        abs_path=m2_file.resolve(),
+        model_name="m2",
+        missing_owner=True,
+        missing_description=False,
+    )
+
 
 
 

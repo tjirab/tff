@@ -718,24 +718,35 @@ def fix_dataform_metadata(
 
 
 def apply_autofixes(
-    project_root: Path,
+    project_root: Path | Sequence[Path],
     provider: str | PipelineAdapter,
     findings: list[LintFinding],
     models: dict[str, ModelRepresentation],
 ) -> list[str]:
     """Identify auto-fixable violations from findings and apply modifications to source files."""
-    from tff.core.adapter import get_adapter
+    from tff.core.adapter import get_adapter, normalize_project_roots
 
     if isinstance(provider, str):
         adapter = get_adapter(provider)
     else:
         adapter = provider
 
+    roots = normalize_project_roots(project_root)
+
     # Group findings by file path
     grouped = defaultdict(list)
     for f in findings:
         if f.path:
-            abs_path = (project_root / f.path).resolve()
+            p = Path(f.path)
+            if p.is_absolute():
+                abs_path = p.resolve()
+            else:
+                abs_path = (roots[0] / f.path).resolve()
+                for r in roots:
+                    cand = (r / f.path).resolve()
+                    if cand.exists():
+                        abs_path = cand
+                        break
             grouped[abs_path].append(f)
 
     applied_logs = []
@@ -805,8 +816,16 @@ def apply_autofixes(
         if missing_owner or missing_description:
             model_name = file_findings[0].model
             if model_name:
+                matching_root = roots[0]
+                for r in roots:
+                    try:
+                        abs_path.relative_to(r)
+                        matching_root = r
+                        break
+                    except ValueError:
+                        pass
                 log = adapter.apply_metadata_fix(
-                    project_root=project_root,
+                    project_root=matching_root,
                     abs_path=abs_path,
                     model_name=model_name,
                     missing_owner=missing_owner,

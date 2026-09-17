@@ -526,3 +526,115 @@ def test_detect_provider_with_custom_adapter(tmp_path: Path):
     finally:
         _REGISTERED_ADAPTERS.pop("custom_proj", None)
 
+
+def test_normalize_project_roots(tmp_path: Path):
+    from tff.core.adapter import normalize_project_roots
+
+    # Single Path
+    p1 = tmp_path / "proj1"
+    assert normalize_project_roots(p1) == [p1.resolve()]
+
+    # Single str
+    assert normalize_project_roots(str(p1)) == [p1.resolve()]
+
+    # Sequence of Path and str
+    p2 = tmp_path / "proj2"
+    assert normalize_project_roots([p1, str(p2)]) == [p1.resolve(), p2.resolve()]
+
+
+def test_detect_provider_multiple_roots(tmp_path: Path):
+    r1 = tmp_path / "repo1"
+    r2 = tmp_path / "repo2"
+    r1.mkdir()
+    r2.mkdir()
+
+    # Both SQLMesh
+    (r1 / "config.py").touch()
+    (r2 / "config.yaml").touch()
+    assert detect_provider([r1, r2]) == "sqlmesh"
+
+    # Conflicting: r1 is SQLMesh, r2 has dbt_project.yml
+    (r2 / "config.yaml").unlink()
+    (r2 / "dbt_project.yml").touch()
+    with pytest.raises(ValueError, match="Conflicting pipeline engine providers"):
+        detect_provider([r1, r2])
+
+    # Empty roots fallback to cwd
+    with patch("tff.core.adapter._detect_provider_single", return_value="sqlmesh") as mock_single:
+        assert detect_provider([]) == "sqlmesh"
+        mock_single.assert_called_once_with(Path.cwd())
+
+
+def test_sqlmesh_adapter_multiple_roots(tmp_path: Path):
+    from tff.sqlmesh.adapter import SQLMeshAdapter
+
+    adapter = SQLMeshAdapter()
+    r1 = tmp_path / "r1"
+    r2 = tmp_path / "r2"
+    r1.mkdir()
+    r2.mkdir()
+    (r1 / "config.py").touch()
+    (r2 / "settings.yaml").touch()
+
+    # 1. Diagnostics with multiple roots
+    diag = adapter.get_diagnostic_files([r1, r2])
+    labels = [label for label, _ in diag]
+    assert "[r1] config.py" in labels
+    assert "[r2] settings.yaml" in labels
+
+    # 2. load_models passes multiple paths to Context
+    with (
+        patch("sqlmesh.core.context.Context") as mock_context_cls,
+        patch("tff.sqlmesh.runner.map_sqlmesh_context_models", return_value={"m": MagicMock()}),
+    ):
+        models = adapter.load_models([r1, r2])
+        assert "m" in models
+        mock_context_cls.assert_called_once()
+        _, kwargs = mock_context_cls.call_args
+        assert kwargs["paths"] == [str(r1.resolve()), str(r2.resolve())]
+
+    # 3. run_checks forwards roots
+    cfg = MagicMock()
+    with patch("tff.sqlmesh.runner.run_all_checks", return_value=([], 5, ["sqlmesh"])) as mock_run:
+        findings, count, sel = adapter.run_checks([r1, r2], cfg)
+        assert count == 5
+        mock_run.assert_called_once_with(
+            project_root=[r1, r2],
+            config=cfg,
+            checks=None,
+            models=None,
+        )
+
+
+def test_sqlmesh_runner_run_all_checks_multiple_roots(tmp_path: Path):
+    from tff.sqlmesh.runner import run_all_checks
+
+    r1 = tmp_path / "repo1"
+    r2 = tmp_path / "repo2"
+    r1.mkdir()
+    r2.mkdir()
+
+    cfg = MagicMock()
+    cfg.checks.materialization_depth.enabled = False
+
+    with (
+        patch("tff.sqlmesh.runner.Context") as mock_context_cls,
+        patch("tff.sqlmesh.runner.map_sqlmesh_context_models", return_value={}),
+        patch("tff.sqlmesh.runner.collect_sqlmesh_findings", return_value=[]),
+    ):
+        mock_ctx = MagicMock()
+        mock_ctx.models = {}
+        mock_context_cls.return_value = mock_ctx
+
+        # Test with no checks specified (default)
+        run_all_checks(project_root=[r1, r2], config=cfg)
+        _, kwargs = mock_context_cls.call_args
+        assert kwargs["paths"] == [str(r1.resolve()), str(r2.resolve())]
+
+        mock_context_cls.reset_mock()
+        # Test with checks=["sqlmesh"]
+        run_all_checks(project_root=[r1, r2], config=cfg, checks=["sqlmesh"])
+        _, kwargs = mock_context_cls.call_args
+        assert kwargs["paths"] == [str(r1.resolve()), str(r2.resolve())]
+
+

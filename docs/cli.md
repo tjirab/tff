@@ -48,7 +48,7 @@ tff lint [options]
 
 | Option | Type / Choices | Default | Description |
 | :--- | :--- | :--- | :--- |
-| `--project PATH` | Directory Path | `.` (current dir) | Project root directory. |
+| `--project PATH`, `-p PATH` | Directory Path | `.` (current dir) | Project root directory (can be specified multiple times for multi-repo projects). |
 | `--config PATH` | File Path | `fitness_functions.yaml` | Path to fitness functions config (relative to project root). |
 | `--provider` | `auto`, `dbt`, `sqlmesh`, `dataform` | `auto` | Pipeline engine provider (auto-detected if omitted). |
 | `--checks CHECKS` | Comma-separated string | (all enabled) | Specific checks to run (e.g. `layer_integrity,ban_select_star`). |

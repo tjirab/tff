@@ -9,9 +9,9 @@ import logging
 import os
 import sys
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Sequence
 
-from tff.core.adapter import PipelineAdapter, detect_provider, get_adapter
+from tff.core.adapter import PipelineAdapter, detect_provider, get_adapter, normalize_project_roots
 from tff.core.config import (
     MISSING_CONFIG_NOTICE,
     init_fitness_config,
@@ -34,7 +34,7 @@ except Exception:
     __version__ = "0.7.0"
 
 
-def _detect_provider(project_root: Path) -> str:
+def _detect_provider(project_root: Path | Sequence[Path]) -> str:
     """Detect whether a project is dbt, SQLMesh, or Dataform."""
     return detect_provider(project_root)
 
@@ -85,40 +85,43 @@ class _MockRunnerAdapter(PipelineAdapter):
 
     def load_models(
         self,
-        project_root: Path,
+        project_root: Path | Sequence[Path],
         dialect: str | None = None,
         manifest_path: str | Path | None = None,
     ) -> dict[str, Any]:
+        roots = normalize_project_roots(project_root)
         if self._provider == "dbt":
             from tff.dbt.manifest import load_dbt_models
 
-            return load_dbt_models(project_root, dialect=dialect)
+            return load_dbt_models(roots[0], dialect=dialect)
         elif self._provider == "dataform":
             from tff.dataform.manifest import load_dataform_models
 
             return load_dataform_models(
-                project_root, manifest_path=manifest_path, dialect=dialect
+                roots[0], manifest_path=manifest_path, dialect=dialect
             )
         elif self._provider == "sqlmesh":
             from sqlmesh.core.context import Context
             from tff.sqlmesh.loader import FitnessLoader
             from tff.sqlmesh.runner import map_sqlmesh_context_models
 
-            context = Context(paths=[str(project_root)], loader=FitnessLoader)
+            context = Context(paths=[str(r) for r in roots], loader=FitnessLoader)
             return map_sqlmesh_context_models(context)
         return {}
 
     def run_checks(
         self,
-        project_root: Path,
+        project_root: Path | Sequence[Path],
         config: FitnessFunctionsConfig,
         checks: list[str] | None = None,
         dialect: str | None = None,
         manifest_path: str | Path | None = None,
         models: dict[str, ModelRepresentation] | None = None,
     ) -> tuple[list[LintFinding], int, list[str]]:
+        roots = normalize_project_roots(project_root)
+        root_arg = roots[0] if len(roots) == 1 else roots
         kwargs: dict[str, Any] = {
-            "project_root": project_root,
+            "project_root": root_arg,
             "config": config,
             "checks": checks,
         }
@@ -163,36 +166,38 @@ class _MockRunnerAdapter(PipelineAdapter):
             )
         return None
 
-    def get_diagnostic_files(self, project_root: Path) -> list[tuple[str, str]]:
-        if self._provider == "dbt":
-            dbt_project = project_root / "dbt_project.yml"
-            manifest = project_root / "target" / "manifest.json"
-            dbt_project_status = (
-                "[green]found[/green]" if dbt_project.exists() else "[red]missing[/red]"
-            )
-            manifest_status = (
-                "[green]found[/green]" if manifest.exists() else "[red]missing[/red]"
-            )
-            return [
-                ("dbt_project.yml", f"{dbt_project} ({dbt_project_status})"),
-                ("manifest.json", f"{manifest} ({manifest_status})"),
-            ]
-        elif self._provider == "sqlmesh":
-            config_py = project_root / "config.py"
-            settings_yaml = project_root / "settings.yaml"
-            config_py_status = (
-                "[green]found[/green]" if config_py.exists() else "[red]missing[/red]"
-            )
-            settings_yaml_status = (
-                "[green]found[/green]"
-                if settings_yaml.exists()
-                else "[red]missing[/red]"
-            )
-            return [
-                ("config.py", f"{config_py} ({config_py_status})"),
-                ("settings.yaml", f"{settings_yaml} ({settings_yaml_status})"),
-            ]
-        return []
+    def get_diagnostic_files(
+        self, project_root: Path | Sequence[Path]
+    ) -> list[tuple[str, str]]:
+        roots = normalize_project_roots(project_root)
+        results: list[tuple[str, str]] = []
+        for r in roots:
+            prefix = f"[{r.name}] " if len(roots) > 1 else ""
+            if self._provider == "dbt":
+                dbt_project = r / "dbt_project.yml"
+                manifest = r / "target" / "manifest.json"
+                dbt_project_status = (
+                    "[green]found[/green]" if dbt_project.exists() else "[red]missing[/red]"
+                )
+                manifest_status = (
+                    "[green]found[/green]" if manifest.exists() else "[red]missing[/red]"
+                )
+                results.append((f"{prefix}dbt_project.yml", f"{dbt_project} ({dbt_project_status})"))
+                results.append((f"{prefix}manifest.json", f"{manifest} ({manifest_status})"))
+            elif self._provider == "sqlmesh":
+                config_py = r / "config.py"
+                settings_yaml = r / "settings.yaml"
+                config_py_status = (
+                    "[green]found[/green]" if config_py.exists() else "[red]missing[/red]"
+                )
+                settings_yaml_status = (
+                    "[green]found[/green]"
+                    if settings_yaml.exists()
+                    else "[red]missing[/red]"
+                )
+                results.append((f"{prefix}config.py", f"{config_py} ({config_py_status})"))
+                results.append((f"{prefix}settings.yaml", f"{settings_yaml} ({settings_yaml_status})"))
+        return results
 
 
 def _get_adapter(provider: str) -> PipelineAdapter:
@@ -292,9 +297,12 @@ def _main_impl(argv: list[str] | None = None) -> int:
     )
     lint_parser.add_argument(
         "--project",
+        "-p",
+        action="append",
+        dest="projects",
         type=Path,
-        default=Path.cwd(),
-        help="Project root directory (default: current directory)",
+        default=None,
+        help="Project root directory (can be specified multiple times; default: current directory)",
     )
     lint_parser.add_argument(
         "--config",
@@ -391,9 +399,12 @@ def _main_impl(argv: list[str] | None = None) -> int:
     )
     health_parser.add_argument(
         "--project",
+        "-p",
+        action="append",
+        dest="projects",
         type=Path,
-        default=Path.cwd(),
-        help="Project root directory (default: current directory)",
+        default=None,
+        help="Project root directory (can be specified multiple times; default: current directory)",
     )
     health_parser.add_argument(
         "--config",
@@ -476,9 +487,12 @@ def _main_impl(argv: list[str] | None = None) -> int:
     )
     info_parser.add_argument(
         "--project",
+        "-p",
+        action="append",
+        dest="projects",
         type=Path,
-        default=Path.cwd(),
-        help="Project root directory (default: current directory)",
+        default=None,
+        help="Project root directory (can be specified multiple times; default: current directory)",
     )
     info_parser.add_argument(
         "--config",
@@ -744,13 +758,29 @@ def _main_impl(argv: list[str] | None = None) -> int:
             parser.print_help()
         return 0
 
-    # Register target project's virtualenv site-packages if present
-    if hasattr(args, "project") and args.project:
-        import site
+    # Normalize project roots
+    project_roots: list[Path] = []
+    projects_val = getattr(args, "projects", None)
+    project_val = getattr(args, "project", None)
+    if isinstance(projects_val, (list, tuple)) and projects_val:
+        project_roots = [Path(p).resolve() for p in projects_val]
+    elif isinstance(project_val, (list, tuple)) and project_val:
+        project_roots = [Path(p).resolve() for p in project_val]
+    elif isinstance(project_val, (str, Path)):
+        project_roots = [Path(project_val).resolve()]
+    else:
+        project_roots = [Path.cwd()]
 
-        project_root = Path(args.project).resolve()
+    # Preserve backward compatibility
+    args.projects = project_roots
+    args.project = project_roots[0]
+    project_root = project_roots[0]
+
+    # Register target projects' virtualenv site-packages if present
+    import site
+    for root in project_roots:
         for venv_name in (".venv", "venv", "env"):
-            venv_dir = project_root / venv_name
+            venv_dir = root / venv_name
             if venv_dir.is_dir():
                 # Unix
                 libs_dir = venv_dir / "lib"
@@ -770,11 +800,10 @@ def _main_impl(argv: list[str] | None = None) -> int:
         import importlib.metadata as metadata
 
         console = Console()
-        project_root = args.project.resolve()
         provider = args.provider
         if provider == "auto":
             try:
-                provider = _detect_provider(project_root)
+                provider = _detect_provider(project_roots)
             except Exception as e:
                 console.print(f"[red]Error detecting provider: {e}[/red]")
                 return 1
@@ -919,8 +948,10 @@ def _main_impl(argv: list[str] | None = None) -> int:
         prov_table.add_column()
         prov_table.add_column()
 
-        for label, val in adapter.get_diagnostic_files(project_root):
-            prov_table.add_row(f"  [bold]{label}[/bold]", val)
+        from rich.markup import escape
+
+        for label, val in adapter.get_diagnostic_files(project_roots):
+            prov_table.add_row(f"  [bold]{escape(label)}[/bold]", val)
         if prov_table.row_count > 0:
             console.print("\n[bold cyan]● Provider Files[/bold cyan]")
             console.print(prov_table)
@@ -1105,14 +1136,13 @@ def _main_impl(argv: list[str] | None = None) -> int:
         return execute_action(args)
 
     if args.command in ("lint", "health"):
-        project_root = args.project.resolve()
-        logger.debug("Project root directory: %s", project_root)
+        logger.debug("Project root directories: %s", project_roots)
 
         # 1. Determine provider
         provider = args.provider
         if provider == "auto":
             try:
-                provider = _detect_provider(project_root)
+                provider = _detect_provider(project_roots)
                 logger.debug("Auto-detected provider: %s", provider)
             except ValueError as e:
                 logger.debug("Provider auto-detection error: %s", e)
@@ -1189,7 +1219,7 @@ def _main_impl(argv: list[str] | None = None) -> int:
         )
         try:
             findings, models_checked, executed_checks = adapter.run_checks(
-                project_root=project_root,
+                project_root=project_roots,
                 config=config,
                 checks=checks,
                 dialect=args.dialect,
@@ -1210,7 +1240,7 @@ def _main_impl(argv: list[str] | None = None) -> int:
         if args.command == "lint" and getattr(args, "fix", False) and findings:
             try:
                 models = adapter.load_models(
-                    project_root=project_root,
+                    project_root=project_roots,
                     dialect=args.dialect,
                     manifest_path=manifest_path,
                 )
@@ -1223,7 +1253,7 @@ def _main_impl(argv: list[str] | None = None) -> int:
             if models:
                 from tff.core.autofix import apply_autofixes
 
-                fix_logs = apply_autofixes(project_root, adapter, findings, models)
+                fix_logs = apply_autofixes(project_roots, adapter, findings, models)
                 if fix_logs:
                     if not args.json:
                         from rich.console import Console
@@ -1234,7 +1264,7 @@ def _main_impl(argv: list[str] | None = None) -> int:
                     # Re-run checks to get the final state of the files
                     try:
                         findings, models_checked, executed_checks = adapter.run_checks(
-                            project_root=project_root,
+                            project_root=project_roots,
                             config=config,
                             checks=checks,
                             dialect=args.dialect,

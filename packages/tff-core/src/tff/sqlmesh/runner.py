@@ -4,10 +4,12 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
+from typing import Sequence
 
 from sqlmesh.core.context import Context
 from sqlmesh.core.linter.definition import AnnotatedRuleViolation
 
+from tff.core.adapter import normalize_project_roots
 from tff.core.config import FitnessFunctionsConfig, load_fitness_config
 from tff.core.model import ModelRepresentation
 from tff.core.registry import normalize_check_name, registry
@@ -112,15 +114,16 @@ def map_sqlmesh_context_models(context: Context) -> dict[str, ModelRepresentatio
 
 
 def run_all_checks(
-    project_root: Path | None = None,
+    project_root: Path | Sequence[Path] | None = None,
     context: Context | None = None,
     config: FitnessFunctionsConfig | None = None,
     checks: list[str] | None = None,
     models: dict[str, ModelRepresentation] | None = None,
 ) -> tuple[list[LintFinding], int, list[str]]:
-    project_root = project_root or Path.cwd()
+    roots = normalize_project_roots(project_root or Path.cwd())
+    primary_root = roots[0]
     if config is None:
-        config = load_fitness_config(project_root)
+        config = load_fitness_config(primary_root)
 
     findings: list[LintFinding] = []
 
@@ -130,7 +133,7 @@ def run_all_checks(
         ]
         if context is None and models is None:
             context = Context(
-                paths=[str(project_root)],
+                paths=[str(r) for r in roots],
                 loader=FitnessLoader,
             )
 
@@ -160,7 +163,7 @@ def run_all_checks(
 
         if context is None and (models is None or "sqlmesh" in selected):
             context = Context(
-                paths=[str(project_root)],
+                paths=[str(r) for r in roots],
                 loader=FitnessLoader,
             )
 

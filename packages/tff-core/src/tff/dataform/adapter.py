@@ -3,9 +3,9 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Sequence
 
-from tff.core.adapter import PipelineAdapter
+from tff.core.adapter import PipelineAdapter, normalize_project_roots
 
 if TYPE_CHECKING:
     from tff.core.config import FitnessFunctionsConfig
@@ -27,21 +27,22 @@ class DataformAdapter(PipelineAdapter):
 
     def load_models(
         self,
-        project_root: Path,
+        project_root: Path | Sequence[Path],
         dialect: str | None = None,
         manifest_path: str | Path | None = None,
     ) -> dict[str, ModelRepresentation]:
         from tff.dataform.manifest import load_dataform_models
 
+        roots = normalize_project_roots(project_root)
         return load_dataform_models(
-            project_root=project_root,
+            project_root=roots[0],
             manifest_path=manifest_path,
             dialect=dialect,
         )
 
     def run_checks(
         self,
-        project_root: Path,
+        project_root: Path | Sequence[Path],
         config: FitnessFunctionsConfig,
         checks: list[str] | None = None,
         dialect: str | None = None,
@@ -50,8 +51,9 @@ class DataformAdapter(PipelineAdapter):
     ) -> tuple[list[LintFinding], int, list[str]]:
         from tff.dataform.runner import run_all_checks
 
+        roots = normalize_project_roots(project_root)
         return run_all_checks(
-            project_root=project_root,
+            project_root=roots[0],
             config=config,
             checks=checks,
             dialect=dialect,
@@ -76,25 +78,31 @@ class DataformAdapter(PipelineAdapter):
             model_name=model_name,
         )
 
-    def get_diagnostic_files(self, project_root: Path) -> list[tuple[str, str]]:
-        ws_yaml = project_root / "workflow_settings.yaml"
-        df_json = project_root / "dataform.json"
+    def get_diagnostic_files(
+        self, project_root: Path | Sequence[Path]
+    ) -> list[tuple[str, str]]:
         from tff.dataform.manifest import _find_manifest_file
 
-        found_manifest = _find_manifest_file(project_root)
-        m_status = (
-            f"[green]{found_manifest.name}[/green]"
-            if found_manifest
-            else "[dim]not found (will compile via CLI or parse .sqlx)[/dim]"
-        )
-
+        roots = normalize_project_roots(project_root)
         rows: list[tuple[str, str]] = []
-        if ws_yaml.exists():
-            rows.append(("workflow_settings.yaml", f"{ws_yaml} ([green]found[/green])"))
-        elif df_json.exists():
-            rows.append(("dataform.json", f"{df_json} ([green]found[/green])"))
-        else:
-            rows.append(("workflow_settings.yaml", "[red]missing[/red]"))
+        for root in roots:
+            prefix = f"[{root.name}] " if len(roots) > 1 else ""
+            ws_yaml = root / "workflow_settings.yaml"
+            df_json = root / "dataform.json"
 
-        rows.append(("compilation manifest", m_status))
+            found_manifest = _find_manifest_file(root)
+            m_status = (
+                f"[green]{found_manifest.name}[/green]"
+                if found_manifest
+                else "[dim]not found (will compile via CLI or parse .sqlx)[/dim]"
+            )
+
+            if ws_yaml.exists():
+                rows.append((f"{prefix}workflow_settings.yaml", f"{ws_yaml} ([green]found[/green])"))
+            elif df_json.exists():
+                rows.append((f"{prefix}dataform.json", f"{df_json} ([green]found[/green])"))
+            else:
+                rows.append((f"{prefix}workflow_settings.yaml", "[red]missing[/red]"))
+
+            rows.append((f"{prefix}compilation manifest", m_status))
         return rows

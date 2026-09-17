@@ -3,9 +3,9 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Sequence
 
-from tff.core.adapter import PipelineAdapter
+from tff.core.adapter import PipelineAdapter, normalize_project_roots
 
 if TYPE_CHECKING:
     from tff.core.config import FitnessFunctionsConfig
@@ -25,17 +25,18 @@ class DBTAdapter(PipelineAdapter):
 
     def load_models(
         self,
-        project_root: Path,
+        project_root: Path | Sequence[Path],
         dialect: str | None = None,
         manifest_path: str | Path | None = None,
     ) -> dict[str, ModelRepresentation]:
         from tff.dbt.manifest import load_dbt_models
 
-        return load_dbt_models(project_root, dialect=dialect)
+        roots = normalize_project_roots(project_root)
+        return load_dbt_models(roots[0], dialect=dialect)
 
     def run_checks(
         self,
-        project_root: Path,
+        project_root: Path | Sequence[Path],
         config: FitnessFunctionsConfig,
         checks: list[str] | None = None,
         dialect: str | None = None,
@@ -44,8 +45,9 @@ class DBTAdapter(PipelineAdapter):
     ) -> tuple[list[LintFinding], int, list[str]]:
         from tff.dbt.runner import run_all_checks
 
+        roots = normalize_project_roots(project_root)
         return run_all_checks(
-            project_root=project_root,
+            project_root=roots[0],
             config=config,
             checks=checks,
             dialect=dialect,
@@ -69,22 +71,21 @@ class DBTAdapter(PipelineAdapter):
             missing_description=missing_description,
         )
 
-    def get_diagnostic_files(self, project_root: Path) -> list[tuple[str, str]]:
-        dbt_project = project_root / "dbt_project.yml"
-        manifest = project_root / "target" / "manifest.json"
-        dbt_project_status = (
-            "[green]found[/green]" if dbt_project.exists() else "[red]missing[/red]"
-        )
-        manifest_status = (
-            "[green]found[/green]" if manifest.exists() else "[red]missing[/red]"
-        )
-        return [
-            (
-                "dbt_project.yml",
-                f"{dbt_project} ({dbt_project_status})",
-            ),
-            (
-                "manifest.json",
-                f"{manifest} ({manifest_status})",
-            ),
-        ]
+    def get_diagnostic_files(
+        self, project_root: Path | Sequence[Path]
+    ) -> list[tuple[str, str]]:
+        roots = normalize_project_roots(project_root)
+        results: list[tuple[str, str]] = []
+        for root in roots:
+            prefix = f"[{root.name}] " if len(roots) > 1 else ""
+            dbt_project = root / "dbt_project.yml"
+            manifest = root / "target" / "manifest.json"
+            dbt_project_status = (
+                "[green]found[/green]" if dbt_project.exists() else "[red]missing[/red]"
+            )
+            manifest_status = (
+                "[green]found[/green]" if manifest.exists() else "[red]missing[/red]"
+            )
+            results.append((f"{prefix}dbt_project.yml", f"{dbt_project} ({dbt_project_status})"))
+            results.append((f"{prefix}manifest.json", f"{manifest} ({manifest_status})"))
+        return results

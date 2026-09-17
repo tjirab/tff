@@ -1565,6 +1565,129 @@ def test_cli_get_adapter_error(mock_get_adapter, tmp_path: Path):
     assert exit_code == 1
 
 
+def test_cli_multi_project_lint(tmp_path: Path):
+    r1 = tmp_path / "repo1"
+    r2 = tmp_path / "repo2"
+    r1.mkdir()
+    r2.mkdir()
+    (r1 / "config.py").touch()
+    (r2 / "config.yaml").touch()
+
+    mock_adapter = MagicMock()
+    mock_adapter.provider_name = "sqlmesh"
+    mock_adapter.run_checks.return_value = ([], 10, ["sqlmesh"])
+
+    with (
+        patch("tff.core.cli._get_adapter", return_value=mock_adapter),
+        patch("tff.core.cli.load_fitness_config", return_value=MagicMock()),
+        patch("tff.core.cli.render_lint_report", return_value=True),
+    ):
+        exit_code = main(["lint", "-p", str(r1), "-p", str(r2)])
+        assert exit_code == 0
+        mock_adapter.run_checks.assert_called_once()
+        _, kwargs = mock_adapter.run_checks.call_args
+        assert kwargs["project_root"] == [r1.resolve(), r2.resolve()]
+
+
+def test_cli_multi_project_conflicting_providers(tmp_path: Path, capsys):
+    r1 = tmp_path / "repo1"
+    r2 = tmp_path / "repo2"
+    r1.mkdir()
+    r2.mkdir()
+    (r1 / "config.py").touch()
+    (r2 / "dbt_project.yml").touch()
+
+    exit_code = main(["lint", "-p", str(r1), "-p", str(r2)])
+    assert exit_code == 1
+    captured = capsys.readouterr()
+    assert "Conflicting pipeline engine providers" in captured.err
+
+
+def test_cli_multi_project_health(tmp_path: Path):
+    r1 = tmp_path / "repo1"
+    r2 = tmp_path / "repo2"
+    r1.mkdir()
+    r2.mkdir()
+    (r1 / "config.py").touch()
+    (r2 / "config.yaml").touch()
+
+    mock_adapter = MagicMock()
+    mock_adapter.provider_name = "sqlmesh"
+    mock_adapter.run_checks.return_value = ([], 10, ["sqlmesh"])
+
+    with (
+        patch("tff.core.cli._get_adapter", return_value=mock_adapter),
+        patch("tff.core.cli.load_fitness_config", return_value=MagicMock()),
+        patch("tff.core.health.calculate_health_scores", return_value=MagicMock()),
+        patch("tff.core.health.render_health_report"),
+    ):
+        exit_code = main(["health", "-p", str(r1), "-p", str(r2), "--no-log"])
+        assert exit_code == 0
+        mock_adapter.run_checks.assert_called_once()
+        _, kwargs = mock_adapter.run_checks.call_args
+        assert kwargs["project_root"] == [r1.resolve(), r2.resolve()]
+
+
+def test_cli_multi_project_info(tmp_path: Path, capsys):
+    r1 = tmp_path / "repo1"
+    r2 = tmp_path / "repo2"
+    r1.mkdir()
+    r2.mkdir()
+    (r1 / "config.py").touch()
+    (r2 / "settings.yaml").touch()
+
+    exit_code = main(["info", "-p", str(r1), "-p", str(r2), "--provider", "sqlmesh"])
+    assert exit_code == 0
+    captured = capsys.readouterr()
+    assert "[repo1] config.py" in captured.out
+    assert "[repo2] settings.yaml" in captured.out
+
+
+def test_cli_project_list_attribute(tmp_path: Path):
+    r1 = tmp_path / "repo1"
+    r2 = tmp_path / "repo2"
+    r1.mkdir()
+    r2.mkdir()
+    (r1 / "config.py").touch()
+    (r2 / "config.py").touch()
+
+    with patch("argparse.ArgumentParser.parse_args") as mock_parse_args:
+        mock_args = MagicMock()
+        mock_args.command = "lint"
+        mock_args.projects = None
+        mock_args.project = [r1, r2]
+        mock_args.provider = "sqlmesh"
+        mock_args.config = "fitness_functions.yaml"
+        mock_args.checks = None
+        mock_args.dialect = None
+        mock_args.fix = False
+        mock_args.json = False
+        mock_args.format = "text"
+        mock_args.fail_level = "error"
+        mock_args.group_by = "model"
+        mock_args.github_annotations = False
+        mock_args.junit_xml = None
+        mock_args.no_log = True
+        mock_parse_args.return_value = mock_args
+
+        mock_adapter = MagicMock()
+        mock_adapter.provider_name = "sqlmesh"
+        mock_adapter.run_checks.return_value = ([], 1, ["sqlmesh"])
+
+        with (
+            patch("tff.core.cli._get_adapter", return_value=mock_adapter),
+            patch("tff.core.cli.load_fitness_config", return_value=MagicMock()),
+            patch("tff.core.cli.render_lint_report", return_value=True),
+        ):
+            exit_code = main([])
+            assert exit_code == 0
+            mock_adapter.run_checks.assert_called_once()
+            _, kwargs = mock_adapter.run_checks.call_args
+            assert kwargs["project_root"] == [r1.resolve(), r2.resolve()]
+
+
+
+
 
 
 
