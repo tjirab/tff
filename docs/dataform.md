@@ -35,7 +35,7 @@ Dataform projects combine SQL with JavaScript configuration blocks (`config { ..
 
 ```mermaid
 flowchart TD
-    Start["tff lint / health / docs"] --> CheckManifest{"Manifest passed or found?<br/>(--manifest, compilation_result.json, etc.)"}
+    Start["tff lint / health / docs / fix"] --> CheckManifest{"Manifest passed or found?<br/>(--manifest, compilation_result.json, etc.)"}
     CheckManifest -- Yes --> Tier1["Tier 1: Precompiled JSON Manifest<br/>(Parsed instantly, ideal for CI/CD)"]
     CheckManifest -- No --> CheckCLI{"CLI installed?<br/>(dataform or npx @dataform/cli)"}
     CheckCLI -- Yes --> Tier2["Tier 2: On-Demand Compilation<br/>(Executes 'dataform compile --json')"]
@@ -44,7 +44,8 @@ flowchart TD
     Tier1 --> ModelRep["ModelRepresentation DAG"]
     Tier2 --> ModelRep
     Tier3 --> ModelRep
-    ModelRep --> Engine["tff Fitness Engine & Rules"]
+    ModelRep --> Engine["tff Core Engine & Rules"]
+    Engine --> Output["Reporter & Autofix (.sqlx)"]
 ```
 
 ### 1. Multi-Tier Model Ingestion
