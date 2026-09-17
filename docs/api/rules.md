@@ -1,6 +1,6 @@
 # Rules API Reference
 
-This section documents the base classes and registry used to define and register custom fitness function rules in TFF.
+This section documents the base classes and registry used to define and register custom fitness function rules in tff.
 
 ## Custom Rules Overview
 

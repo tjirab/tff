@@ -1,19 +1,19 @@
 # CI/CD Integration & Official GitHub Action Guide
 
-This guide covers integrating **Transformation Fitness Functions (TFF)** into automated CI/CD pipelines, including the official **GitHub Action**, pre-commit hooks, and alternative CI systems (GitLab CI, Azure DevOps, Bitbucket, and SARIF code scanning).
+This guide covers integrating **Transformation Fitness Functions (tff)** into automated CI/CD pipelines, including the official **GitHub Action**, pre-commit hooks, and alternative CI systems (GitLab CI, Azure DevOps, Bitbucket, and SARIF code scanning).
 
 ---
 
 ## 1. Official GitHub Action (`tjirab/tff@v1`)
 
-The official TFF GitHub Action allows teams to enforce architectural fitness functions and project health scores directly on pull requests with zero manual virtualenv configuration.
+The official tff GitHub Action allows teams to enforce architectural fitness functions and project health scores directly on pull requests with zero manual virtualenv configuration.
 
 ### Quick Start Workflow
 
 Create `.github/workflows/tff.yml` in your repository:
 
 ```yaml
-name: TFF Architectural Fitness Functions
+name: tff Architectural Fitness Functions
 
 on:
   pull_request:
@@ -31,7 +31,7 @@ jobs:
         with:
           fetch-depth: 0  # Required to compute health score diff vs base branch
 
-      - name: Run TFF Action
+      - name: Run tff Action
         uses: tjirab/tff@v1
         with:
           project: "."
@@ -103,7 +103,7 @@ In large existing projects with legacy technical debt, teams often want **strict
 ```
 
 Under the hood:
-1. TFF determines modified `.sql` and `.yml` files using `git diff --name-only origin/${base_ref}...HEAD`.
+1. tff determines modified `.sql` and `.yml` files using `git diff --name-only origin/${base_ref}...HEAD`.
 2. Cross-model dependencies and schemas are still loaded to properly validate DAG boundaries (like layer integrity and schema contracts).
 3. Violations, annotations, and pass/fail exit codes are filtered strictly to the modified files.
 4. The PR comment explicitly displays:
@@ -138,34 +138,34 @@ It is important to separate **changed-files gating** from **baseline score diffi
 
 #### 2. SQLMesh: Zero-Compilation Native Evaluation
 SQLMesh parses `.sql` and `.py` model definitions directly into an AST using SQLGlot and Python's semantic engine.
-* **In-Memory Analysis**: TFF instantiates an in-memory SQLMesh `Context` via `FitnessLoader` on both the feature branch and the temporary git worktree for `main`.
+* **In-Memory Analysis**: tff instantiates an in-memory SQLMesh `Context` via `FitnessLoader` on both the feature branch and the temporary git worktree for `main`.
 * **Zero Credentials**: No warehouse connection or database profile is required.
 * **Instant Diffing**: Baseline comparison against `main` runs automatically and instantly in memory.
 
 #### 3. Dataform: 3-Tier Resolution Strategy
-TFF resolves Dataform projects via a 3-tier fallback strategy:
-1. **Tier 1 (Cached Manifest)**: If `compilation_result.json` exists, TFF parses it.
-2. **Tier 2 (On-the-Fly CLI Compilation)**: If `dataform` CLI or `npx @dataform/cli` is present on `PATH`, TFF compiles `main` in memory.
-3. **Tier 3 (Zero-Tooling Static Parser)**: If neither a manifest nor Node/Dataform CLI exists, TFF uses its built-in `.sqlx` parser (`_load_from_sqlx_files`) to extract `config { ... }` blocks and dependencies directly from source files.
+tff resolves Dataform projects via a 3-tier fallback strategy:
+1. **Tier 1 (Cached Manifest)**: If `compilation_result.json` exists, tff parses it.
+2. **Tier 2 (On-the-Fly CLI Compilation)**: If `dataform` CLI or `npx @dataform/cli` is present on `PATH`, tff compiles `main` in memory.
+3. **Tier 3 (Zero-Tooling Static Parser)**: If neither a manifest nor Node/Dataform CLI exists, tff uses its built-in `.sqlx` parser (`_load_from_sqlx_files`) to extract `config { ... }` blocks and dependencies directly from source files.
 
 Both branches evaluate seamlessly without requiring a compiled artifact committed to Git.
 
 #### 4. dbt: The `manifest.json` Challenge & CI Best Practices
 dbt relies on Jinja macros, package dispatch (`dbt_utils`), and adapter configs that require `dbt compile` or `dbt parse` to generate `target/manifest.json`.
 
-* **Feature Branch**: You must compile the current PR branch before running TFF:
+* **Feature Branch**: You must compile the current PR branch before running tff:
   ```yaml
   - name: Compile dbt
     run: dbt compile
 
-  - name: Run TFF Action
+  - name: Run tff Action
     uses: tjirab/tff@v1
     with:
       provider: "dbt"
       only-changed: "true"
   ```
 * **Base Branch (`main`)**: Because `target/` is gitignored by default, checking out `origin/main` in a temporary worktree creates a clean directory with no `target/manifest.json`.
-  * **Default Behavior**: TFF catches the missing manifest in `main` gracefully, logs a notice, and skips the baseline score delta. **The workflow does not fail**—the PR is still fully gated on health thresholds and violations in touched files.
+  * **Default Behavior**: tff catches the missing manifest in `main` gracefully, logs a notice, and skips the baseline score delta. **The workflow does not fail**—the PR is still fully gated on health thresholds and violations in touched files.
 * **Enabling Baseline Score Diffing for dbt**:
   * **Pattern A: Slim CI Artifact Cache (Recommended)**: Download the latest production `manifest.json` from your CI cache or cloud storage (e.g. S3, GCS) into your baseline directory, matching dbt Slim CI practices (`dbt --defer --state`).
   * **Pattern B: Pre-compile `main` in Runner**: If warehouse credentials are available in the CI runner:
@@ -192,7 +192,7 @@ When `comment-pr: "true"` is enabled:
 
 #### 2. In-File Inline Annotations ("Files changed" Tab)
 When `annotations: "true"` (default):
-* TFF emits native GitHub workflow commands (`::error` and `::warning`).
+* tff emits native GitHub workflow commands (`::error` and `::warning`).
 * GitHub renders findings directly inline on the modified lines of code in the **Files changed** tab.
 * Developers can jump directly to violations in the diff without leaving their code review flow.
 
@@ -236,7 +236,7 @@ jobs:
 
 ## 2. Pre-commit Hooks Integration
 
-TFF includes native pre-commit hook manifests (`.pre-commit-hooks.yaml`) to validate and auto-fix violations locally before commits are created.
+tff includes native pre-commit hook manifests (`.pre-commit-hooks.yaml`) to validate and auto-fix violations locally before commits are created.
 
 Add to your `.pre-commit-config.yaml`:
 

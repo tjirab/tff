@@ -25,7 +25,7 @@ def test_pre_commit_hooks_structure() -> None:
 
     # Validate tff-lint hook
     tff_lint = hooks_by_id["tff-lint"]
-    assert tff_lint["name"] == "TFF Lint"
+    assert tff_lint["name"] == "tff Lint"
     assert "Run Transformation Fitness Functions" in tff_lint["description"]
     assert tff_lint["entry"] == "tff lint"
     assert tff_lint["language"] == "python"
@@ -35,7 +35,7 @@ def test_pre_commit_hooks_structure() -> None:
 
     # Validate tff-lint-fix hook
     tff_lint_fix = hooks_by_id["tff-lint-fix"]
-    assert tff_lint_fix["name"] == "TFF Auto-Fix"
+    assert tff_lint_fix["name"] == "tff Auto-Fix"
     assert "Automatically fix" in tff_lint_fix["description"]
     assert tff_lint_fix["entry"] == "tff lint --fix"
     assert tff_lint_fix["language"] == "python"

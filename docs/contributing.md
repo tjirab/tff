@@ -1,12 +1,12 @@
 # Contributor & Architecture Guide
 
-Welcome! This document outlines the codebase architecture, package layout, and local development environment setup for TFF (Transformation Fitness Functions).
+Welcome! This document outlines the codebase architecture, package layout, and local development environment setup for tff (Transformation Fitness Functions).
 
 ---
 
 ## High-Level Architecture
 
-TFF is structured to separate the core, adapter-agnostic logic of parsing and checking rules from any specific data orchestrator or engine.
+tff is structured to separate the core, adapter-agnostic logic of parsing and checking rules from any specific data orchestrator or engine.
 
 ```mermaid
 graph TD

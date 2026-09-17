@@ -1,4 +1,4 @@
-"""Dataform adapter implementation for TFF."""
+"""Dataform adapter implementation for tff."""
 
 from __future__ import annotations
 

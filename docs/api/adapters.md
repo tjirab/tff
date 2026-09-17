@@ -1,6 +1,6 @@
 # Adapters API Reference
 
-TFF uses the `PipelineAdapter` interface to abstract underlying transformation engines (such as SQLMesh, dbt, and Dataform) or custom engines.
+tff uses the `PipelineAdapter` interface to abstract underlying transformation engines (such as SQLMesh, dbt, and Dataform) or custom engines.
 
 ::: tff.core.adapter.PipelineAdapter
     options:

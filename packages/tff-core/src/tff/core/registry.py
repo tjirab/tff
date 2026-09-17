@@ -466,7 +466,7 @@ class CheckRegistry:
 
 
 def create_default_registry() -> CheckRegistry:
-    """Create and populate the default CheckRegistry with all TFF checks and rules."""
+    """Create and populate the default CheckRegistry with all tff checks and rules."""
     reg = CheckRegistry()
 
     # 1. Connascence of Name (CoN)

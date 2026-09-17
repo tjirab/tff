@@ -1,6 +1,6 @@
-# Using TFF with dbt
+# Using tff with dbt
 
-TFF integrates with [dbt](https://www.getdbt.com) using the `tff-core` package with the `dbt` extra. Rather than running at query time, it inspects your compiled dbt project manifest to run linter rules and architectural validation.
+tff integrates with [dbt](https://www.getdbt.com) using the `tff-core` package with the `dbt` extra. Rather than running at query time, it inspects your compiled dbt project manifest to run linter rules and architectural validation.
 
 ---
 
@@ -45,16 +45,16 @@ The `tff` dbt linter reads `target/manifest.json` relative to your project root.
 * **Ephemeral Models** are mapped as symbolic models.
 
 ### 2. Metadata Mapping
-TFF maps dbt model metadata to generic rules from either the node-level `meta` or model-level `config.meta` configurations. This enables metadata rules (`nomissingowner`, `nomissingdescription`, and `nomissinggrain`) to work on dbt projects:
+tff maps dbt model metadata to generic rules from either the node-level `meta` or model-level `config.meta` configurations. This enables metadata rules (`nomissingowner`, `nomissingdescription`, and `nomissinggrain`) to work on dbt projects:
 * **`owner`**: Mapped from `meta.owner` or `config.meta.owner`.
 * **`description`**: Mapped from the standard dbt `description` field.
 * **`grain`**: Mapped from `meta.grain`, `meta.grains`, `config.meta.grain`, or `config.meta.grains`.
 
 ### 3. Schema Test to Audit Mapping
-dbt represents tests as independent nodes in the DAG. TFF parses these test nodes (like `not_null`, `unique`, or `accepted_values`) and maps them back to the target model's `audits` list. This enables rules like `nomissinguniquevalues` and `nomissingnotnull` to evaluate model schemas correctly.
+dbt represents tests as independent nodes in the DAG. tff parses these test nodes (like `not_null`, `unique`, or `accepted_values`) and maps them back to the target model's `audits` list. This enables rules like `nomissinguniquevalues` and `nomissingnotnull` to evaluate model schemas correctly.
 
 ### 4. Layer and Domain Mapping
-TFF infers the layer of a model from its folder path relative to the `models/` directory:
+tff infers the layer of a model from its folder path relative to the `models/` directory:
 * `models/staging/stg_users.sql` $\rightarrow$ layer: `staging`
 * `models/marts/marketing/all_users.sql` $\rightarrow$ layer: `marts`, domain: `marketing`
 
@@ -110,7 +110,7 @@ tff health [--project PATH] [--config PATH] [--provider PROVIDER] [--manifest PA
 
 ## Pre-commit Integration
 
-Enforce TFF fitness functions automatically on git commit using [pre-commit](https://pre-commit.com/):
+Enforce tff fitness functions automatically on git commit using [pre-commit](https://pre-commit.com/):
 
 ```yaml
 # .pre-commit-config.yaml
@@ -140,14 +140,14 @@ repos:
 
 ## GitHub Actions Integration
 
-To enforce TFF on pull requests with automated PR summary comments and baseline health score diffs, use the official GitHub Action.
+To enforce tff on pull requests with automated PR summary comments and baseline health score diffs, use the official GitHub Action.
 
 > [!IMPORTANT]
-> **Compilation Requirement**: dbt relies on `target/manifest.json`. You must run `dbt compile` or `dbt parse` in your workflow before calling the TFF action so the current PR's manifest exists.
+> **Compilation Requirement**: dbt relies on `target/manifest.json`. You must run `dbt compile` or `dbt parse` in your workflow before calling the tff action so the current PR's manifest exists.
 
 ```yaml
 # .github/workflows/tff.yml
-name: TFF Architectural Fitness Functions
+name: tff Architectural Fitness Functions
 
 on:
   pull_request:
@@ -175,7 +175,7 @@ jobs:
           dbt deps
 
       - name: Compile dbt Project
-        run: dbt compile  # Generates target/manifest.json for TFF
+        run: dbt compile  # Generates target/manifest.json for tff
 
       - uses: tjirab/tff@v1
         with:
@@ -188,8 +188,8 @@ jobs:
 ```
 
 ### How `only-changed: true` and Baseline Diffing Work with dbt
-* **Modified-Files Gating (`only-changed: true`)**: TFF runs `git diff origin/main...HEAD` directly against git commits to detect changed SQL files. It filters findings in your compiled `target/manifest.json` to only those files. **This works out of the box and does NOT require `main` to be compiled**.
-* **Baseline Score Diffing (`+X% vs main`)**: Because `target/` is gitignored, checking out `origin/main` creates a clean worktree without `target/manifest.json`. By default, TFF gracefully skips the baseline score delta without failing the workflow. To enable baseline score diffing, cache your production manifest or pre-compile `main` using the patterns detailed in the [CI/CD Guide](ci_cd.md#4-dbt-the-manifestjson-challenge-ci-best-practices).
+* **Modified-Files Gating (`only-changed: true`)**: tff runs `git diff origin/main...HEAD` directly against git commits to detect changed SQL files. It filters findings in your compiled `target/manifest.json` to only those files. **This works out of the box and does NOT require `main` to be compiled**.
+* **Baseline Score Diffing (`+X% vs main`)**: Because `target/` is gitignored, checking out `origin/main` creates a clean worktree without `target/manifest.json`. By default, tff gracefully skips the baseline score delta without failing the workflow. To enable baseline score diffing, cache your production manifest or pre-compile `main` using the patterns detailed in the [CI/CD Guide](ci_cd.md#4-dbt-the-manifestjson-challenge-ci-best-practices).
 
 For advanced inputs, monorepo matrix setups, and PR comment details, see the [CI/CD Guide](ci_cd.md).
 
@@ -197,4 +197,4 @@ For advanced inputs, monorepo matrix setups, and PR comment details, see the [CI
 
 ## Real-World Case Study
 
-See the [GitLab Architectural Audit Case Study](case_study_gitlab.md) to explore how TFF analyzed GitLab's 2,213-model Snowflake dbt repository in ~13 seconds with 100% static analysis, uncovering 54 duplicated CTE algorithms and 111 layer violations.
+See the [GitLab Architectural Audit Case Study](case_study_gitlab.md) to explore how tff analyzed GitLab's 2,213-model Snowflake dbt repository in ~13 seconds with 100% static analysis, uncovering 54 duplicated CTE algorithms and 111 layer violations.

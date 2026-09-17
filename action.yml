@@ -1,4 +1,4 @@
-name: "TFF - Transformation Fitness Functions"
+name: "tff - Transformation Fitness Functions"
 description: "Architectural linter and health score engine for dbt, SQLMesh, and Dataform"
 author: "Bart Schuijt"
 branding:
@@ -88,7 +88,7 @@ runs:
         python-version: ${{ inputs.python-version }}
         check-latest: false
 
-    - name: Install TFF
+    - name: Install tff
       shell: bash
       run: |
         EXTRA=""
@@ -113,7 +113,7 @@ runs:
         echo "Installing ${PKG}..."
         pip install --upgrade "${PKG}"
 
-    - name: Run TFF Action
+    - name: Run tff Action
       id: run-tff
       shell: bash
       env:

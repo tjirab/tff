@@ -1,8 +1,8 @@
 # Case Study: Auditing GitLab's 2,200-Model dbt Architecture
 
-This case study documents a real-world architectural health audit conducted with **Transformation Fitness Functions (TFF)** against GitLab's enterprise data warehouse dbt project.
+This case study documents a real-world architectural health audit conducted with **Transformation Fitness Functions (tff)** against GitLab's enterprise data warehouse dbt project.
 
-The goal of this audit was to evaluate how TFF's static analysis, connascence detection, and fitness rules perform on one of the largest and most mature open-source dbt repositories in the modern data ecosystem.
+The goal of this audit was to evaluate how tff's static analysis, connascence detection, and fitness rules perform on one of the largest and most mature open-source dbt repositories in the modern data ecosystem.
 
 ---
 
@@ -43,7 +43,7 @@ GitLab organizes its models into an enterprise multi-tier hierarchy:
 
 Traditional data warehouse linting solutions (such as `dbt-project-evaluator` packages) typically run dynamically inside the target cloud warehouse by compiling SQL into temporary views or tables. While functional, this approach requires live warehouse credentials, incurs cloud compute costs, and runs slowly on large repositories.
 
-TFF adopts a **100% static analysis methodology**:
+tff adopts a **100% static analysis methodology**:
 
 ```mermaid
 flowchart LR
@@ -59,22 +59,22 @@ flowchart LR
 ```
 
 ### 1. Zero-Credential Ingestion
-The dbt project is compiled locally via `dbt parse` or `dbt compile`. TFF parses `target/manifest.json`, ingesting the dependency DAG, model definitions, SQL source, and test schemas into an in-memory normalized graph representation.
+The dbt project is compiled locally via `dbt parse` or `dbt compile`. tff parses `target/manifest.json`, ingesting the dependency DAG, model definitions, SQL source, and test schemas into an in-memory normalized graph representation.
 
 ### 2. AST Fingerprinting (Connascence of Algorithm)
 To detect duplicated logic across models without executing SQL:
-* TFF parses SQL queries and Common Table Expressions (CTEs) into Abstract Syntax Trees (ASTs) using `sqlglot`.
+* tff parses SQL queries and Common Table Expressions (CTEs) into Abstract Syntax Trees (ASTs) using `sqlglot`.
 * Query ASTs are normalized (stripping aliases and trivial formatting) and hashed.
-* When CTE blocks with 12 or more AST nodes produce identical hashes in separate models, TFF flags them as **Connascence of Algorithm (CoA)** violations.
+* When CTE blocks with 12 or more AST nodes produce identical hashes in separate models, tff flags them as **Connascence of Algorithm (CoA)** violations.
 
 ### 3. Topological Graph Traversal
-TFF computes graph-theoretic properties across the 2,213 models:
+tff computes graph-theoretic properties across the 2,213 models:
 * **Fan-Out (Blast Radius)**: The count of direct downstream dependents. Models with excessive fan-out represent single points of operational risk.
 * **Fan-In (Coupling Sink)**: The count of direct upstream dependencies. Models with excessive fan-in represent bottleneck consolidators.
 
 ### 4. Layer & Domain Boundary Validation
 Using the configured layer order (`sources` → `common_prep` → `common` → `marts` → `workspaces`):
-* TFF inspects every edge in the dependency graph.
+* tff inspects every edge in the dependency graph.
 * Any edge pointing backwards (e.g. a model in `common_prep` querying a model in `common`) is flagged as a layer inversion error.
 * Custom domain isolation boundaries flag horizontal cross-coupling between isolated marts.
 
@@ -85,7 +85,7 @@ Using the configured layer order (`sources` → `common_prep` → `common` → `
 ### Overall Health Score: **76.3%**
 
 ```
-╭───────────────────────── TFF PROJECT HEALTH REPORT ──────────────────────────╮
+╭───────────────────────── tff PROJECT HEALTH REPORT ──────────────────────────╮
 │                                                                              │
 │  Overall Project Health Score: 76.3%                                         │
 │  Models Checked: 2,213  ·  Active Checks: 19  ·  Categories: 8               │
@@ -112,20 +112,20 @@ Quality & Metadata                    4/7      3,451          ·    61.0%
 ## 🔍 Key Architectural Discoveries
 
 ### 1. Duplicated Algorithms (Connascence of Algorithm — CoA)
-TFF detected **54 duplicate CTE findings**, which cluster into **12 distinct duplicated algorithm groups** across the repository.
+tff detected **54 duplicate CTE findings**, which cluster into **12 distinct duplicated algorithm groups** across the repository.
 
 #### Precision in Nested Data Access (AST Parsing)
-A common question when analyzing CTE duplication is whether static analysis can differentiate column projections in nested data (e.g. JSON variants in Snowflake). **TFF's AST engine distinguishes nested field access with high precision.**
+A common question when analyzing CTE duplication is whether static analysis can differentiate column projections in nested data (e.g. JSON variants in Snowflake). **tff's AST engine distinguishes nested field access with high precision.**
 
 For instance, comparing `bamboohr_custom_bonus_source.sql` and `engineering_development_team_members.sql`:
-* In their final `renamed` CTEs, the models extract entirely different JSON elements (`data_by_row['id']::number` vs. `data_by_row['country']::varchar`). In SQLGlot, bracketed variant accesses compile into distinct `exp.Bracket` nodes with specific string literal identifiers. TFF computes distinct hashes for these and **never flags them as duplicates**.
-* What TFF *did* flag was the upstream **JSON-flattening CTE** (`intermediate` in BambooHR vs. `flattened` in Engineering):
+* In their final `renamed` CTEs, the models extract entirely different JSON elements (`data_by_row['id']::number` vs. `data_by_row['country']::varchar`). In SQLGlot, bracketed variant accesses compile into distinct `exp.Bracket` nodes with specific string literal identifiers. tff computes distinct hashes for these and **never flags them as duplicates**.
+* What tff *did* flag was the upstream **JSON-flattening CTE** (`intermediate` in BambooHR vs. `flattened` in Engineering):
   ```sql
   -- Duplicated across 8 models (canonical AST matches identically despite alias differences):
   select d.value as data_by_row
   from source, lateral flatten(input => parse_json(jsontext), outer => true) d
   ```
-Because TFF hashes the normalized query AST rather than outer CTE aliases, it caught that 8 separate models across People Analytics and Engineering shared the exact same 18-node unnesting algorithm.
+Because tff hashes the normalized query AST rather than outer CTE aliases, it caught that 8 separate models across People Analytics and Engineering shared the exact same 18-node unnesting algorithm.
 
 ---
 
@@ -230,7 +230,7 @@ qualify row_number() over (partition by distribution_id order by uploaded_at des
 ---
 
 ### 2. DAG Layer Integrity Violations
-TFF caught **111 architectural layer violations** where data flow violated organizational boundaries:
+tff caught **111 architectural layer violations** where data flow violated organizational boundaries:
 
 #### A. Inverted Upstream Dependencies (Downstream Leaks)
 Preparation models in `models/common_prep` were found directly referencing downstream presentation models in `models/common`:
@@ -247,7 +247,7 @@ Models within one business domain mart were directly depending on internal model
 ---
 
 ### 3. Blast-Radius Hub Models & Bottlenecks
-Using graph degree analysis, TFF identified high-risk architectural bottlenecks:
+Using graph degree analysis, tff identified high-risk architectural bottlenecks:
 
 #### High Blast-Radius Hubs (Excessive Fan-Out)
 A change to the schema or logic of these models triggers massive cascade rebuilds:
@@ -268,7 +268,7 @@ These models aggregate huge numbers of upstream dependencies:
 
 * **Coupling by Position (`CoP`)**:
   * **37 models** use positional column references (`GROUP BY 1, 2, 3`).
-  * In `bamboohr_budget_vs_actual.sql`, TFF found **21 positional references** in a single statement.
+  * In `bamboohr_budget_vs_actual.sql`, tff found **21 positional references** in a single statement.
 * **`SELECT *` Proliferation**:
   * **1,409 models** (>63% of the repository) use `SELECT *` outside raw extraction layers, creating implicit coupling to upstream table schemas.
 * **Testing & Documentation Coverage**:
@@ -331,7 +331,7 @@ rules:
     not_null: true
 ```
 
-### 4. Execute TFF Commands
+### 4. Execute tff Commands
 ```bash
 # Calculate overall architecture health score:
 uvx tff-core health
@@ -348,7 +348,7 @@ uvx tff-core docs --output gitlab_tff_report.html
 ## 💡 Lessons for Data Platform Engineers
 
 1. **Static Analysis is 100x Faster than Dynamic Evaluation**:
-   Evaluating 2,213 models in Snowflake with SQL queries takes minutes to hours and consumes warehouse credits. TFF completed the entire evaluation in **13 seconds** on developer hardware.
+   Evaluating 2,213 models in Snowflake with SQL queries takes minutes to hours and consumes warehouse credits. tff completed the entire evaluation in **13 seconds** on developer hardware.
 2. **Duplicated Algorithms Silently Spread**:
    Without AST-level fingerprinting, copy-pasting complex CTEs across models goes unnoticed in peer code reviews until business metrics diverge.
 3. **Fitness Functions Belong in CI/CD**:

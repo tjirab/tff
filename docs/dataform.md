@@ -1,6 +1,6 @@
-# Using TFF with Google Cloud Dataform
+# Using tff with Google Cloud Dataform
 
-TFF provides first-class support for [Google Cloud Dataform](https://cloud.google.com/dataform) projects. It evaluates architectural boundaries, connascence, schema assertions, and SQL code formatting across Dataform pipelines.
+tff provides first-class support for [Google Cloud Dataform](https://cloud.google.com/dataform) projects. It evaluates architectural boundaries, connascence, schema assertions, and SQL code formatting across Dataform pipelines.
 
 ---
 
@@ -25,13 +25,13 @@ pip install "tff-core[dataform]"
    ```bash
    tff lint
    ```
-   TFF automatically detects your Dataform project from `workflow_settings.yaml` or `dataform.json`.
+   tff automatically detects your Dataform project from `workflow_settings.yaml` or `dataform.json`.
 
 ---
 
 ## How It Works
 
-Dataform projects combine SQL with JavaScript configuration blocks (`config { ... }`), JS includes (`includes/`), and `.sqlx` files. TFF uses a flexible multi-tier ingestion architecture:
+Dataform projects combine SQL with JavaScript configuration blocks (`config { ... }`), JS includes (`includes/`), and `.sqlx` files. tff uses a flexible multi-tier ingestion architecture:
 
 ```mermaid
 flowchart TD
@@ -44,13 +44,13 @@ flowchart TD
     Tier1 --> ModelRep["ModelRepresentation DAG"]
     Tier2 --> ModelRep
     Tier3 --> ModelRep
-    ModelRep --> Engine["TFF Fitness Engine & Rules"]
+    ModelRep --> Engine["tff Fitness Engine & Rules"]
 ```
 
 ### 1. Multi-Tier Model Ingestion
 * **Tier 1: Precompiled Manifest**: Inspects precompiled compilation result JSON files. Supports `@dataform/cli` JSON exports and GCP Dataform REST API `compilationResultActions` objects. Can be passed via `--manifest <path>` or auto-discovered if `compilation_result.json` or `compilationResultActions.json` is present.
-* **Tier 2: Local CLI Compilation**: If no manifest is provided, TFF attempts to run `dataform compile --json` (or `npx @dataform/cli compile --json`) in the project directory if the CLI is available.
-* **Tier 3: Direct Static Source Parsing**: If Node.js / Dataform CLI is not installed (e.g. lightweight Python CI runner), TFF parses `.sqlx` files and `declare()` JavaScript blocks directly, stripping JavaScript placeholders (`${...}`) and parsing SQL with SQLGlot (`dialect: bigquery`).
+* **Tier 2: Local CLI Compilation**: If no manifest is provided, tff attempts to run `dataform compile --json` (or `npx @dataform/cli compile --json`) in the project directory if the CLI is available.
+* **Tier 3: Direct Static Source Parsing**: If Node.js / Dataform CLI is not installed (e.g. lightweight Python CI runner), tff parses `.sqlx` files and `declare()` JavaScript blocks directly, stripping JavaScript placeholders (`${...}`) and parsing SQL with SQLGlot (`dialect: bigquery`).
 
 ### 2. Model & Declaration Mapping
 * **Tables, Views, and Incremental tables** (`type: "table" | "view" | "incremental"`) are mapped to active models.
@@ -58,7 +58,7 @@ flowchart TD
 * **Declarations** (`type: "declaration"` or JS `declare({ ... })`) are mapped as external models, maintaining the lineage DAG without enforcing internal code style rules.
 
 ### 3. Metadata & Label Mapping
-TFF extracts model metadata from `.sqlx` config blocks and compilation descriptors:
+tff extracts model metadata from `.sqlx` config blocks and compilation descriptors:
 * **`owner`**: Extracted from `bigquery.labels.owner`, `meta.owner`, or top-level `owner`.
 * **`description`**: Extracted from `description` or `actionDescriptor.description`.
 * **`columns`**: Extracted from `columns` dictionaries or `actionDescriptor.columns` path types.
@@ -69,7 +69,7 @@ TFF extracts model metadata from `.sqlx` config blocks and compilation descripto
 * Standalone `.sqlx` assertions are mapped to audit checks on their referenced upstream tables.
 
 ### 5. Layer and Domain Mapping
-Dataform organizes models inside `definitions/`. TFF automatically infers layers and domains:
+Dataform organizes models inside `definitions/`. tff automatically infers layers and domains:
 * `definitions/staging/stg_users.sqlx` $\rightarrow$ layer: `staging`
 * `definitions/marts/marketing/dim_customers.sqlx` $\rightarrow$ layer: `marts`, domain: `marketing`
 
@@ -129,7 +129,7 @@ tff docs --output site/index.html
 If your CI workflow fetches the compiled release result from GCP Cloud Dataform or runs `@dataform/cli`:
 
 ```yaml
-name: TFF Lint
+name: tff Lint
 on: [pull_request]
 
 jobs:
@@ -148,10 +148,10 @@ jobs:
 ```
 
 ### Lightweight CI without Node.js
-If Node.js is not available in your Python runner, TFF can lint directly from static source files:
+If Node.js is not available in your Python runner, tff can lint directly from static source files:
 
 ```yaml
-name: TFF Lint
+name: tff Lint
 on: [pull_request]
 
 jobs:
@@ -167,7 +167,7 @@ jobs:
 
 ## Pre-commit Integration
 
-Enforce TFF fitness functions automatically on git commit using [pre-commit](https://pre-commit.com/):
+Enforce tff fitness functions automatically on git commit using [pre-commit](https://pre-commit.com/):
 
 ```yaml
 # .pre-commit-config.yaml
@@ -196,7 +196,7 @@ Automate Dataform fitness functions and post PR summary comments using the offic
 
 ```yaml
 # .github/workflows/tff.yml
-name: TFF Architectural Fitness Functions
+name: tff Architectural Fitness Functions
 
 on:
   pull_request:

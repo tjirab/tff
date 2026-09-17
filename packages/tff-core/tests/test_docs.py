@@ -68,7 +68,7 @@ def test_generate_docs_dashboard_dbt(
     assert output_path.exists()
     
     html_content = output_path.read_text(encoding="utf-8")
-    assert "TFF Health & Documentation Dashboard" in html_content
+    assert "tff Health & Documentation Dashboard" in html_content
     assert "const TFF_DATA =" in html_content
     assert "model_1" in html_content
     assert "model_2" in html_content

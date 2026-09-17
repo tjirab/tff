@@ -1,4 +1,4 @@
-site_name: TFF
+site_name: tff
 site_description: Configurable fitness functions engine and linter for transformation projects (SQLMesh, dbt, Dataform).
 site_url: https://tff.readthedocs.io/
 repo_url: https://github.com/tjirab/tff

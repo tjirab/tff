@@ -330,7 +330,7 @@ def render_health_report(
             ("\n", ""),
             (f"Active checks: {len(enabled_checks)}  ·  Categories: {sum(1 for v in category_scores.values() if v is not None)}", "dim")
         ),
-        title=f"[bold {score_color}]TFF PROJECT HEALTH REPORT[/bold {score_color}]",
+        title=f"[bold {score_color}]tff PROJECT HEALTH REPORT[/bold {score_color}]",
         border_style=score_color,
         padding=(1, 2),
     )

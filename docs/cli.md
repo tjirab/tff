@@ -1,6 +1,6 @@
 # CLI Reference & Usage Guide
 
-Transformation Fitness Functions (**TFF**) provides a unified, zero-config command-line interface (`tff`) to run architectural fitness functions, compute project health scores, generate documentation dashboards, and integrate with CI/CD quality gates.
+Transformation Fitness Functions (**tff**) provides a unified, zero-config command-line interface (`tff`) to run architectural fitness functions, compute project health scores, generate documentation dashboards, and integrate with CI/CD quality gates.
 
 ---
 
@@ -23,8 +23,8 @@ The CLI provides the following subcommands:
 
 ## 2. Global Conventions & Defaults
 
-* **Zero-Config Fallback**: If no `fitness_functions.yaml` is present, TFF automatically infers standard architectural layer conventions (`staging` &rarr; `intermediate` &rarr; `core` &rarr; `marts`) and runs all baseline rules.
-* **Auto-Discovery**: TFF automatically detects the project engine (`dbt`, `SQLMesh`, or `Dataform`) by scanning configuration files in the target directory.
+* **Zero-Config Fallback**: If no `fitness_functions.yaml` is present, tff automatically infers standard architectural layer conventions (`staging` &rarr; `intermediate` &rarr; `core` &rarr; `marts`) and runs all baseline rules.
+* **Auto-Discovery**: tff automatically detects the project engine (`dbt`, `SQLMesh`, or `Dataform`) by scanning configuration files in the target directory.
 * **Parallel Execution**: AST parsing, duplicate CTE fingerprinting, and model rule checks execute across a worker pool in parallel (`--workers`, `TFF_WORKERS`, or `workers:` in config).
 * **Persistent AST Caching**: Precomputed ASTs are persistently cached under `.tff_cache/ast` keyed by SQLGlot version, SQL dialect, and SQL SHA-256 hash for sub-second repeat runs. Disable with `--no-cache` or clear with `--clear-cache`.
 * **Local Run Logging**: Executions of `tff lint` and `tff health` automatically save run metrics to `.tff_logs/` in JSON format (retained for 60 days). Disable anytime with `--no-log` or `export TFF_NO_LOG=1`.
@@ -301,7 +301,7 @@ tff [subcommand] --help
 
 ## 11. Output Formats & Integrations
 
-TFF supports multiple structured output formats for seamless CI/CD and tool integration:
+tff supports multiple structured output formats for seamless CI/CD and tool integration:
 
 | Format | CLI Option | Primary Target | Description |
 | :--- | :--- | :--- | :--- |

@@ -1,11 +1,11 @@
 <p align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="docs/assets/tff-white.svg">
-    <img alt="TFF Logo" src="docs/assets/tff.svg" width="160">
+    <img alt="tff logo" src="docs/assets/tff.svg" width="160">
   </picture>
 </p>
 
-# TFF: Transformation Fitness Functions
+# tff: Transformation Fitness Functions
 
 [![PyPI version](https://img.shields.io/pypi/v/tff-core.svg?logo=pypi)](https://pypi.org/project/tff-core/)
 [![Python versions](https://img.shields.io/pypi/pyversions/tff-core.svg?logo=python)](https://pypi.org/project/tff-core/)
@@ -13,7 +13,7 @@
 
 Configurable fitness functions engine and linter for transformation projects. 
 
-TFF allows you to enforce architectural layout boundaries, layer structure policies, schema contracts, and code formatting rules across data pipelines. It ships with dedicated plugins for **SQLMesh**, **dbt**, and **Google Cloud Dataform**, supports custom adapters and proprietary rules via entry points and plugins, and outputs clean, color-coded lint reports to the terminal.
+tff allows you to enforce architectural layout boundaries, layer structure policies, schema contracts, and code formatting rules across data pipelines. It ships with dedicated plugins for **SQLMesh**, **dbt**, and **Google Cloud Dataform**, supports custom adapters and proprietary rules via entry points and plugins, and outputs clean, color-coded lint reports to the terminal.
 
 <img width="1280" height="708" alt="20260629_tff-health" src="https://github.com/user-attachments/assets/2302a3dc-595f-4726-94ba-6c2aaf838bd4" />
 
@@ -141,14 +141,14 @@ tff lint --debug
 
 ## CI/CD & Automated Quality Gates
 
-TFF integrates seamlessly into modern data engineering CI/CD pipelines to enforce architectural fitness functions, calculate health scores, and gate pull requests.
+tff integrates seamlessly into modern data engineering CI/CD pipelines to enforce architectural fitness functions, calculate health scores, and gate pull requests.
 
 ### Official GitHub Action (`tjirab/tff@v1`)
 
-Run TFF on pull requests with zero virtualenv setup. The action automatically installs the required engine adapter, gates merges based on health thresholds, emits inline annotations on modified lines, and posts interactive summary comments:
+Run tff on pull requests with zero virtualenv setup. The action automatically installs the required engine adapter, gates merges based on health thresholds, emits inline annotations on modified lines, and posts interactive summary comments:
 
 ```yaml
-name: TFF Architectural Fitness Functions
+name: tff Architectural Fitness Functions
 
 on:
   pull_request:
@@ -166,7 +166,7 @@ jobs:
         with:
           fetch-depth: 0  # Required to compute health score diff vs base branch
 
-      - name: Run TFF Action
+      - name: Run tff Action
         uses: tjirab/tff@v1
         with:
           provider: "auto"       # auto, dbt, sqlmesh, or dataform
@@ -182,7 +182,7 @@ jobs:
 
 ## Pre-commit Integration
 
-TFF includes native [pre-commit](https://pre-commit.com/) hooks to validate or auto-fix violations locally before commits are created:
+tff includes native [pre-commit](https://pre-commit.com/) hooks to validate or auto-fix violations locally before commits are created:
 
 ```yaml
 # .pre-commit-config.yaml
@@ -202,7 +202,7 @@ For SQLMesh projects or advanced pre-commit dependency configurations, refer to 
 
 ## Core Features
 
-TFF runs two categories of quality guardrails (for full configuration details, see the [Rules & Checks Reference](docs/rules_and_checks.md)):
+tff runs two categories of quality guardrails (for full configuration details, see the [Rules & Checks Reference](docs/rules_and_checks.md)):
 
 ### 1. Architectural Checks
 * **[Layer integrity](docs/rules_and_checks.md#layer-integrity-layer_integrity)**: Prevent models in upstream layers (e.g. `marts`) from depending on downstream/raw layers.

@@ -1,4 +1,4 @@
-"""Tests for TFF GitHub Action runner, baseline diff, PR commenting, and action manifest."""
+"""Tests for tff GitHub Action runner, baseline diff, PR commenting, and action manifest."""
 
 from __future__ import annotations
 
@@ -49,7 +49,7 @@ def test_action_yml_exists_and_matches_composite_manifest() -> None:
     assert root_content == sub_content, "action.yml and .github/actions/tff/action.yml must match"
 
     # Verify required Marketplace metadata
-    assert root_content["name"] == "TFF - Transformation Fitness Functions"
+    assert root_content["name"] == "tff - Transformation Fitness Functions"
     assert "Architectural linter and health score engine" in root_content["description"]
     assert root_content["author"] == "Bart Schuijt"
     assert root_content["branding"]["icon"] in ("check-circle", "shield", "activity")
@@ -530,7 +530,7 @@ def test_cli_action_subcommand(capsys: pytest.CaptureFixture[str]) -> None:
     # Test help
     assert main(["help", "action"]) == 0
     captured = capsys.readouterr()
-    assert "Run TFF checks" in captured.out
+    assert "Run tff checks" in captured.out
 
     # Test passing execution
     assert main([

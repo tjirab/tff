@@ -430,7 +430,7 @@ def test_info_command_dbt(tmp_path: Path, capsys):
         assert exit_code == 0
         captured = capsys.readouterr()
 
-        assert "TFF Info" in captured.out
+        assert "tff Info" in captured.out
         assert "Project root:" in captured.out
         assert "Provider:" in captured.out
         assert "dbt" in captured.out
@@ -480,10 +480,11 @@ def test_info_command_invalid_config(tmp_path: Path, capsys):
 
 
 def test_argv_fallback_error(capsys):
-    from tff.core.cli import TFFArgumentParser
+    from tff.core.cli import TffArgumentParser, TFFArgumentParser
 
-    parser = TFFArgumentParser(prog="tff")
-    TFFArgumentParser._current_argv = None
+    assert TFFArgumentParser is TffArgumentParser
+    parser = TffArgumentParser(prog="tff")
+    TffArgumentParser._current_argv = None
 
     with patch("sys.argv", ["tff", "lint", "--invalid-arg"]):
         with pytest.raises(SystemExit) as excinfo:
@@ -702,7 +703,7 @@ def test_main_stats_no_logs(tmp_path: Path, capsys):
     exit_code = main(["stats", "--project", project_str])
     assert exit_code == 1
     captured = capsys.readouterr()
-    assert "No TFF run logs found" in captured.err
+    assert "No tff run logs found" in captured.err
 
 
 def test_main_stats(tmp_path: Path, capsys):
@@ -720,7 +721,7 @@ def test_main_stats(tmp_path: Path, capsys):
     exit_code = main(["stats", "--project", project_str])
     assert exit_code == 0
     captured = capsys.readouterr()
-    assert "TFF Project Health Score Trend" in captured.out
+    assert "tff Project Health Score Trend" in captured.out
     assert "Summary History" in captured.out
     assert "92.5%" in captured.out
 
@@ -767,7 +768,7 @@ def test_main_stats_variations(tmp_path: Path, capsys):
     assert exit_code == 0
     captured = capsys.readouterr()
     assert "No health score data in this timeframe" in captured.out
-    assert "TFF Lint Violations Trend" in captured.out
+    assert "tff Lint Violations Trend" in captured.out
     assert "Summary History" in captured.out
 
     # 2. Test invalid date parsing exception handling in summary table formatting
@@ -1508,7 +1509,7 @@ def test_cli_debug_captures_logs(mock_render, mock_load_config, mock_get_runner,
     exit_code = main(["--debug", "lint", "--project", str(tmp_path), "--provider", "dbt"])
     assert exit_code == 0
     captured = capsys.readouterr()
-    assert "TFF v" in captured.err
+    assert "tff v" in captured.err
     assert "Check execution completed" in captured.err
 
 

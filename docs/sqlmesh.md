@@ -1,6 +1,6 @@
-# Using TFF with SQLMesh
+# Using tff with SQLMesh
 
-TFF integrates with [SQLMesh](https://sqlmesh.com) using the `tff-core` package with the `sqlmesh` extra. It runs fitness checks in two ways:
+tff integrates with [SQLMesh](https://sqlmesh.com) using the `tff-core` package with the `sqlmesh` extra. It runs fitness checks in two ways:
 1. **Directly inside SQLMesh**: Automatically hooks into SQLMesh's native `sqlmesh lint` CLI via a custom project loader.
 2. **Via the standalone CLI**: Run checks independently with the `tff lint` command.
 
@@ -30,7 +30,7 @@ pip install "tff-core[sqlmesh]"
 # Via SQLMesh CLI (runs classification/metadata/naming/select-star rules):
 sqlmesh lint
 
-# Via TFF standalone CLI (runs rules + architectural checks like layers & graphs):
+# Via tff standalone CLI (runs rules + architectural checks like layers & graphs):
 tff lint
 ```
 
@@ -132,7 +132,7 @@ tff health [--project PATH] [--config PATH] [--provider PROVIDER] [--fail-under 
 
 ## Pre-commit Integration
 
-Enforce TFF fitness functions automatically on git commit using [pre-commit](https://pre-commit.com/):
+Enforce tff fitness functions automatically on git commit using [pre-commit](https://pre-commit.com/):
 
 ```yaml
 # .pre-commit-config.yaml
@@ -154,7 +154,7 @@ Automate SQLMesh architectural quality checks and post PR health comments using 
 
 ```yaml
 # .github/workflows/tff.yml
-name: TFF Architectural Fitness Functions
+name: tff Architectural Fitness Functions
 
 on:
   pull_request:
@@ -182,6 +182,6 @@ jobs:
 ```
 
 ### Zero-Compilation In-Memory Evaluation
-Unlike manifest-driven tools, **SQLMesh requires zero pre-compilation, zero external manifest files, and zero warehouse credentials**. TFF parses `.sql` and `.py` model definitions directly using SQLGlot and Python's semantic engine. When running baseline diffing (`diff-against-base: true`), TFF evaluates `origin/main` cleanly in memory in a temporary worktree. For more details, see the [CI/CD Guide](ci_cd.md#2-sqlmesh-zero-compilation-native-evaluation).
+Unlike manifest-driven tools, **SQLMesh requires zero pre-compilation, zero external manifest files, and zero warehouse credentials**. tff parses `.sql` and `.py` model definitions directly using SQLGlot and Python's semantic engine. When running baseline diffing (`diff-against-base: true`), tff evaluates `origin/main` cleanly in memory in a temporary worktree. For more details, see the [CI/CD Guide](ci_cd.md#2-sqlmesh-zero-compilation-native-evaluation).
 
 For advanced inputs, matrix setups, and PR comment details, see the [CI/CD Guide](ci_cd.md).

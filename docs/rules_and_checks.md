@@ -1,12 +1,12 @@
 # Rules and Checks Reference
 
-TFF runs two categories of quality guardrails: **Architectural Checks** and **Linter Rules**. All of these are configured in the `fitness_functions.yaml` file in the root of your project.
+tff runs two categories of quality guardrails: **Architectural Checks** and **Linter Rules**. All of these are configured in the `fitness_functions.yaml` file in the root of your project.
 
 ---
 
 ## 🛠️ Auto-Fixer (`--fix`)
 
-TFF includes a built-in auto-fixer that can automatically resolve simple violations. By running `tff lint --fix`, TFF will modify your source files to fix the following issues:
+tff includes a built-in auto-fixer that can automatically resolve simple violations. By running `tff lint --fix`, tff will modify your source files to fix the following issues:
 
 *   **[No Positional GROUP BY/ORDER BY](#no-positional-group-byorder-by-no_positional_group_by_or_order_by-auto-fixable)** (`nopositionalgroupbyororderby`): Rewrites integer positional references in `GROUP BY` and `ORDER BY` clauses to explicit column names or select aliases using AST modification.
 *   **Metadata (`nomissingowner`, `nomissingdescription`)**:
@@ -18,7 +18,7 @@ TFF includes a built-in auto-fixer that can automatically resolve simple violati
 
 ## ⚡ Performance: Parallel Traversal & AST Caching
 
-For enterprise DAGs consisting of hundreds or thousands of transformation models, TFF provides multi-core parallelism and persistent disk-based caching:
+For enterprise DAGs consisting of hundreds or thousands of transformation models, tff provides multi-core parallelism and persistent disk-based caching:
 
 * **Parallel Model Loading & Parsing**: AST parsing is dispatched across a pool of worker processes (`ProcessPoolExecutor`) during model loading.
 * **Parallel Duplicate CTE Fingerprinting**: CTE extraction, AST normalization, and cryptographic hashing run concurrently across models.
@@ -138,7 +138,7 @@ Architectural checks evaluate the structure, dependencies, and layout of your en
   * **Domain**: Prefix a tag with `domain:`, e.g., `domain:finance`, or define a `domain` key in model metadata.
 
   **Example (Functional Theme Layout)**:
-  Assume a model is located at `models/finance/payments_cleared.sql`. Since `finance` is not in your configured `layers.order`, TFF's directory parser cannot determine the layer automatically. You can explicitly tag/annotate it:
+  Assume a model is located at `models/finance/payments_cleared.sql`. Since `finance` is not in your configured `layers.order`, tff's directory parser cannot determine the layer automatically. You can explicitly tag/annotate it:
   
   * **dbt (`schema.yml`)**:
     ```yaml
@@ -616,7 +616,7 @@ For SQLMesh projects, these rules run dynamically inside SQLMesh (e.g., `sqlmesh
 
 ## 3. Health Scoring Configuration
 
-TFF calculates an overall architecture health score (0–100) aggregated from all executed checks. By default, every check carries equal weight (`1.0`), and failures subtract penalties proportionally (an error penalty of `1.0` and warning penalty of `0.5` per affected model; or `100.0` error and `50.0` warning for project-level checks).
+tff calculates an overall architecture health score (0–100) aggregated from all executed checks. By default, every check carries equal weight (`1.0`), and failures subtract penalties proportionally (an error penalty of `1.0` and warning penalty of `0.5` per affected model; or `100.0` error and `50.0` warning for project-level checks).
 
 You can configure custom weights and failure penalties under the `health:` section in `fitness_functions.yaml`.
 
@@ -682,7 +682,7 @@ health:
 
 ## 3. Custom Plugins & Extensions
 
-TFF provides an extensible plugin architecture that enables teams to implement proprietary fitness rules and connect custom transformation engines or pipeline adapters without modifying `tff-core`.
+tff provides an extensible plugin architecture that enables teams to implement proprietary fitness rules and connect custom transformation engines or pipeline adapters without modifying `tff-core`.
 
 ### Overview
 
@@ -727,7 +727,7 @@ class CompanyNamingRule(Rule):
         return None
 ```
 
-TFF automatically discovers and registers any `Rule` subclasses found within files or modules listed in `plugins:`. Custom configuration options can be retrieved dynamically via `self.get_rule_config()`.
+tff automatically discovers and registers any `Rule` subclasses found within files or modules listed in `plugins:`. Custom configuration options can be retrieved dynamically via `self.get_rule_config()`.
 
 #### Module Registration Hooks (Optional)
 
@@ -751,7 +751,7 @@ def register(registry: CheckRegistry) -> list[CheckDefinition]:
 
 ### Authoring Custom Pipeline Adapters
 
-Third-party adapters allow TFF to analyze non-standard data pipelines or internal orchestration frameworks. Subclass `tff.core.adapter.PipelineAdapter`:
+Third-party adapters allow tff to analyze non-standard data pipelines or internal orchestration frameworks. Subclass `tff.core.adapter.PipelineAdapter`:
 
 ```python
 from pathlib import Path
@@ -794,7 +794,7 @@ custom_checks = "my_package.rules:register"
 custom_engine = "my_package.adapter:MyCustomEngineAdapter"
 ```
 
-Once installed, TFF discovers and registers these rules and adapters automatically without requiring explicit `plugins:` configuration in `fitness_functions.yaml`.
+Once installed, tff discovers and registers these rules and adapters automatically without requiring explicit `plugins:` configuration in `fitness_functions.yaml`.
 
 ### Inspecting Plugins and Adapters
 

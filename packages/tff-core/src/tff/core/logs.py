@@ -1,4 +1,4 @@
-"""Utilities for JSON serialization and local logging of TFF check runs."""
+"""Utilities for JSON serialization and local logging of tff check runs."""
 
 from __future__ import annotations
 
@@ -34,7 +34,7 @@ def get_lint_json_data(
     models_checked: int,
     fail_level: str,
 ) -> dict[str, Any]:
-    """Compile TFF lint findings and stats into a JSON-serializable dictionary."""
+    """Compile tff lint findings and stats into a JSON-serializable dictionary."""
     errors = [f for f in findings if f.severity == "error"]
     warnings = [f for f in findings if f.severity == "warning"]
 
@@ -61,7 +61,7 @@ def get_health_json_data(
     scores: dict[str, Any],
     models_checked: int,
 ) -> dict[str, Any]:
-    """Compile TFF health scores and findings into a JSON-serializable dictionary."""
+    """Compile tff health scores and findings into a JSON-serializable dictionary."""
     overall_score = scores["overall_score"]
     category_scores = scores["category_scores"]
     check_scores = scores["check_scores"]
@@ -163,7 +163,7 @@ def save_log(
 
 
 def collect_stats(project_root: Path, days: int) -> list[dict[str, Any]]:
-    """Collect TFF health and lint history over the last N days from log files."""
+    """Collect tff health and lint history over the last N days from log files."""
     # Generate list of dates from (today - days + 1) to today
     today = date.today()
     dates = [today - timedelta(days=d) for d in range(days - 1, -1, -1)]

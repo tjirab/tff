@@ -162,7 +162,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>TFF Health & Documentation Dashboard</title>
+  <title>tff Health & Documentation Dashboard</title>
   
   <!-- Tailwind CSS -->
   <script src="https://cdn.tailwindcss.com"></script>
@@ -189,7 +189,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
   <!-- Header -->
   <header class="bg-slate-900 text-white px-6 py-4 flex items-center justify-between shadow-md shrink-0">
     <div class="flex items-center space-x-3">
-      <div class="text-2xl font-black tracking-wider text-cyan-400">TFF</div>
+      <div class="text-2xl font-black tracking-wider text-cyan-400">tff</div>
       <div class="h-6 w-[1px] bg-slate-700"></div>
       <h1 class="text-lg font-bold tracking-tight">Fitness Functions Dashboard</h1>
       <span class="bg-cyan-500/10 text-cyan-400 px-2 py-0.5 rounded text-xs font-semibold capitalize" id="provider-badge">...</span>

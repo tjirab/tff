@@ -24,7 +24,7 @@ MISSING_CONFIG_NOTICE: str = (
 )
 
 STARTER_CONFIG_YAML: str = """# =============================================================================
-# Transformation Fitness Functions (TFF) Configuration
+# Transformation Fitness Functions (tff) Configuration
 # Documentation: https://github.com/tjirab/tff
 # =============================================================================
 

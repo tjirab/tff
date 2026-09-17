@@ -1,6 +1,6 @@
 # Minimal dbt Example Project (Zero-Config)
 
-This example project demonstrates **Zero-Config Default Execution** with TFF (Transformation Fitness Functions).
+This example project demonstrates **Zero-Config Default Execution** with tff (Transformation Fitness Functions).
 
 Notice that this project **intentionally does not include a `fitness_functions.yaml` file**.
 

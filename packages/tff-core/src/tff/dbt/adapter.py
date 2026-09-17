@@ -1,4 +1,4 @@
-"""dbt adapter implementation for TFF."""
+"""dbt adapter implementation for tff."""
 
 from __future__ import annotations
 

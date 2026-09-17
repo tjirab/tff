@@ -1,9 +1,9 @@
 <p align="center">
-  <img src="assets/tff.svg#only-light" alt="TFF Logo" width="160">
-  <img src="assets/tff-white.svg#only-dark" alt="TFF Logo" width="160">
+  <img src="assets/tff.svg#only-light" alt="tff logo" width="160">
+  <img src="assets/tff-white.svg#only-dark" alt="tff logo" width="160">
 </p>
 
-# TFF: Transformation Fitness Functions
+# tff: Transformation Fitness Functions
 
 [![PyPI version](https://img.shields.io/pypi/v/tff-core.svg?logo=pypi)](https://pypi.org/project/tff-core/)
 [![Python versions](https://img.shields.io/pypi/pyversions/tff-core.svg?logo=python)](https://pypi.org/project/tff-core/)
@@ -11,7 +11,7 @@
 
 Configurable fitness functions engine and linter for transformation projects.
 
-**TFF** allows you to enforce architectural layout boundaries, layer structure policies, schema contracts, and code formatting rules across data pipelines. It ships with dedicated plugins for **SQLMesh**, **dbt**, and **Google Cloud Dataform**, supports custom adapters and proprietary rules via entry points and plugins, and outputs clean, color-coded lint reports to the terminal.
+**tff** allows you to enforce architectural layout boundaries, layer structure policies, schema contracts, and code formatting rules across data pipelines. It ships with dedicated plugins for **SQLMesh**, **dbt**, and **Google Cloud Dataform**, supports custom adapters and proprietary rules via entry points and plugins, and outputs clean, color-coded lint reports to the terminal.
 
 ---
 

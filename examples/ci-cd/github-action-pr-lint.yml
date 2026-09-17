@@ -1,4 +1,4 @@
-name: TFF PR Health & Architectural Linting
+name: tff PR Health & Architectural Linting
 
 on:
   pull_request:
@@ -16,7 +16,7 @@ jobs:
         with:
           fetch-depth: 0  # Required for calculating health score diff vs base branch
 
-      - name: Run TFF Fitness Functions
+      - name: Run tff Fitness Functions
         uses: tjirab/tff@v1
         with:
           project: "examples/minimal-sqlmesh-project"

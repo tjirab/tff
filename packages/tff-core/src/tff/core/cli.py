@@ -215,7 +215,7 @@ def _parse_checks(value: str | None) -> list[str] | None:
     return [part.strip() for part in value.split(",") if part.strip()]
 
 
-class TFFArgumentParser(argparse.ArgumentParser):
+class TffArgumentParser(argparse.ArgumentParser):
     _current_argv: list[str] | None = None
 
     def error(self, message: str) -> None:
@@ -225,9 +225,9 @@ class TFFArgumentParser(argparse.ArgumentParser):
         hint_cmd = self.prog
         # If the prog is already subcommand-specific (e.g. 'tff lint'), use it.
         # Otherwise, check the arguments to see if a subcommand was targetted.
-        if hint_cmd == "tff" and TFFArgumentParser._current_argv is not None:
+        if hint_cmd == "tff" and TffArgumentParser._current_argv is not None:
             for sub in ("lint", "health", "info", "help", "stats", "docs", "init", "action"):
-                if sub in TFFArgumentParser._current_argv:
+                if sub in TffArgumentParser._current_argv:
                     hint_cmd = f"tff {sub}"
                     break
         elif hint_cmd == "tff":
@@ -238,6 +238,10 @@ class TFFArgumentParser(argparse.ArgumentParser):
 
         sys.stderr.write(f"For help, try '{hint_cmd} --help'\n")
         self.exit(2)
+
+
+# Backward compatibility alias
+TFFArgumentParser = TffArgumentParser
 
 
 def _main_impl(argv: list[str] | None = None) -> int:
@@ -253,7 +257,7 @@ def _main_impl(argv: list[str] | None = None) -> int:
     ):
         args_list = ["help"] + args_list
 
-    TFFArgumentParser._current_argv = args_list
+    TffArgumentParser._current_argv = args_list
 
     debug_parent = argparse.ArgumentParser(add_help=False)
     debug_parent.add_argument(
@@ -263,7 +267,7 @@ def _main_impl(argv: list[str] | None = None) -> int:
         help="Enable verbose debug logging output",
     )
 
-    parser = TFFArgumentParser(
+    parser = TffArgumentParser(
         prog="tff",
         description=f"tff {__version__} - Run Transformation Fitness Function (tff) checks",
     )
@@ -280,7 +284,7 @@ def _main_impl(argv: list[str] | None = None) -> int:
         help="Enable verbose debug logging output",
     )
     subparsers = parser.add_subparsers(
-        dest="command", required=True, parser_class=TFFArgumentParser
+        dest="command", required=True, parser_class=TffArgumentParser
     )
 
     lint_parser = subparsers.add_parser(
@@ -591,8 +595,8 @@ def _main_impl(argv: list[str] | None = None) -> int:
     action_parser = subparsers.add_parser(
         "action",
         parents=[debug_parent],
-        help="Run TFF GitHub Action pipeline (health scoring, baseline comparison, PR comment)",
-        description="Run TFF checks, compare against base branch, emit GitHub annotations, and create/update PR comments",
+        help="Run tff GitHub Action pipeline (health scoring, baseline comparison, PR comment)",
+        description="Run tff checks, compare against base branch, emit GitHub annotations, and create/update PR comments",
     )
     action_parser.add_argument(
         "--project",
@@ -719,7 +723,7 @@ def _main_impl(argv: list[str] | None = None) -> int:
 
     is_debug = is_debug_enabled(args)
     setup_cli_logging(debug=is_debug)
-    logger.debug("TFF v%s initialized with command: %s (args: %s)", __version__, args.command, args_list)
+    logger.debug("tff v%s initialized with command: %s (args: %s)", __version__, args.command, args_list)
 
     if args.command == "help":
         if args.subcommand == "lint":
@@ -782,16 +786,16 @@ def _main_impl(argv: list[str] | None = None) -> int:
         )
         config_exists = resolved_config.is_file()
         logo = (
-            " [cyan]████████╗[/cyan][green]███████╗███████╗[/green]\n"
-            " [cyan]╚══██╔══╝[/cyan][green]██╔════╝██╔════╝[/green]\n"
-            " [cyan]   ██║   [/cyan][green]█████╗  █████╗  [/green]\n"
-            " [cyan]   ██║   [/cyan][green]██╔══╝  ██╔══╝  [/green]\n"
-            " [cyan]   ██║   [/cyan][green]██║     ██║     [/green]\n"
-            " [cyan]   ╚═╝   [/cyan][green]╚═╝     ╚═╝     [/green]"
+            " [cyan]  ██╗   [/cyan][green]  █████╗  █████╗ [/green]\n"
+            " [cyan]  ██║   [/cyan][green]  ██╔══╝  ██╔══╝ [/green]\n"
+            " [cyan]████████[/cyan][green]████████████████╗[/green]\n"
+            " [cyan]╚═██╔═══[/cyan][green]══██╔═════██╔══╝ [/green]\n"
+            " [cyan]  ██║   [/cyan][green]  ██║     ██║    [/green]\n"
+            " [cyan]  ╚██══╝[/cyan][green]  ╚═╝     ╚═╝    [/green]"
         )
         console.print(logo)
         console.print()
-        console.print("[bold cyan]● TFF Info[/bold cyan]")
+        console.print("[bold cyan]● tff Info[/bold cyan]")
         table = Table(show_header=False, box=None, padding=(0, 2, 0, 0))
         table.add_column()
         table.add_column()
@@ -930,7 +934,7 @@ def _main_impl(argv: list[str] | None = None) -> int:
 
         history = collect_stats(project_root, args.days)
         if not history:
-            print("No TFF run logs found under .tff_logs/.", file=sys.stderr)
+            print("No tff run logs found under .tff_logs/.", file=sys.stderr)
             print(
                 "Please run 'tff lint' or 'tff health' to generate reports first.",
                 file=sys.stderr,
@@ -960,7 +964,7 @@ def _main_impl(argv: list[str] | None = None) -> int:
         from rich.console import Console
 
         console = Console()
-        console.print("[bold cyan]● TFF Project Health Score Trend[/bold cyan]")
+        console.print("[bold cyan]● tff Project Health Score Trend[/bold cyan]")
         has_health_data = any(h is not None for h in health_scores)
         if has_health_data:
             chart = render_ascii_chart(
@@ -973,7 +977,7 @@ def _main_impl(argv: list[str] | None = None) -> int:
 
         # 2. Lint Violations Trend
         console.print(
-            "[bold cyan]● TFF Lint Violations Trend (Errors & Warnings)[/bold cyan]"
+            "[bold cyan]● tff Lint Violations Trend (Errors & Warnings)[/bold cyan]"
         )
         has_lint_data = any(
             e is not None or w is not None for e, w in zip(errors, warnings)

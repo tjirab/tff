@@ -1,4 +1,4 @@
-"""SQLMesh adapter implementation for TFF."""
+"""SQLMesh adapter implementation for tff."""
 
 from __future__ import annotations
 

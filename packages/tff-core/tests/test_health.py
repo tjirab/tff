@@ -141,7 +141,7 @@ def test_render_health_report() -> None:
     render_health_report(scores, config, provider="dbt", console=console)
 
     output = console.export_text()
-    assert "TFF PROJECT HEALTH REPORT" in output
+    assert "tff PROJECT HEALTH REPORT" in output
     assert "Health Score by Category" in output
     assert "Connascence of Name (CoN)" in output
     assert "banselectstar" in output
