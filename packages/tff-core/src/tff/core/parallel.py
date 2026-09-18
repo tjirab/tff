@@ -16,7 +16,7 @@ from tff.core.ast_cache import (
     is_cache_enabled,
     parse_sql_with_cache,
 )
-from tff.core.model import read_file_safe
+from tff.core.model import read_model_sql
 from tff.core.utils.jinja import clean_dataform_for_parsing, clean_jinja_for_parsing
 
 if TYPE_CHECKING:
@@ -105,14 +105,7 @@ def precompute_model_asts(
         if model.is_external or model.is_symbolic:
             continue
 
-        sql = model.query
-        if sql is None:
-            if not model.path:
-                continue
-            path = Path(model.path)
-            target_path = path if path.is_absolute() or not project_root else project_root / path
-            sql = read_file_safe(target_path)
-
+        sql = read_model_sql(model, project_root=project_root)
         if not sql or not sql.strip():
             continue
 

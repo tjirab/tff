@@ -28,7 +28,12 @@ def read_file_safe(file_path: str | Path | None) -> str | None:
         return None
 
 
-def read_model_sql(model: ModelRepresentation, *, prefer_file: bool = False) -> str | None:
+def read_model_sql(
+    model: ModelRepresentation,
+    *,
+    prefer_file: bool = False,
+    project_root: str | Path | None = None,
+) -> str | None:
     """Read SQL content for a model from disk or query attribute safely.
 
     Args:
@@ -36,19 +41,27 @@ def read_model_sql(model: ModelRepresentation, *, prefer_file: bool = False) -> 
         prefer_file: If True, attempts to read from disk (model.path) first,
             falling back to model.query if reading fails or file does not exist.
             If False (default), returns model.query if present, falling back to disk.
+        project_root: Optional project root directory. If provided and model.path is relative,
+            resolves model.path against this root path.
 
     Returns:
         The SQL content as a string, or None if unavailable or unreadable.
     """
+    target_path: Path | str | None = model.path
+    if target_path and project_root is not None:
+        p = Path(target_path)
+        if not p.is_absolute():
+            target_path = Path(project_root) / p
+
     if prefer_file:
-        disk_sql = read_file_safe(model.path)
+        disk_sql = read_file_safe(target_path)
         if disk_sql is not None:
             return disk_sql
         return model.query
 
     if model.query is not None:
         return model.query
-    return read_file_safe(model.path)
+    return read_file_safe(target_path)
 
 
 @dataclass
@@ -72,13 +85,23 @@ class ModelRepresentation:
     meta: dict[str, Any] = field(default_factory=dict)
     provider: str | None = None
 
-    def get_sql(self, *, prefer_file: bool = False) -> str | None:
+    def get_sql(
+        self,
+        *,
+        prefer_file: bool = False,
+        project_root: str | Path | None = None,
+    ) -> str | None:
         """Return SQL content for this model safely, either from disk or from the query attribute."""
-        return read_model_sql(self, prefer_file=prefer_file)
+        return read_model_sql(self, prefer_file=prefer_file, project_root=project_root)
 
-    def read_sql(self, *, prefer_file: bool = False) -> str | None:
+    def read_sql(
+        self,
+        *,
+        prefer_file: bool = False,
+        project_root: str | Path | None = None,
+    ) -> str | None:
         """Alias for get_sql."""
-        return self.get_sql(prefer_file=prefer_file)
+        return self.get_sql(prefer_file=prefer_file, project_root=project_root)
 
     @property
     def ast(self) -> sqlglot.expressions.Expression | None:

@@ -185,3 +185,57 @@ def test_model_representation_ast_from_file(tmp_path: Path) -> None:
         query=None,
     )
     assert model.ast is not None
+
+
+def test_read_model_sql_with_project_root_relative_path(tmp_path: Path) -> None:
+    models_dir = tmp_path / "models" / "staging"
+    models_dir.mkdir(parents=True, exist_ok=True)
+    sql_file = models_dir / "stg_users.sql"
+    sql_file.write_text("SELECT id FROM raw_users;", encoding="utf-8")
+
+    model = ModelRepresentation(
+        name="stg_users",
+        path="models/staging/stg_users.sql",
+        dialect="duckdb",
+        query=None,
+    )
+
+    # project_root as Path
+    assert read_model_sql(model, project_root=tmp_path) == "SELECT id FROM raw_users;"
+    assert model.get_sql(project_root=tmp_path) == "SELECT id FROM raw_users;"
+    assert model.read_sql(project_root=tmp_path) == "SELECT id FROM raw_users;"
+
+    # project_root as str
+    assert read_model_sql(model, project_root=str(tmp_path)) == "SELECT id FROM raw_users;"
+
+    # prefer_file=True with project_root
+    assert read_model_sql(model, prefer_file=True, project_root=tmp_path) == "SELECT id FROM raw_users;"
+    assert model.get_sql(prefer_file=True, project_root=tmp_path) == "SELECT id FROM raw_users;"
+    assert model.read_sql(prefer_file=True, project_root=tmp_path) == "SELECT id FROM raw_users;"
+
+
+def test_read_model_sql_with_project_root_absolute_path(tmp_path: Path) -> None:
+    f = tmp_path / "model.sql"
+    f.write_text("SELECT 'absolute';", encoding="utf-8")
+
+    model = ModelRepresentation(
+        name="my_model",
+        path=str(f),
+        dialect="duckdb",
+        query=None,
+    )
+    # When model.path is absolute, project_root is not prepended
+    dummy_root = tmp_path / "nonexistent_dir"
+    assert read_model_sql(model, project_root=dummy_root) == "SELECT 'absolute';"
+    assert model.get_sql(project_root=dummy_root) == "SELECT 'absolute';"
+
+
+def test_read_model_sql_with_project_root_empty_path(tmp_path: Path) -> None:
+    model = ModelRepresentation(
+        name="empty_path_model",
+        path="",
+        dialect="duckdb",
+        query=None,
+    )
+    assert read_model_sql(model, project_root=tmp_path) is None
+    assert model.get_sql(project_root=tmp_path) is None

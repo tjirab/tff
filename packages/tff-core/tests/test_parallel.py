@@ -6,7 +6,7 @@ import pytest
 import sqlglot.expressions as exp
 
 from tff.core.config import FitnessFunctionsConfig
-from tff.core.model import ModelRepresentation, read_file_safe
+from tff.core.model import ModelRepresentation, read_model_sql
 from tff.core.parallel import (
     _clean_sql_for_model,
     batch_parse_ast_in_parallel,
@@ -350,18 +350,18 @@ def test_precompute_model_asts_directory_and_invalid_path(tmp_path: Path):
     assert m_invalid.expression is None
 
 
-def test_precompute_model_asts_invokes_read_file_safe(tmp_path: Path):
+def test_precompute_model_asts_invokes_read_model_sql(tmp_path: Path):
     f = tmp_path / "model.sql"
     f.write_text("SELECT 42", encoding="utf-8")
     m = ModelRepresentation(
         name="m",
-        path=str(f),
+        path="model.sql",
         dialect="duckdb",
         query=None,
     )
 
-    with patch("tff.core.parallel.read_file_safe", wraps=read_file_safe) as mock_read:
+    with patch("tff.core.parallel.read_model_sql", wraps=read_model_sql) as mock_read:
         precompute_model_asts({"m": m}, project_root=tmp_path, max_workers=1)
-        mock_read.assert_called_once_with(f)
+        mock_read.assert_called_once_with(m, project_root=tmp_path)
     assert m.expression is not None
 
