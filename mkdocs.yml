@@ -1,5 +1,5 @@
 site_name: tff
-site_description: Configurable fitness functions engine and linter for transformation projects (SQLMesh, dbt, Dataform).
+site_description: Architectural boundaries and DAG governance for dbt, SQLMesh, and Dataform. Catch illegal upstream joins, layer violations, and duplicate transformation logic in CI.
 site_url: https://tff.readthedocs.io/
 repo_url: https://github.com/tjirab/tff
 repo_name: tjirab/tff

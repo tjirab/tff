@@ -5,31 +5,57 @@
   </picture>
 </p>
 
-# tff: Transformation Fitness Functions
+# tff
+
+### Architectural boundaries and DAG governance for dbt, SQLMesh, and Dataform.
+**Catch illegal upstream joins, layer violations, and duplicate transformation logic in CI.**
 
 [![PyPI version](https://img.shields.io/pypi/v/tff-core.svg?logo=pypi)](https://pypi.org/project/tff-core/)
 [![Python versions](https://img.shields.io/pypi/pyversions/tff-core.svg?logo=python)](https://pypi.org/project/tff-core/)
 [![Documentation Status](https://readthedocs.org/projects/tff/badge/?version=latest)](https://tff.readthedocs.io/en/latest/?badge=latest)
 
-Configurable fitness functions engine and linter for transformation projects. 
-
-tff allows you to enforce architectural layout boundaries, layer structure policies, schema contracts, and code formatting rules across data pipelines. It ships with dedicated plugins for **SQLMesh**, **dbt**, and **Google Cloud Dataform**, supports custom adapters and proprietary rules via entry points and plugins, and outputs clean, color-coded lint reports to the terminal.
+SQL linters check syntax and indentation in individual files, but they don't know your DAG. **tff** enforces architectural layout boundaries, layer structure policies, schema contracts, and logic deduplication across entire transformation projects.
 
 <p align="center">
-  <img width="850" alt="tff demo" src="docs/assets/demo.gif" />
+  <img width="850" alt="tff catching layer violations and duplicate CTEs" src="docs/assets/demo-sqlmesh.gif" />
 </p>
+
+```text
+$ tff check
+
+╭──────────────────────────────── LINT FAILED ─────────────────────────────────╮
+│  5 models checked  ·  3 errors  ·  4 warnings                                │
+╰──────────────────────────────────────────────────────────────────────────────╯
+
+Issues by Model
+● marts/marketing/marketing_all_users.sql
+  ✘ marts/marketing depends on sqlmesh_example.finance_stats (marts/finance)
+    → Illegal cross-layer dependency! (layer_integrity)
+  ⚠ CTE 'marketing_cleaned_users' duplicates transformation logic with 3 other models.
+    → Connascence of Algorithm: extract into a shared model or macro. (duplicate_ctes)
+
+● marts/finance/finance_stats.sql
+  ⚠ CTE 'cleaned_users' duplicates transformation logic with 3 other models.
+    → Connascence of Algorithm. (duplicate_ctes)
+
+● core/users.sql
+  ✘ SELECT * is prohibited. Explicitly name your columns to reduce coupling. (ban_select_star)
+  ✘ Model owner should always be specified. (nomissingowner)
+
+Lint failed — fix errors above before merging.
+```
 
 <details>
 <summary>More demos & screenshots</summary>
 
-#### tff check (SQLMesh: duplicate CTEs & layer integrity)
-<p align="center">
-  <img width="850" alt="tff sqlmesh demo" src="docs/assets/demo-sqlmesh.gif" />
-</p>
-
 #### tff health (project health score & breakdown)
 <p align="center">
   <img width="850" alt="tff health demo" src="docs/assets/demo-health.gif" />
+</p>
+
+#### tff check (dbt project demo)
+<p align="center">
+  <img width="850" alt="tff demo" src="docs/assets/demo.gif" />
 </p>
 
 #### tff info
@@ -39,6 +65,31 @@ tff allows you to enforce architectural layout boundaries, layer structure polic
 <img width="1600" height="292" alt="20260630_cte-fingerprinting" src="https://github.com/user-attachments/assets/403976e8-e88b-48cc-a632-2273902fcea2" />
 
 </details>
+
+---
+
+## ⚡ 30-Second Evaluation (Zero Config)
+
+Evaluate `tff` inside your existing dbt, SQLMesh, or Dataform repository in seconds. **No configuration file required**—`tff` automatically infers standard layer conventions (`staging` → `intermediate` → `core` → `marts`) and audits your DAG immediately:
+
+```bash
+# 1. Install tff with your pipeline adapter
+pip install "tff-core[dbt]"        # for dbt (or: uv add "tff-core[dbt]")
+# pip install "tff-core[sqlmesh]"  # for SQLMesh
+# pip install "tff-core[dataform]" # for Dataform
+
+# 2. Catch layer violations, duplicate CTEs, and circular dependencies
+tff check
+
+# 3. Calculate your repository architecture health score (0–100)
+tff health
+```
+
+> 💡 **What `tff check` catches immediately out of the box:**
+> - **Cross-layer violations**: A mart model querying raw staging or source tables directly, bypassing intermediate layers.
+> - **Domain boundary violations**: Models referencing sibling marts without explicit contracts.
+> - **Duplicate transformation logic**: Copy-pasted CTE algorithms across disparate models (Connascence of Algorithm).
+> - **Circular dependencies & DAG smells**: Overly deep view nesting, missing audit constraints, and `SELECT *` anti-patterns.
 
 ---
 
