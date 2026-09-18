@@ -96,7 +96,7 @@ When using SQLMesh's native linter (`sqlmesh lint`), rules are enabled under `li
 tff lint [--project PATH] [--config PATH] [--provider PROVIDER] [--checks CHECK,...] [--fail-level error|warning] [--group-by connascence|model]
 ```
 
-* **`--project`** / **`-p`**: Path to your project root (default: current directory). Can be specified multiple times for multi-repo SQLMesh environments (e.g. `tff lint -p /path/to/dal -p /path/to/sep`).
+* **`--project`** / **`-p`**: Path to your project root (default: current directory). Can be specified multiple times for multi-repo SQLMesh environments (e.g. `tff lint -p path/to/project_a -p path/to/project_b`).
 * **`--config`**: Path to `fitness_functions.yaml` (default: `fitness_functions.yaml`).
 * **`--provider`**: The pipeline engine provider: `auto`, `dbt`, `sqlmesh`, or `dataform` (default: `auto`).
 * **`--checks`**: Comma-separated list of checks (e.g., `layer_integrity,custom_exclusions`).
