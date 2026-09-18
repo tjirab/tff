@@ -869,10 +869,12 @@ def test_load_models_from_sources_unreadable_and_odd_grains(tmp_path: Path):
 
 
 def test_load_dataform_models_manifest_exception(tmp_path: Path):
+    from tff.core.exceptions import TffManifestError
+
     bad_manifest = tmp_path / "corrupt.json"
     bad_manifest.write_text("invalid json", encoding="utf-8")
 
-    with pytest.raises(json.JSONDecodeError):
+    with pytest.raises((json.JSONDecodeError, TffManifestError)):
         load_dataform_models(tmp_path, manifest_path=bad_manifest)
 
 

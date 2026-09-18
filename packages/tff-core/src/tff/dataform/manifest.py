@@ -61,15 +61,35 @@ def _find_manifest_file(project_root: Path, manifest_path: Path | str | None = N
         p = Path(manifest_path)
         if not p.is_absolute():
             p = project_root / p
+        if p.is_dir():
+            import errno
+            from tff.core.exceptions import normalize_os_error
+
+            raise normalize_os_error(
+                IsADirectoryError(errno.EISDIR, "Is a directory", str(p)),
+                path=p,
+                operation="read",
+                expected_type="Dataform manifest file",
+                provider="dataform",
+                hint=f"Expected '{p}' to be a JSON file, but found a directory.",
+            )
         if p.is_file():
             return p
-        raise FileNotFoundError(f"Specified Dataform manifest not found at: {p}")
+        from tff.core.exceptions import TffManifestNotFoundError
+
+        raise TffManifestNotFoundError(
+            f"Specified Dataform manifest not found at: '{p}'",
+            provider="dataform",
+            path=p,
+            hint="Verify that the manifest file exists and the path is correctly specified.",
+        )
 
     for candidate in CANDIDATE_MANIFEST_FILES:
         candidate_path = project_root / candidate
         if candidate_path.is_file():
             return candidate_path
     return None
+
 
 
 def _compile_via_cli(project_root: Path) -> dict[str, Any] | None:
@@ -602,7 +622,25 @@ def load_dataform_models(
             return models
         except Exception as e:
             if manifest_path:
-                raise e
+                from tff.core.exceptions import TffError, TffManifestError, normalize_os_error
+
+                if isinstance(e, TffError):
+                    raise e
+                if isinstance(e, OSError):
+                    raise normalize_os_error(
+                        e,
+                        path=manifest_file,
+                        operation="read",
+                        expected_type="Dataform manifest file",
+                        provider="dataform",
+                    ) from e
+                raise TffManifestError(
+                    f"Failed to parse Dataform manifest '{manifest_file}': {e}",
+                    provider="dataform",
+                    path=manifest_file,
+                    hint="Ensure the manifest contains valid JSON and Dataform compilation results.",
+                    original_error=e,
+                ) from e
             logger.warning("Failed to parse manifest file %s: %s", manifest_file, e)
 
     # Tier 2: Check for local CLI compilation

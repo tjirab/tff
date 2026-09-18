@@ -25,12 +25,51 @@ def load_dbt_models(
     manifest_path = project_root / target_dir / "manifest.json"
     logger.debug("Loading dbt manifest from %s", manifest_path)
     if not manifest_path.exists():
-        raise FileNotFoundError(
-            f"dbt manifest not found at {manifest_path}. Please run 'dbt compile' first."
+        from tff.core.exceptions import TffManifestNotFoundError
+
+        raise TffManifestNotFoundError(
+            f"dbt manifest not found at '{manifest_path}'. Please run 'dbt compile' first.",
+            provider="dbt",
+            path=manifest_path,
+            hint="Run 'dbt compile' to generate target/manifest.json before running tff.",
         )
 
-    with open(manifest_path, encoding="utf-8") as f:
-        manifest = json.load(f)
+    if manifest_path.is_dir():
+        import errno
+        from tff.core.exceptions import normalize_os_error
+
+        raise normalize_os_error(
+            IsADirectoryError(errno.EISDIR, "Is a directory", str(manifest_path)),
+            path=manifest_path,
+            operation="read",
+            expected_type="dbt manifest file",
+            provider="dbt",
+            hint=f"Expected '{manifest_path}' to be a JSON file, but found a directory.",
+        )
+
+    try:
+        with open(manifest_path, encoding="utf-8") as f:
+            manifest = json.load(f)
+    except OSError as exc:
+        from tff.core.exceptions import normalize_os_error
+
+        raise normalize_os_error(
+            exc,
+            path=manifest_path,
+            operation="read",
+            expected_type="dbt manifest file",
+            provider="dbt",
+        ) from exc
+    except Exception as exc:
+        from tff.core.exceptions import TffManifestError
+
+        raise TffManifestError(
+            f"Failed to parse dbt manifest at '{manifest_path}': {exc}",
+            provider="dbt",
+            path=manifest_path,
+            hint="Ensure target/manifest.json contains valid JSON by re-running 'dbt compile'.",
+            original_error=exc,
+        ) from exc
 
     # Auto-infer dialect from dbt adapter type if not explicitly provided
     adapter_type = manifest.get("metadata", {}).get("adapter_type")

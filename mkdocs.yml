@@ -72,6 +72,7 @@ nav:
       - Rules & Checks: rules_and_checks.md
   - API Reference:
       - Adapters: api/adapters.md
+      - Exceptions: api/exceptions.md
       - Rules & Checks: api/rules.md
   - Guides:
       - Custom Rules & Adapters: extending_tff.md

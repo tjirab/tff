@@ -598,9 +598,46 @@ def load_fitness_config(
                 yaml_path = primary_root / yaml_path
         if yaml_path.exists():
             config_found = True
-            loaded = yaml.safe_load(yaml_path.read_text(encoding="utf-8")) or {}
+            if yaml_path.is_dir():
+                import errno
+                from tff.core.exceptions import normalize_os_error
+
+                raise normalize_os_error(
+                    IsADirectoryError(errno.EISDIR, "Is a directory", str(yaml_path)),
+                    path=yaml_path,
+                    operation="read",
+                    expected_type="configuration file",
+                    hint="Expected fitness_functions.yaml to be a file, but encountered a directory.",
+                )
+            try:
+                content = yaml_path.read_text(encoding="utf-8")
+                loaded = yaml.safe_load(content) or {}
+            except yaml.YAMLError as exc:
+                from tff.core.exceptions import TffConfigError
+
+                raise TffConfigError(
+                    f"Failed to parse YAML configuration at '{yaml_path}': {exc}",
+                    path=yaml_path,
+                    hint="Check YAML syntax and formatting in your configuration file.",
+                    original_error=exc,
+                ) from exc
+            except OSError as exc:
+                from tff.core.exceptions import normalize_os_error
+
+                raise normalize_os_error(
+                    exc,
+                    path=yaml_path,
+                    operation="read",
+                    expected_type="configuration file",
+                ) from exc
             if not isinstance(loaded, dict):
-                raise ValueError(f"Expected mapping in {yaml_path}")
+                from tff.core.exceptions import TffConfigError
+
+                raise TffConfigError(
+                    f"Expected mapping in {yaml_path}",
+                    path=yaml_path,
+                    hint="The root of the configuration file must be a key-value mapping.",
+                )
             data = loaded
 
     if overrides:
@@ -640,7 +677,13 @@ def _ensure_under_root(path: Path, root: Path) -> Path:
     try:
         resolved.relative_to(root_resolved)
     except ValueError:
-        raise ValueError(f"Path {path} resolves outside project root {root}") from None
+        from tff.core.exceptions import TffConfigError
+
+        raise TffConfigError(
+            f"Path {path} resolves outside project root {root}",
+            path=path,
+            hint=f"Ensure path stays within project root '{root}'.",
+        ) from None
     return resolved
 
 
