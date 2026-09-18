@@ -25,7 +25,7 @@ The CLI provides the following subcommands:
 
 * **Zero-Config Fallback**: If no `fitness_functions.yaml` is present, tff automatically infers standard architectural layer conventions (`staging` &rarr; `intermediate` &rarr; `core` &rarr; `marts`) and runs all baseline rules.
 * **Auto-Discovery**: tff automatically detects the project engine (`dbt`, `SQLMesh`, or `Dataform`) by scanning configuration files in the target directory.
-* **Parallel Execution**: AST parsing, duplicate CTE fingerprinting, and model rule checks execute across a worker pool in parallel (`--workers`, `TFF_WORKERS`, or `workers:` in config).
+* **Parallel Execution**: AST parsing, duplicate CTE fingerprinting, and model rule checks execute across a worker pool in parallel (`--workers`, `TFF_WORKERS`, or `workers:` in config). Worker tasks are dynamically batched to minimize `ThreadPoolExecutor` scheduling overhead (configurable via `TFF_CHUNK_SIZE`).
 * **Persistent AST Caching**: Precomputed ASTs are persistently cached under `.tff_cache/ast` keyed by SQLGlot version, SQL dialect, and SQL SHA-256 hash for sub-second repeat runs. Disable with `--no-cache` or clear with `--clear-cache`.
 * **Local Run Logging**: Executions of `tff lint` and `tff health` automatically save run metrics to `.tff_logs/` in JSON format (retained for 60 days). Disable anytime with `--no-log` or `export TFF_NO_LOG=1`.
 * **Debug Logging**: Inspect internal operations and troubleshoot pipeline detection, AST caching, and check execution by passing `--debug` (e.g. `tff --debug lint` or `tff lint --debug`) or setting `export TFF_DEBUG=1`.
@@ -62,7 +62,7 @@ tff lint [options]
 | `--json` | Flag | `false` | Shorthand for `--format json`. |
 | `--github-annotations` | Flag | (auto if CI) | Emit GitHub Actions workflow commands (`::error` / `::warning`) to stderr. |
 | `--junit-xml PATH` | File Path | (none) | Write JUnit XML test report for CI results tabs (GitLab, Azure DevOps, Bitbucket). |
-| `--workers NUM` | Integer | (auto / CPU count) | Number of worker processes for parallel model loading, AST parsing, and CTE analysis (or set `TFF_WORKERS`). |
+| `--workers NUM` | Integer | (auto / CPU count) | Number of worker processes for parallel model loading, AST parsing, and CTE analysis (or set `TFF_WORKERS`). Task chunk size for rule evaluation can be tuned via `TFF_CHUNK_SIZE`. |
 | `--no-cache` | Flag | `false` | Disable disk-based AST caching in `.tff_cache/`. |
 | `--clear-cache` | Flag | `false` | Clear the persistent `.tff_cache/` directory before running. |
 | `--no-log` | Flag | `false` | Disable writing execution logs to `.tff_logs/lint/`. |
@@ -330,3 +330,39 @@ All error diagnostics, warnings, and progress indicators are routed exclusively 
 ### Debug Mode & Unexpected Errors
 * **Normal Mode**: Unexpected runtime crashes display a polite summary with a link to the issue tracker and instructions on enabling debug mode.
 * **Debug Mode**: Passing `--debug` (e.g. `tff --debug lint` or `tff lint --debug`) or setting `export TFF_DEBUG=1` reveals full Rich-formatted stack traces for in-depth troubleshooting.
+
+---
+
+## 13. Environment Variables
+
+tff supports environment variables for configuring runtime concurrency, batch chunk sizes, AST caching, logging, and debugging across local and CI environments:
+
+| Environment Variable | Type | Default | Description |
+| :--- | :--- | :--- | :--- |
+| `TFF_WORKERS` / `TFF_MAX_WORKERS` | Integer | (auto / CPU count) | Number of worker processes / threads for parallel model loading, AST parsing, and rule evaluation. |
+| `TFF_CHUNK_SIZE` | Integer | (dynamic formula) | Task chunk size for batching models in parallel rule execution across `ThreadPoolExecutor`. |
+| `TFF_NO_CACHE` / `TFF_DISABLE_CACHE` | Boolean (`1`, `true`) | `false` | Disables disk-based AST caching in `.tff_cache/`. |
+| `TFF_CACHE_DIR` | Directory Path | `.tff_cache` | Custom directory path for AST cache files. |
+| `TFF_NO_LOG` | Boolean (`1`, `true`) | `false` | Disables saving execution run logs to `.tff_logs/`. |
+| `TFF_DEBUG` | Boolean (`1`, `true`) | `false` | Enables verbose debug logging and full stack traces. |
+
+### Parallel Rule Batching (`TFF_CHUNK_SIZE`)
+
+When evaluating model-level rules across large repositories (>1,000 models), creating individual tasks per model can introduce thread pool scheduling and synchronization overhead. `tff` batches eligible models into task chunks for concurrent execution across worker threads:
+
+* **Dynamic Default Formula**:
+  When `TFF_CHUNK_SIZE` is unset or invalid, the chunk size is calculated dynamically:
+  ```python
+  max(1, min(100, len(eligible_models) // (pool_size * 4)))
+  ```
+  This divides eligible models into approximately 4 task batches per worker thread to ensure even thread load balancing, bounded between a minimum of 1 and a maximum of 100 models per batch.
+
+* **Tuning in CI or Local Environments**:
+  You can configure `TFF_CHUNK_SIZE` in CI or local environments to tune throughput:
+  ```bash
+  # Tune batch size for high-volume repositories (>1,000 models)
+  export TFF_CHUNK_SIZE=50
+  tff lint
+  ```
+  To evaluate models individually without batching, set `TFF_CHUNK_SIZE=1`.
+

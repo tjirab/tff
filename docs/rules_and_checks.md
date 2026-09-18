@@ -24,7 +24,7 @@ For enterprise DAGs consisting of hundreds or thousands of transformation models
 * **Parallel Model Loading & Parsing**: AST parsing is dispatched across a pool of worker processes (`ProcessPoolExecutor`) during model loading.
 * **Parallel Duplicate CTE Fingerprinting**: CTE extraction, AST normalization, and cryptographic hashing run concurrently across models.
 * **Persistent AST Caching**: Precomputed ASTs are cached in `.tff_cache/ast` keyed by SQLGlot version, target dialect, and model SQL SHA-256 hash. Repeat evaluations achieve sub-second execution speeds.
-* **Threaded Rule Execution**: Model-level rules and check definitions run concurrently via thread pools (`run_parallel_model_rule`).
+* **Threaded Rule Execution**: Model-level rules and check definitions run concurrently via thread pools (`run_parallel_model_rule`). Models are dynamically batched to minimize worker thread scheduling overhead.
 
 ### Configuration in `fitness_functions.yaml`
 
@@ -36,6 +36,26 @@ cache_dir: ".tff_cache" # Optional: persistent cache directory (default: ".tff_c
 ```
 
 You can also override these on the CLI via `--workers <N>`, `--no-cache`, and `--clear-cache`, or via the `TFF_WORKERS` environment variable.
+
+### Task Batch Tuning (`TFF_CHUNK_SIZE`)
+
+When evaluating model-level rules across large repositories (>1,000 models), creating individual tasks per model can introduce thread pool scheduling and synchronization overhead. `tff` automatically groups eligible models into task batches:
+
+* **Dynamic Default Formula**:
+  When `TFF_CHUNK_SIZE` is unset, the batch chunk size is calculated dynamically:
+  ```python
+  max(1, min(100, len(eligible_models) // (pool_size * 4)))
+  ```
+  This creates approximately 4 batches per worker thread to ensure even thread load balancing, bounded between a minimum of 1 and a maximum of 100 models per batch.
+
+* **Environment Variable Override**:
+  You can set `TFF_CHUNK_SIZE` in CI or local environments to tune batch sizes for your workload:
+  ```bash
+  # Tune batch size for high-volume repositories in CI or local runs
+  export TFF_CHUNK_SIZE=50
+  tff lint
+  ```
+  Setting `TFF_CHUNK_SIZE=1` reverts to single-model execution per task.
 
 ---
 
