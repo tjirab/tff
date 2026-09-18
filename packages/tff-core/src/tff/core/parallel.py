@@ -239,30 +239,57 @@ def _create_rule_execution_error_finding(
     )
 
 
+def _check_models_batch(
+    args: tuple[type[Rule], Any, list[ModelRepresentation], Severity, str],
+) -> list[LintFinding]:
+    rule_cls, config, model_batch, severity, finding_check = args
+    rule_name = finding_check or getattr(rule_cls, "name", rule_cls.__name__.lower())
+    try:
+        rule = rule_cls(config=config)
+    except Exception as exc:
+        logger.warning(
+            "Rule '%s' failed to instantiate: %s",
+            rule_name,
+            exc,
+            exc_info=True,
+        )
+        return [
+            _create_rule_execution_error_finding(m, rule_name, exc)
+            for m in model_batch
+        ]
+
+    findings: list[LintFinding] = []
+    for model in model_batch:
+        try:
+            violation = rule.check_model(model)
+            findings.extend(
+                _extract_model_findings(
+                    rule_cls=rule_cls,
+                    model=model,
+                    violation=violation,
+                    severity=severity,
+                    finding_check=finding_check,
+                )
+            )
+        except Exception as exc:
+            logger.warning(
+                "Rule '%s' failed while evaluating model '%s': %s",
+                rule_name,
+                model.name,
+                exc,
+                exc_info=True,
+            )
+            findings.append(
+                _create_rule_execution_error_finding(model, rule_name, exc)
+            )
+    return findings
+
+
 def _check_single_model(
     args: tuple[type[Rule], Any, ModelRepresentation, Severity, str],
 ) -> list[LintFinding]:
     rule_cls, config, model, severity, finding_check = args
-    rule_name = finding_check or getattr(rule_cls, "name", rule_cls.__name__.lower())
-    try:
-        rule = rule_cls(config=config)
-        violation = rule.check_model(model)
-        return _extract_model_findings(
-            rule_cls=rule_cls,
-            model=model,
-            violation=violation,
-            severity=severity,
-            finding_check=finding_check,
-        )
-    except Exception as exc:
-        logger.warning(
-            "Rule '%s' failed while evaluating model '%s': %s",
-            rule_name,
-            model.name,
-            exc,
-            exc_info=True,
-        )
-        return [_create_rule_execution_error_finding(model, rule_name, exc)]
+    return _check_models_batch((rule_cls, config, [model], severity, finding_check))
 
 
 def run_parallel_model_rule(
@@ -272,6 +299,7 @@ def run_parallel_model_rule(
     check_name: str | None = None,
     config: FitnessFunctionsConfig | None = None,
     max_workers: int | None = None,
+    chunk_size: int | None = None,
 ) -> list[LintFinding]:
     """Execute a single model rule across models, parallelizing across threads if beneficial."""
     finding_check = check_name or getattr(rule_cls, "name", rule_cls.__name__.lower())
@@ -324,10 +352,28 @@ def run_parallel_model_rule(
 
     # Parallelize model rule execution using thread pool
     pool_size = min(workers, len(eligible_models))
-    tasks = [(rule_cls, config, m, severity, finding_check) for m in eligible_models]
+    if chunk_size is None or chunk_size <= 0:
+        env_chunk = os.environ.get("TFF_CHUNK_SIZE")
+        if env_chunk:
+            try:
+                chunk_size = max(1, int(env_chunk.strip()))
+            except ValueError:
+                chunk_size = None
+
+    if chunk_size is None or chunk_size <= 0:
+        chunk_size = max(1, min(100, len(eligible_models) // (pool_size * 4)))
+
+    batches = [
+        eligible_models[i : i + chunk_size]
+        for i in range(0, len(eligible_models), chunk_size)
+    ]
+    tasks = [
+        (rule_cls, config, batch, severity, finding_check)
+        for batch in batches
+    ]
     all_findings: list[LintFinding] = []
     with ThreadPoolExecutor(max_workers=pool_size) as executor:
-        for res in executor.map(_check_single_model, tasks):
+        for res in executor.map(_check_models_batch, tasks):
             all_findings.extend(res)
 
     return all_findings

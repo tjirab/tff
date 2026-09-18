@@ -365,3 +365,118 @@ def test_precompute_model_asts_invokes_read_model_sql(tmp_path: Path):
         mock_read.assert_called_once_with(m, project_root=tmp_path)
     assert m.expression is not None
 
+
+def test_run_parallel_model_rule_explicit_chunk_size():
+    models = [
+        ModelRepresentation(
+            name=f"foo_{i}" if i % 3 == 0 else f"bar_{i}",
+            path=f"models/{i}.sql",
+            dialect="duckdb",
+        )
+        for i in range(30)
+    ]
+
+    findings = run_parallel_model_rule(
+        rule_cls=DummyBanFooRule,
+        models=models,
+        severity="error",
+        check_name="dummy_ban_foo",
+        max_workers=3,
+        chunk_size=5,
+    )
+    # 0, 3, 6, 9, 12, 15, 18, 21, 24, 27 = 10 foo models
+    assert len(findings) == 10
+    assert all(f.check == "dummy_ban_foo" for f in findings)
+
+
+def test_run_parallel_model_rule_env_var_chunk_size(monkeypatch: pytest.MonkeyPatch):
+    models = [
+        ModelRepresentation(
+            name=f"foo_{i}" if i % 2 == 0 else f"bar_{i}",
+            path=f"models/{i}.sql",
+            dialect="duckdb",
+        )
+        for i in range(25)
+    ]
+
+    # Valid TFF_CHUNK_SIZE
+    monkeypatch.setenv("TFF_CHUNK_SIZE", "7")
+    findings = run_parallel_model_rule(
+        rule_cls=DummyBanFooRule,
+        models=models,
+        severity="error",
+        check_name="dummy_ban_foo",
+        max_workers=2,
+    )
+    assert len(findings) == 13
+
+    # Invalid TFF_CHUNK_SIZE falls back to dynamic formula
+    monkeypatch.setenv("TFF_CHUNK_SIZE", "not_a_number")
+    findings_fallback = run_parallel_model_rule(
+        rule_cls=DummyBanFooRule,
+        models=models,
+        severity="error",
+        check_name="dummy_ban_foo",
+        max_workers=2,
+    )
+    assert len(findings_fallback) == 13
+
+
+def test_run_parallel_model_rule_large_model_volume():
+    """Verify high-volume model repository (>1000 models) chunking and correctness."""
+    total_models = 1200
+    models = [
+        ModelRepresentation(
+            name=f"foo_{i}" if i % 10 == 0 else f"bar_{i}",
+            path=f"models/{i}.sql",
+            dialect="duckdb",
+        )
+        for i in range(total_models)
+    ]
+
+    findings = run_parallel_model_rule(
+        rule_cls=DummyBanFooRule,
+        models=models,
+        severity="error",
+        check_name="dummy_ban_foo",
+        max_workers=4,
+    )
+    # Every 10th model (0, 10, 20, ..., 1190) = 120 foo models
+    assert len(findings) == 120
+    assert all(f.check == "dummy_ban_foo" for f in findings)
+
+
+def test_check_single_model_backwards_compatibility():
+    from tff.core.parallel import _check_single_model
+
+    model = ModelRepresentation(name="foo_compat", path="models/foo.sql", dialect="duckdb")
+    res = _check_single_model((DummyBanFooRule, None, model, "error", "dummy_ban_foo"))
+    assert len(res) == 1
+    assert res[0].model == "foo_compat"
+
+
+def test_check_models_batch_instantiation_failure():
+    from tff.core.parallel import _check_models_batch
+
+    class BrokenInit(Rule):
+        def __init__(self, config=None):
+            super().__init__(config=config)
+            raise RuntimeError("Init crashed")
+
+        def check_model(self, model):
+            return None
+
+    models = [
+        ModelRepresentation(name=f"m_{i}", path=f"models/{i}.sql", dialect="duckdb")
+        for i in range(3)
+    ]
+
+    findings = _check_models_batch((BrokenInit, None, models, "error", "broken_init"))
+    assert len(findings) == 3
+    for f in findings:
+        assert f.check == "rule_execution_error"
+        assert "Init crashed" in f.message
+    assert BrokenInit.check_model(None, None) is None
+
+
+
