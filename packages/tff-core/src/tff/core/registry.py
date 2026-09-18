@@ -376,9 +376,24 @@ class CheckRegistry:
         if workers <= 1 or len(resolved) <= 1:
             for check_def in resolved:
                 logger.debug("Executing check '%s' (scope=%s, category=%s)", check_def.id, check_def.scope, check_def.category)
-                res = check_def.run(models, config, max_workers=workers)
-                logger.debug("Check '%s' produced %d finding(s)", check_def.id, len(res))
-                findings.extend(res)
+                try:
+                    res = check_def.run(models, config, max_workers=workers)
+                    logger.debug("Check '%s' produced %d finding(s)", check_def.id, len(res))
+                    findings.extend(res)
+                except Exception as exc:
+                    logger.warning("Check '%s' failed to execute: %s", check_def.id, exc, exc_info=True)
+                    err_msg = getattr(exc, "message", None) or str(exc) or exc.__class__.__name__
+                    from tff.core.report import LintFinding
+
+                    findings.append(
+                        LintFinding(
+                            check="rule_execution_error",
+                            severity="error",
+                            model="project",
+                            path="project",
+                            message=f"Check '{check_def.id}' failed to execute: {err_msg}",
+                        )
+                    )
         else:
             from concurrent.futures import ThreadPoolExecutor
 
@@ -386,9 +401,24 @@ class CheckRegistry:
             with ThreadPoolExecutor(max_workers=pool_size) as executor:
                 def _run_single(c: CheckDefinition) -> list[LintFinding]:
                     logger.debug("Executing check '%s' (scope=%s, category=%s)", c.id, c.scope, c.category)
-                    res = c.run(models, config, max_workers=1)
-                    logger.debug("Check '%s' produced %d finding(s)", c.id, len(res))
-                    return res
+                    try:
+                        res = c.run(models, config, max_workers=1)
+                        logger.debug("Check '%s' produced %d finding(s)", c.id, len(res))
+                        return res
+                    except Exception as exc:
+                        logger.warning("Check '%s' failed to execute: %s", c.id, exc, exc_info=True)
+                        err_msg = getattr(exc, "message", None) or str(exc) or exc.__class__.__name__
+                        from tff.core.report import LintFinding
+
+                        return [
+                            LintFinding(
+                                check="rule_execution_error",
+                                severity="error",
+                                model="project",
+                                path="project",
+                                message=f"Check '{c.id}' failed to execute: {err_msg}",
+                            )
+                        ]
 
                 results = executor.map(_run_single, resolved)
                 for res in results:
@@ -404,7 +434,9 @@ class CheckRegistry:
         return findings, executed_names
 
     def get_check_labels(self) -> dict[str, str]:
-        labels: dict[str, str] = {}
+        labels: dict[str, str] = {
+            "rule_execution_error": "Rule execution error",
+        }
         for c in self.all_checks():
             labels[c.id] = c.label
             if c.finding_check_id:
@@ -414,7 +446,9 @@ class CheckRegistry:
         return labels
 
     def get_connascence_categories(self) -> dict[str, str]:
-        cats: dict[str, str] = {}
+        cats: dict[str, str] = {
+            "rule_execution_error": "Execution Errors",
+        }
         for c in self.all_checks():
             cats[c.id] = c.category
             if c.finding_check_id:
@@ -433,6 +467,7 @@ class CheckRegistry:
             "Connascence of Value (CoV)": [],
             "Dynamic Coupling & DAG Structure": [],
             "Quality & Metadata (Non-Connascence)": [],
+            "Execution Errors": ["rule_execution_error"],
         }
         for c in self.all_checks():
             key = c.finding_id

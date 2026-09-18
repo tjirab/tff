@@ -105,7 +105,12 @@ def precompute_model_asts(
         if model.is_external or model.is_symbolic:
             continue
 
-        sql = read_model_sql(model, project_root=project_root)
+        try:
+            sql = read_model_sql(model, project_root=project_root)
+        except Exception as exc:
+            logger.warning("Failed to read SQL for model '%s': %s", name, exc)
+            continue
+
         if not sql or not sql.strip():
             continue
 
@@ -215,19 +220,49 @@ def _extract_model_findings(
     return findings
 
 
+def _create_rule_execution_error_finding(
+    model: ModelRepresentation,
+    rule_name: str,
+    exc: Exception,
+) -> LintFinding:
+    from tff.core.report import LintFinding
+    from tff.core.utils.paths import model_path_relative
+
+    err_msg = getattr(exc, "message", None) or str(exc) or exc.__class__.__name__
+
+    return LintFinding(
+        check="rule_execution_error",
+        severity="error",
+        model=model.name,
+        path=model_path_relative(model),
+        message=f"Rule '{rule_name}' failed to evaluate: {err_msg}",
+    )
+
+
 def _check_single_model(
     args: tuple[type[Rule], Any, ModelRepresentation, Severity, str],
 ) -> list[LintFinding]:
     rule_cls, config, model, severity, finding_check = args
-    rule = rule_cls(config=config)
-    violation = rule.check_model(model)
-    return _extract_model_findings(
-        rule_cls=rule_cls,
-        model=model,
-        violation=violation,
-        severity=severity,
-        finding_check=finding_check,
-    )
+    rule_name = finding_check or getattr(rule_cls, "name", rule_cls.__name__.lower())
+    try:
+        rule = rule_cls(config=config)
+        violation = rule.check_model(model)
+        return _extract_model_findings(
+            rule_cls=rule_cls,
+            model=model,
+            violation=violation,
+            severity=severity,
+            finding_check=finding_check,
+        )
+    except Exception as exc:
+        logger.warning(
+            "Rule '%s' failed while evaluating model '%s': %s",
+            rule_name,
+            model.name,
+            exc,
+            exc_info=True,
+        )
+        return [_create_rule_execution_error_finding(model, rule_name, exc)]
 
 
 def run_parallel_model_rule(
@@ -247,19 +282,44 @@ def run_parallel_model_rule(
 
     workers = get_max_workers(config=config, override=max_workers)
     if workers <= 1 or len(eligible_models) <= 20:
-        rule = rule_cls(config=config)
         findings: list[LintFinding] = []
-        for model in eligible_models:
-            violation = rule.check_model(model)
-            findings.extend(
-                _extract_model_findings(
-                    rule_cls=rule_cls,
-                    model=model,
-                    violation=violation,
-                    severity=severity,
-                    finding_check=finding_check,
-                )
+        try:
+            rule = rule_cls(config=config)
+        except Exception as exc:
+            logger.warning(
+                "Rule '%s' failed to instantiate: %s",
+                finding_check,
+                exc,
+                exc_info=True,
             )
+            return [
+                _create_rule_execution_error_finding(m, finding_check, exc)
+                for m in eligible_models
+            ]
+
+        for model in eligible_models:
+            try:
+                violation = rule.check_model(model)
+                findings.extend(
+                    _extract_model_findings(
+                        rule_cls=rule_cls,
+                        model=model,
+                        violation=violation,
+                        severity=severity,
+                        finding_check=finding_check,
+                    )
+                )
+            except Exception as exc:
+                logger.warning(
+                    "Rule '%s' failed while evaluating model '%s': %s",
+                    finding_check,
+                    model.name,
+                    exc,
+                    exc_info=True,
+                )
+                findings.append(
+                    _create_rule_execution_error_finding(model, finding_check, exc)
+                )
         return findings
 
     # Parallelize model rule execution using thread pool

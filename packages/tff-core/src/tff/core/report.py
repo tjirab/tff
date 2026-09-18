@@ -76,6 +76,9 @@ def _summary_check_names(
         else:
             names.append(check)
 
+    if "rule_execution_error" in by_check:
+        names.append("rule_execution_error")
+
     return sorted(set(names), key=lambda name: CHECK_LABELS.get(name, name).lower())
 
 

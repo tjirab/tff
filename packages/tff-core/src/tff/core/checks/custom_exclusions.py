@@ -251,14 +251,32 @@ def collect_custom_exclusion_findings(
         if model.is_symbolic:
             continue
 
-        for message in checker.check_model(model):
+        try:
+            for message in checker.check_model(model):
+                findings.append(
+                    LintFinding(
+                        check="custom_exclusions",
+                        severity="error",
+                        model=str(model.name),
+                        path=model_path_relative(model),
+                        message=message.removeprefix(f"Model '{model.name}' ").strip(),
+                    )
+                )
+        except Exception as exc:
+            logger.warning(
+                "Rule 'custom_exclusions' failed while evaluating model '%s': %s",
+                model.name,
+                exc,
+                exc_info=True,
+            )
+            err_msg = getattr(exc, "message", None) or str(exc) or exc.__class__.__name__
             findings.append(
                 LintFinding(
-                    check="custom_exclusions",
+                    check="rule_execution_error",
                     severity="error",
                     model=str(model.name),
                     path=model_path_relative(model),
-                    message=message.removeprefix(f"Model '{model.name}' ").strip(),
+                    message=f"Rule 'custom_exclusions' failed to evaluate: {err_msg}",
                 )
             )
 
