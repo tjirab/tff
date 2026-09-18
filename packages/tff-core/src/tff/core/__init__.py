@@ -1,3 +1,4 @@
+from tff.core.cli import render_cli_error
 from tff.core.exceptions import (
     TffConfigError,
     TffError,
@@ -23,6 +24,7 @@ __all__ = [
     "normalize_os_error",
     "read_file_safe",
     "read_model_sql",
+    "render_cli_error",
     "translate_os_error",
 ]
 

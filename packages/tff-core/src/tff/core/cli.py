@@ -11,6 +11,9 @@ import sys
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Sequence
 
+from rich.console import Console
+from rich.markup import escape
+
 from tff.core.adapter import PipelineAdapter, detect_provider, get_adapter, normalize_project_roots
 from tff.core.config import (
     MISSING_CONFIG_NOTICE,
@@ -18,20 +21,102 @@ from tff.core.config import (
     load_fitness_config,
     resolve_project_path,
 )
+from tff.core.exceptions import TffError
 from tff.core.logs import is_debug_enabled, setup_cli_logging
 from tff.core.report import render_lint_report
-
-logger = logging.getLogger("tff.core.cli")
 
 if TYPE_CHECKING:
     from tff.core.config import FitnessFunctionsConfig
     from tff.core.model import ModelRepresentation
     from tff.core.report import LintFinding
 
+logger = logging.getLogger("tff.core.cli")
+
 try:
     __version__ = importlib.metadata.version("tff-core")
 except Exception:
     __version__ = "0.7.0"
+
+
+def render_cli_error(error: TffError | Exception, console: Console | None = None) -> None:
+    """Render a structured error diagnostic block to stderr using rich.
+
+    Formats user-facing errors cleanly into three parts:
+      1. What happened: "✖ Error: <message>"
+      2. Context metadata: "• Model:", "• Path:", "• Rule:", etc.
+      3. Remediation hint: "• Hint: <hint>"
+
+    Args:
+        error: The domain exception or error to render.
+        console: Optional Rich Console (defaults to Console(stderr=True)).
+    """
+    if console is None:
+        console = Console(stderr=True)
+
+    message = getattr(error, "message", None) or str(error)
+    if not message:
+        message = "An unknown error occurred."
+    console.print(f"[bold red]✖ Error:[/bold red] {escape(message)}")
+
+    details = getattr(error, "details", {})
+    if not isinstance(details, dict):
+        details = {}
+
+    bullets: list[tuple[str, Any]] = []
+
+    model = (
+        getattr(error, "model_name", None)
+        or details.get("model")
+        or details.get("model_name")
+    )
+    if model:
+        bullets.append(("Model", model))
+
+    path = getattr(error, "path", None) or details.get("path")
+    if path:
+        bullets.append(("Path", path))
+
+    rule = (
+        details.get("rule")
+        or details.get("rule_name")
+        or details.get("check")
+    )
+    if rule:
+        bullets.append(("Rule", rule))
+
+    provider = getattr(error, "provider", None) or details.get("provider")
+    if provider:
+        bullets.append(("Provider", provider))
+
+    operation = getattr(error, "operation", None) or details.get("operation")
+    if operation:
+        bullets.append(("Operation", operation))
+
+    ignored_keys = {
+        "model",
+        "model_name",
+        "path",
+        "rule",
+        "rule_name",
+        "check",
+        "provider",
+        "operation",
+        "errno",
+        "original_error",
+        "expected_type",
+    }
+    for k, v in details.items():
+        if k not in ignored_keys and v is not None:
+            label = k.replace("_", " ").title()
+            bullets.append((label, v))
+
+    for label, val in bullets:
+        console.print(f"  [dim]•[/dim] [bold]{label}:[/bold] {escape(str(val))}")
+
+    hint = getattr(error, "hint", None)
+    if hint:
+        console.print(f"  [dim]•[/dim] [bold cyan]Hint:[/bold cyan] {escape(hint)}")
+
 
 
 def _detect_provider(project_root: Path | Sequence[Path]) -> str:
@@ -1124,6 +1209,8 @@ def _main_impl(argv: list[str] | None = None) -> int:
             output_file = generate_docs_dashboard(**docs_kwargs)
             print(f"Successfully generated HTML dashboard at: {output_file}")
             return 0
+        except TffError:
+            raise
         except Exception as e:
             print(f"Error generating dashboard: {e}", file=sys.stderr)
             return 1
@@ -1140,6 +1227,8 @@ def _main_impl(argv: list[str] | None = None) -> int:
         except FileExistsError as e:
             print(f"Error: {e}", file=sys.stderr)
             return 1
+        except TffError:
+            raise
         except Exception as e:
             print(f"Error creating configuration file: {e}", file=sys.stderr)
             return 1
@@ -1182,6 +1271,8 @@ def _main_impl(argv: list[str] | None = None) -> int:
                 config_path=args.config,
             )
             logger.debug("Loaded config: %s", config)
+        except TffError:
+            raise
         except Exception as e:
             logger.debug("Failed to load config: %s", e)
             print(f"Error loading configuration: {e}", file=sys.stderr)
@@ -1245,6 +1336,8 @@ def _main_impl(argv: list[str] | None = None) -> int:
                 executed_checks,
                 len(findings),
             )
+        except TffError:
+            raise
         except Exception as e:
             logger.debug("Error executing checks: %s", e)
             print(f"Error executing checks: {e}", file=sys.stderr)
@@ -1284,6 +1377,8 @@ def _main_impl(argv: list[str] | None = None) -> int:
                             dialect=args.dialect,
                             manifest_path=manifest_path,
                         )
+                    except TffError:
+                        raise
                     except Exception as e:
                         print(
                             f"Error executing checks after autofix: {e}",
@@ -1427,15 +1522,41 @@ def _main_impl(argv: list[str] | None = None) -> int:
     return 1
 
 
+def _is_debug_requested(argv: list[str] | None = None) -> bool:
+    """Return True if --debug was passed in argv or TFF_DEBUG=1 is set."""
+    if is_debug_enabled():
+        return True
+    args_list = sys.argv[1:] if argv is None else argv
+    return "--debug" in args_list
+
+
 def main(argv: list[str] | None = None) -> int:
     orig_tff_no_cache = os.environ.get("TFF_NO_CACHE")
+    console = Console(stderr=True)
+    debug = _is_debug_requested(argv)
     try:
-        return _main_impl(argv)
+        try:
+            return _main_impl(argv)
+        except TffError as err:
+            render_cli_error(err, console=console)
+            return 1
+        except KeyboardInterrupt:
+            console.print("Aborted by user.")
+            return 130
+        except Exception as exc:
+            if debug:
+                console.print_exception()
+            else:
+                console.print(f"[bold red]✖ Unexpected Error:[/bold red] {escape(str(exc))}")
+                console.print("  [dim]•[/dim] Please report this issue at: https://github.com/tjirab/tff/issues")
+                console.print("  [dim]•[/dim] [bold cyan]Hint:[/bold cyan] Re-run with [bold]--debug[/bold] or set [bold]TFF_DEBUG=1[/bold] to display the full traceback.")
+            return 1
     finally:
         if orig_tff_no_cache is None:
             os.environ.pop("TFF_NO_CACHE", None)
         else:
             os.environ["TFF_NO_CACHE"] = orig_tff_no_cache
+
 
 
 if __name__ == "__main__":

@@ -31,8 +31,9 @@ The CLI provides the following subcommands:
 * **Debug Logging**: Inspect internal operations and troubleshoot pipeline detection, AST caching, and check execution by passing `--debug` (e.g. `tff --debug lint` or `tff lint --debug`) or setting `export TFF_DEBUG=1`.
 * **Exit Codes**:
   * `0`: Success (all checks passed, health score at or above threshold).
-  * `1`: Quality failure (violations found at or above fail-level, or health score below threshold).
+  * `1`: Quality failure (violations found at or above fail-level, or health score below threshold) or runtime error.
   * `2`: CLI usage or argument parsing error.
+  * `130`: Execution aborted by user (`Ctrl+C` / `SIGINT`).
 
 ---
 
@@ -310,3 +311,22 @@ tff supports multiple structured output formats for seamless CI/CD and tool inte
 | **SARIF v2.1.0** | `--format sarif` | GitHub Code Scanning | OASIS standard format for GitHub Security Alerts and PR file annotations. |
 | **GitHub Annotations**| `--format github` or `--github-annotations` | GitHub Actions Runners | Emits `::error` and `::warning` workflow commands to annotate changed lines in PRs. |
 | **JUnit XML** | `--junit-xml PATH` | GitLab CI, Azure DevOps, Bitbucket | Standard XML test report rendered natively in CI pipeline test tabs. |
+
+---
+
+## 12. Error Diagnostics & Stream Discipline
+
+tff provides human-readable diagnostic reporting to prevent raw stack traces during normal CLI usage while preserving stream integrity for automation:
+
+### Diagnostic Blocks
+When domain errors occur (e.g. invalid configuration syntax, missing manifest files, or model resolution errors), tff outputs a structured 3-part diagnostic block strictly to `stderr`:
+1. **Error Summary**: What went wrong (`✖ Error: ...`).
+2. **Context Metadata**: Bulleted contextual metadata such as `• Model:`, `• Path:`, `• Rule:`, and `• Provider:`.
+3. **Remediation Hint**: Actionable steps to resolve the issue (`• Hint: ...`).
+
+### Stream Discipline
+All error diagnostics, warnings, and progress indicators are routed exclusively to `stderr`. When using structured outputs (`--json` or `--format json`), `stdout` remains clean, valid JSON suitable for piping directly into `jq` or downstream tools.
+
+### Debug Mode & Unexpected Errors
+* **Normal Mode**: Unexpected runtime crashes display a polite summary with a link to the issue tracker and instructions on enabling debug mode.
+* **Debug Mode**: Passing `--debug` (e.g. `tff --debug lint` or `tff lint --debug`) or setting `export TFF_DEBUG=1` reveals full Rich-formatted stack traces for in-depth troubleshooting.
