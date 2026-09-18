@@ -68,9 +68,12 @@ class ClassificationMacros(Rule):
         sql = model.query
         if sql is None:
             path = Path(model.path)
-            if not path.exists():
+            if not path.is_file():
                 return None
-            sql = path.read_text(encoding="utf-8")
+            try:
+                sql = path.read_text(encoding="utf-8")
+            except Exception:
+                return None
         sql = strip_model_block(sql)
         violations = find_classification_violations(sql, rule_config.columns)
         if violations:
