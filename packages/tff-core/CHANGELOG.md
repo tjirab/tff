@@ -1,5 +1,24 @@
 # Changelog
 
+## [0.20.0](https://github.com/tjirab/tff/compare/tff-core-v0.19.0...tff-core-v0.20.0) (2026-09-18)
+
+
+### Features
+
+* **cli:** human-readable error diagnostics and top-level exception boundary ([#247](https://github.com/tjirab/tff/issues/247)) ([#251](https://github.com/tjirab/tff/issues/251)) ([b206206](https://github.com/tjirab/tff/commit/b206206b5259b7ba6c559f124b8753bd00a6e83b))
+* **core:** introduce structured exception hierarchy and OS error translator ([#246](https://github.com/tjirab/tff/issues/246)) ([#249](https://github.com/tjirab/tff/issues/249)) ([64c992c](https://github.com/tjirab/tff/commit/64c992c80098749e0277e0ea3dd4d91914842a0e))
+* **core:** isolate per-model rule execution errors with contextual diagnostics ([#248](https://github.com/tjirab/tff/issues/248)) ([#254](https://github.com/tjirab/tff/issues/254)) ([c423e09](https://github.com/tjirab/tff/commit/c423e09322b3dd5e85efedc85a5fed1bcc7e0999))
+
+
+### Bug Fixes
+
+* **dbt:** handle empty original_file_path and avoid EISDIR in environment_agnostic_references ([#236](https://github.com/tjirab/tff/issues/236)) ([0e94c31](https://github.com/tjirab/tff/commit/0e94c3176ff818ad53af1a3f06fc4b6c2791e54f))
+
+
+### Performance Improvements
+
+* **parallel:** optimize executor task chunking for large model repositories ([#256](https://github.com/tjirab/tff/issues/256)) ([#258](https://github.com/tjirab/tff/issues/258)) ([68b8b0d](https://github.com/tjirab/tff/commit/68b8b0d95e0ea2beff2c2b008b8ea6c38b48cf30))
+
 ## [0.19.0](https://github.com/tjirab/tff/compare/tff-core-v0.18.0...tff-core-v0.19.0) (2026-09-17)
 
 
