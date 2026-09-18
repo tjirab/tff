@@ -21,7 +21,7 @@ Configurable fitness functions engine and linter for transformation projects.
 * **Automated Linting & Autofix**: Check SQL dialects, column naming conventions, ban `SELECT *`, and auto-fix formatting issues.
 * **Health Scoring**: Calculate objective repository health metrics (0–100) and enforce CI quality gates with `--fail-under`.
 * **CI/CD Quality Gates**: Built-in GitHub Action runner diffing PR changes against base branches (`main`).
-* **Extensible Architecture**: Write custom rules and adapters via [Python API](api/rules.md).
+* **Extensible Architecture**: Write custom rules, architectural checks, and adapters via the [Extending tff Guide](extending_tff.md).
 
 ---
 
@@ -91,7 +91,8 @@ For full CLI options and flags, see the [CLI Reference](cli.md).
 * 💻 [CLI Reference Guide](cli.md)
 * 🔍 [Rules & Checks Reference](rules_and_checks.md)
 * 🤖 [CI/CD & GitHub Actions Guide](ci_cd.md)
+* 🧩 [Extending tff Guide (Custom Rules, Checks & Adapters)](extending_tff.md)
 * 📊 [Case Study: GitLab dbt Audit (2,200+ models)](case_study_gitlab.md)
 * 🔌 [API Reference - Adapters](api/adapters.md)
-* 📜 [API Reference - Rules](api/rules.md)
+* 📜 [API Reference - Rules & Checks](api/rules.md)
 * 🏗️ [Architecture & Contributor Guide](contributing.md)

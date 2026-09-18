@@ -72,8 +72,9 @@ nav:
       - Rules & Checks: rules_and_checks.md
   - API Reference:
       - Adapters: api/adapters.md
-      - Rules: api/rules.md
+      - Rules & Checks: api/rules.md
   - Guides:
+      - Custom Rules & Adapters: extending_tff.md
       - CI/CD Integration: ci_cd.md
       - GitLab Case Study: case_study_gitlab.md
   - Contributing: contributing.md

@@ -681,9 +681,12 @@ health:
 
 ---
 
-## 3. Custom Plugins & Extensions
+## 4. Custom Plugins & Extensions
 
-tff provides an extensible plugin architecture that enables teams to implement proprietary fitness rules and connect custom transformation engines or pipeline adapters without modifying `tff-core`.
+tff provides an extensible plugin architecture that enables teams to implement proprietary fitness rules, custom architectural DAG checks, and third-party pipeline adapters without modifying `tff-core`.
+
+> [!TIP]
+> For a complete, step-by-step authoring guide with AST traversal, DAG collector functions, and custom adapter scaffolding, see the dedicated [Extending tff Guide](extending_tff.md).
 
 ### Overview
 
