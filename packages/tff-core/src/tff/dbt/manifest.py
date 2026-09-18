@@ -113,8 +113,8 @@ def load_dbt_models(
 
         is_symbolic = materialized == "ephemeral"
 
-        rel_path = node.get("original_file_path", "")
-        abs_path = str(project_root / rel_path)
+        rel_path = (node.get("original_file_path") or "").strip()
+        abs_path = str(project_root / rel_path) if rel_path else ""
 
         audits = model_tests.get(unique_id, [])
         query = node.get("compiled_code") or node.get("raw_code")
@@ -142,8 +142,8 @@ def load_dbt_models(
     # 3. Map sources to ModelRepresentation so graph checks resolve them
     for source_id, source in manifest.get("sources", {}).items():
         name = source.get("name", "")
-        rel_path = source.get("original_file_path", "")
-        abs_path = str(project_root / rel_path)
+        rel_path = (source.get("original_file_path") or "").strip()
+        abs_path = str(project_root / rel_path) if rel_path else ""
 
         mapped_models[source_id] = ModelRepresentation(
             name=name,

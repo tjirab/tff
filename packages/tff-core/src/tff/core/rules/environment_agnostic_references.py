@@ -38,8 +38,11 @@ class EnvironmentAgnosticReferences(Rule):
         sql = None
         if model.path:
             path = Path(model.path)
-            if path.exists():
-                sql = path.read_text(encoding="utf-8")
+            if path.is_file():
+                try:
+                    sql = path.read_text(encoding="utf-8")
+                except Exception:
+                    sql = None
 
         if sql is None:
             sql = model.query

@@ -248,3 +248,60 @@ def test_environment_agnostic_references_edge_cases(tmp_path: Path):
     )
     assert rule.check_model(model_empty_env) is None
 
+
+def test_environment_agnostic_references_directory_path(tmp_path: Path):
+    """Ensure directory path in model.path does not raise IsADirectoryError."""
+    config = FitnessFunctionsConfig()
+    config.rules.environment_agnostic_references.enabled = True
+    config.rules.environment_agnostic_references.banned_environments = ["prod"]
+
+    rule = EnvironmentAgnosticReferences(config=config)
+
+    # Directory path without query
+    model_dir = ModelRepresentation(
+        name="dep_pkg.model",
+        path=str(tmp_path),
+        dialect="duckdb",
+        is_symbolic=False,
+        query=None,
+    )
+    assert rule.check_model(model_dir) is None
+
+    # Directory path with query containing violation
+    model_dir_with_query = ModelRepresentation(
+        name="dep_pkg.model_violation",
+        path=str(tmp_path),
+        dialect="duckdb",
+        is_symbolic=False,
+        query="SELECT * FROM prod_db.schema.table",
+    )
+    violation = rule.check_model(model_dir_with_query)
+    assert violation is not None
+    assert "prod_db" in violation.violation_msg[0]
+
+
+def test_environment_agnostic_references_read_text_error(tmp_path: Path):
+    """Ensure read_text exceptions are handled gracefully."""
+    from unittest.mock import patch
+
+    config = FitnessFunctionsConfig()
+    config.rules.environment_agnostic_references.enabled = True
+    config.rules.environment_agnostic_references.banned_environments = ["prod"]
+
+    rule = EnvironmentAgnosticReferences(config=config)
+
+    sql_file = tmp_path / "models/marts/my_model.sql"
+    sql_file.parent.mkdir(parents=True, exist_ok=True)
+    sql_file.write_text("SELECT * FROM prod_db.raw_schema.table", encoding="utf-8")
+
+    model = ModelRepresentation(
+        name="marts.my_model",
+        path=str(sql_file),
+        dialect="bigquery",
+        is_symbolic=False,
+    )
+
+    with patch.object(Path, "read_text", side_effect=OSError("Disk error")):
+        assert rule.check_model(model) is None
+
+
