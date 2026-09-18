@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import re
-from pathlib import Path
 
 import sqlglot.expressions as exp
 from sqlglot import parse_one
@@ -138,15 +137,9 @@ class SqlComplexity(Rule):
         if not rule_config.should_run(layer):
             return None
 
-        sql = model.query
+        sql = model.get_sql()
         if sql is None:
-            path = Path(model.path)
-            if path.suffix != ".sql" or not path.exists():
-                return None
-            try:
-                sql = path.read_text(encoding="utf-8")
-            except Exception:
-                return None
+            return None
 
         metrics = analyze_sql(sql, dialect=model.dialect, parsed=model.ast)
         violations = format_violations(

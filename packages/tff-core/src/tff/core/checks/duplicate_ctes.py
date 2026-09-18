@@ -6,7 +6,6 @@ import hashlib
 import logging
 from collections import defaultdict
 from concurrent.futures import ProcessPoolExecutor
-from pathlib import Path
 from typing import TYPE_CHECKING
 
 import sqlglot.expressions as exp
@@ -99,13 +98,8 @@ def collect_duplicate_cte_findings(
             continue
 
         raw_or_parsed: exp.Expression | str | None = (
-            model.expression if model.expression is not None else model.query
+            model.expression if model.expression is not None else model.get_sql()
         )
-        if raw_or_parsed is None and model.path:
-            try:
-                raw_or_parsed = Path(model.path).read_text(encoding="utf-8")
-            except Exception:
-                raw_or_parsed = None
 
         tasks.append((
             model.name,

@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import re
-from pathlib import Path
 import sqlglot
 import sqlglot.expressions as exp
 
@@ -35,18 +34,7 @@ class EnvironmentAgnosticReferences(Rule):
         # otherwise fall back to model.query.
         # This is because model.query in dbt could contain compiled code
         # which has dynamically injected environments that we don't want to flag.
-        sql = None
-        if model.path:
-            path = Path(model.path)
-            if path.is_file():
-                try:
-                    sql = path.read_text(encoding="utf-8")
-                except Exception:
-                    sql = None
-
-        if sql is None:
-            sql = model.query
-
+        sql = model.get_sql(prefer_file=True)
         if sql is None:
             return None
 
