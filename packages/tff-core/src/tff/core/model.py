@@ -21,7 +21,7 @@ def read_file_safe(file_path: str | Path | None) -> str | None:
         return None
     try:
         path = Path(file_path)
-        if not path.exists() or path.is_dir():
+        if not path.is_file():
             return None
         return path.read_text(encoding="utf-8")
     except Exception:

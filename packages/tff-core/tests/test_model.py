@@ -1,3 +1,4 @@
+import os
 from pathlib import Path
 from unittest.mock import patch
 
@@ -36,6 +37,29 @@ def test_read_file_safe_read_exception(tmp_path: Path) -> None:
 
 def test_read_file_safe_path_instantiation_exception() -> None:
     assert read_file_safe("\0invalid_path") is None
+
+
+def test_read_file_safe_fifo(tmp_path: Path) -> None:
+    if hasattr(os, "mkfifo"):
+        fifo_path = tmp_path / "fifo_pipe"
+        os.mkfifo(fifo_path)
+        assert read_file_safe(fifo_path) is None
+        assert read_file_safe(str(fifo_path)) is None
+
+
+def test_read_file_safe_non_regular_file(tmp_path: Path) -> None:
+    f = tmp_path / "special.sql"
+    f.write_text("SELECT 1;", encoding="utf-8")
+    with patch.object(Path, "is_file", return_value=False):
+        assert read_file_safe(str(f)) is None
+        assert read_file_safe(f) is None
+
+
+def test_read_file_safe_is_file_exception(tmp_path: Path) -> None:
+    f = tmp_path / "valid.sql"
+    f.write_text("SELECT 1;", encoding="utf-8")
+    with patch.object(Path, "is_file", side_effect=OSError("Permission denied")):
+        assert read_file_safe(str(f)) is None
 
 
 def test_read_model_sql_prefer_file_false_with_query(tmp_path: Path) -> None:

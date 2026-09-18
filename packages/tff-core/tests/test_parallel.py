@@ -6,9 +6,10 @@ import pytest
 import sqlglot.expressions as exp
 
 from tff.core.config import FitnessFunctionsConfig
-from tff.core.model import ModelRepresentation
+from tff.core.model import ModelRepresentation, read_file_safe
 from tff.core.parallel import (
     _clean_sql_for_model,
+    batch_parse_ast_in_parallel,
     get_max_workers,
     precompute_model_asts,
     run_parallel_model_rule,
@@ -319,3 +320,48 @@ def test_precompute_model_asts_custom_cache_dir(tmp_path: Path):
     )
     assert model.expression is not None
     assert (custom_dir / "ast").exists()
+
+
+def test_batch_parse_ast_in_parallel_alias():
+    assert batch_parse_ast_in_parallel is precompute_model_asts
+
+
+def test_precompute_model_asts_directory_and_invalid_path(tmp_path: Path):
+    sub_dir = tmp_path / "models_dir"
+    sub_dir.mkdir()
+
+    m_dir = ModelRepresentation(
+        name="m_dir",
+        path=str(sub_dir),
+        dialect="duckdb",
+        query=None,
+    )
+    m_invalid = ModelRepresentation(
+        name="m_invalid",
+        path="\0invalid",
+        dialect="duckdb",
+        query=None,
+    )
+
+    models = {"m_dir": m_dir, "m_invalid": m_invalid}
+    precompute_model_asts(models, project_root=tmp_path, max_workers=1)
+
+    assert m_dir.expression is None
+    assert m_invalid.expression is None
+
+
+def test_precompute_model_asts_invokes_read_file_safe(tmp_path: Path):
+    f = tmp_path / "model.sql"
+    f.write_text("SELECT 42", encoding="utf-8")
+    m = ModelRepresentation(
+        name="m",
+        path=str(f),
+        dialect="duckdb",
+        query=None,
+    )
+
+    with patch("tff.core.parallel.read_file_safe", wraps=read_file_safe) as mock_read:
+        precompute_model_asts({"m": m}, project_root=tmp_path, max_workers=1)
+        mock_read.assert_called_once_with(f)
+    assert m.expression is not None
+

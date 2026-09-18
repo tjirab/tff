@@ -92,7 +92,8 @@ def test_wrapped_rule_execution() -> None:
     mock_model.audits = []
 
     from unittest.mock import patch
-    with patch("pathlib.Path.exists", return_value=True), \
+    with patch("pathlib.Path.is_file", return_value=True), \
+         patch("pathlib.Path.exists", return_value=True), \
          patch("pathlib.Path.read_text", return_value="SELECT * FROM table"):
         violation = rule_instance.check_model(mock_model)
         assert violation is not None
