@@ -871,4 +871,108 @@ checks:
     assert c_check.get_severity(cfg) == "error"
 
 
+def test_run_model_rule_propagates_chunk_size() -> None:
+    from unittest.mock import patch
+
+    models = {
+        "m1": ModelRepresentation(name="m1", path="models/m1.sql", dialect="duckdb"),
+        "m2": ModelRepresentation(name="m2", path="models/m2.sql", dialect="duckdb"),
+    }
+
+    with patch("tff.core.parallel.run_parallel_model_rule") as mock_parallel:
+        mock_parallel.return_value = []
+        findings = run_model_rule(
+            BanSelectStar,
+            models,
+            severity="warning",
+            check_name="dummy_check",
+            max_workers=4,
+            chunk_size=10,
+        )
+        assert findings == []
+        mock_parallel.assert_called_once_with(
+            rule_cls=BanSelectStar,
+            models=list(models.values()),
+            severity="warning",
+            check_name="dummy_check",
+            config=None,
+            max_workers=4,
+            chunk_size=10,
+        )
+
+
+def test_check_definition_run_propagates_chunk_size() -> None:
+    from unittest.mock import patch
+
+    check = CheckDefinition(
+        id="dummy_rule",
+        label="Dummy Rule",
+        category="Test",
+        scope="model",
+        rule_cls=BanSelectStar,
+    )
+    models = {
+        "m1": ModelRepresentation(name="m1", path="models/m1.sql", dialect="duckdb"),
+    }
+    cfg = FitnessFunctionsConfig()
+
+    with patch("tff.core.parallel.run_parallel_model_rule") as mock_parallel:
+        mock_parallel.return_value = []
+        findings = check.run(models, cfg, max_workers=2, chunk_size=5)
+        assert findings == []
+        mock_parallel.assert_called_once_with(
+            rule_cls=BanSelectStar,
+            models=list(models.values()),
+            severity="error",
+            check_name="dummy_rule",
+            config=cfg,
+            max_workers=2,
+            chunk_size=5,
+        )
+
+
+def test_run_model_rule_with_chunk_size_execution(tmp_path: Path) -> None:
+    class BanFooRule(Rule):
+        def check_model(self, model: ModelRepresentation) -> RuleViolation | None:
+            if "foo" in model.name:
+                return RuleViolation("Contains foo")
+            return None
+
+    sql_file = tmp_path / "model.sql"
+    sql_file.write_text("SELECT 1", encoding="utf-8")
+
+    models = {
+        f"m_{i}": ModelRepresentation(
+            name=f"foo_{i}" if i % 2 == 0 else f"bar_{i}",
+            path=str(sql_file),
+            dialect="duckdb",
+        )
+        for i in range(25)
+    }
+
+    # Test run_model_rule with chunk_size
+    findings = run_model_rule(
+        BanFooRule,
+        models,
+        severity="error",
+        check_name="ban_foo",
+        max_workers=2,
+        chunk_size=5,
+    )
+    assert len(findings) == 13
+
+    # Test CheckDefinition.run with chunk_size
+    check = CheckDefinition(
+        id="ban_foo",
+        label="Ban Foo",
+        category="Test",
+        scope="model",
+        rule_cls=BanFooRule,
+    )
+    cfg = FitnessFunctionsConfig()
+    findings_check = check.run(models, cfg, max_workers=2, chunk_size=5)
+    assert len(findings_check) == 13
+
+
+
 

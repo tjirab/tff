@@ -67,6 +67,7 @@ def run_model_rule(
     check_name: str | None = None,
     config: FitnessFunctionsConfig | None = None,
     max_workers: int | None = None,
+    chunk_size: int | None = None,
 ) -> list[LintFinding]:
     """Execute a single model-level Rule across all eligible models in a project."""
     from tff.core.parallel import run_parallel_model_rule
@@ -78,6 +79,7 @@ def run_model_rule(
         check_name=check_name,
         config=config,
         max_workers=max_workers,
+        chunk_size=chunk_size,
     )
 
 
@@ -160,6 +162,7 @@ class CheckDefinition:
         models: dict[str, ModelRepresentation],
         config: FitnessFunctionsConfig,
         max_workers: int | None = None,
+        chunk_size: int | None = None,
     ) -> list[LintFinding]:
         if self.scope == "model":
             rule_cls = self.get_rule_cls()
@@ -172,6 +175,7 @@ class CheckDefinition:
                     check_name=self.finding_id,
                     config=config,
                     max_workers=max_workers,
+                    chunk_size=chunk_size,
                 )
             return []
         elif self.scope == "dag":
