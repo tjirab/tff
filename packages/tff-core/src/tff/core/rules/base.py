@@ -15,6 +15,7 @@ class RuleViolation:
 
 class Rule:
     name: str = ""
+    maturity: str = "stable"
 
     def __init__(self, config: FitnessFunctionsConfig | None = None) -> None:
         self._config = config

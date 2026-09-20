@@ -117,11 +117,66 @@ uv run diff-cover coverage.xml --compare-branch=origin/main --fail-under=100
 uv run ruff check .
 ```
 
+### 4. Performance Benchmarks & Corpus Verification
+Ensure changes do not cause performance regressions or false positives:
+```bash
+# Run performance benchmark against SLA ceiling (default 15.0s):
+uv run python scripts/benchmark.py --max-seconds 15.0
+
+# Run corpus snapshot regression tests:
+uv run pytest packages/tff-core/tests/test_corpus_snapshots.py
+```
+
+---
+
+## Strategic Guardrails & Product Boundaries
+
+To keep `tff` focused and reliable as it evolves, all contributions must adhere to our product constitution:
+
+### 1. Core Focus vs. Anti-Goals
+* **What tff IS**: A compile-time DAG architecture, coupling, and modularity fitness tool. It enforces layer boundaries, Connascence of Algorithm (duplicate transformation CTEs), domain ownership, and schema contracts.
+* **What tff is NOT**:
+  * **Not a syntax or formatting linter**: Formatting, trailing commas, and keyword case belong to [SQLFluff](https://sqlfluff.com/) or [Ruff](https://astral.sh/ruff).
+  * **Not a runtime data assertion engine**: Row counts, null checks on live tables, and distribution assertions belong to dbt tests, Great Expectations, or Soda.
+  * **Not an orchestrator**: Pipeline scheduling and execution belongs to Airflow, Dagster, or Cosmos.
+
+### 2. Zero-Config First Run
+Any valid dbt, SQLMesh, or Dataform project must yield valuable insights out of the box with `tff check` without requiring manual configuration files. Smart defaults and automatic layer inference (`staging` → `intermediate` → `core` → `marts`) must always work.
+
+### 3. Actionability Over Identification
+Checks must never produce vague warnings. Every violation should include actionable remediation instructions (e.g., target layer recommendations, CTE deduplication guidance, or automated fixes via `tff autofix`).
+
+---
+
+## Rule Lifecycle & Acceptance Checklist
+
+To avoid user alert fatigue and maintain confidence across CI pipelines, rules progress through three lifecycle stages:
+
+```mermaid
+stateDiagram-v2
+    [*] --> Experimental: New rule submitted
+    Experimental --> Stable: Validated on corpus benchmarks
+    Stable --> Deprecated: Superseded by new check
+    Deprecated --> [*]: Removed after 2 minor releases
+```
+
+* **`experimental`**: Opt-in or non-blocking (`severity="warning"`). Gathers feedback from real-world repositories without breaking existing CI merge gates.
+* **`stable`**: Standard default suite. Covered by strict semantic versioning; rule IDs and diagnostic formats are immutable without deprecation windows.
+* **`deprecated`**: Flagged for removal, accompanied by clear migration paths in release notes and CLI messages.
+
+### Pull Request Checklist for New Rules / Checks
+Before submitting a new rule or check:
+- [ ] **Architectural Justification**: Does it target DAG coupling, layer violations, or logic duplication?
+- [ ] **False-Positive Ceiling**: Does it exhibit `< 1%` false positives on our corpus benchmark fixtures (`examples/minimal-*` and real-world projects)?
+- [ ] **Engine Parity**: Does it run consistently across dbt, SQLMesh, and Dataform via `tff.core.adapter.PipelineAdapter`?
+- [ ] **Actionable Remediation**: Does the error message or `--explain` provide concrete guidance or an autofix?
+- [ ] **Coverage**: 100% diff test coverage verified via `diff-cover`.
+
 ---
 
 ## Releases & PR Titles
 
-Reases are managed by Google's `release-please` action. 
+Releases are managed by Google's `release-please` action. 
 
 Your PR titles **must** use the [Conventional Commits](https://www.conventionalcommits.org/) format so that minor/patch versions are calculated correctly:
 * `feat: ...` (bumps minor version, e.g., `0.2.0` $\rightarrow$ `0.3.0`)

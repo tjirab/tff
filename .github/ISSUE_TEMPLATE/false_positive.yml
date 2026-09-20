@@ -1,0 +1,57 @@
+name: Rule False Positive Report
+description: Report a false positive violation where valid SQL or architecture is incorrectly flagged
+title: "fix(rules): false positive in <rule_or_check_id>"
+labels: ["bug", "rules"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for reporting a false positive in **tff**!
+        Please provide a minimal reproducible example so we can turn it into an automated regression test fixture.
+  - type: dropdown
+    id: provider
+    attributes:
+      label: Transformation Engine
+      description: Which pipeline engine are you running tff against?
+      options:
+        - dbt
+        - SQLMesh
+        - Dataform
+        - Generic SQL / Standalone
+    validations:
+      required: true
+  - type: input
+    id: rule_id
+    attributes:
+      label: Rule or Check ID
+      description: What rule or check triggered the false positive? (e.g., `duplicate_ctes`, `layer_integrity`, `ban_select_star`)
+      placeholder: e.g. duplicate_ctes
+    validations:
+      required: true
+  - type: textarea
+    id: sql_repro
+    attributes:
+      label: Minimal Reproducible SQL / Model Definition
+      description: Provide the smallest SQL snippet or model configuration that triggers the issue.
+      placeholder: |
+        -- models/marts/marketing/dim_users.sql
+        WITH cleaned AS (
+            SELECT id, name FROM raw_users
+        )
+        SELECT * FROM cleaned
+      render: SQL
+    validations:
+      required: true
+  - type: textarea
+    id: explanation
+    attributes:
+      label: Why is this a False Positive?
+      description: Explain why this architecture or SQL construct is valid and should not be flagged.
+    validations:
+      required: true
+  - type: textarea
+    id: actual_output
+    attributes:
+      label: CLI Output / Error Message
+      description: Paste the output of `tff check` or `tff lint`.
+      render: shell

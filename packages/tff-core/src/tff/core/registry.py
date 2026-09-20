@@ -94,6 +94,7 @@ class CheckDefinition:
     default_severity: Severity = "error"
     aliases: tuple[str, ...] = ()
     finding_check_id: str | None = None
+    maturity: str = "stable"
     rule_cls: type[Rule] | None = None
     rule_module: str | None = None
     rule_class_name: str | None = None
@@ -244,6 +245,7 @@ class CheckRegistry:
             or getattr(rule_cls, "name", None)
             or rule_id
         )
+        rule_maturity = getattr(rule_cls, "maturity", "stable")
 
         check_def = CheckDefinition(
             id=rule_id,
@@ -253,6 +255,7 @@ class CheckRegistry:
             default_severity=rule_severity,
             aliases=tuple(rule_aliases),
             finding_check_id=rule_finding_id,
+            maturity=rule_maturity,
             rule_cls=rule_cls,
             is_enabled_fn=is_enabled_fn,
         )

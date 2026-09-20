@@ -39,6 +39,7 @@ class CompanyNamingRule(Rule):
     name = "company_naming_convention"
     category = "Internal Standards"
     default_severity = "error"
+    maturity = "stable"  # "experimental" | "stable" | "deprecated"
 
     def check_model(self, model: ModelRepresentation) -> RuleViolation | None:
         # Read custom configuration options
