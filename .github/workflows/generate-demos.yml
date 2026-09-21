@@ -45,7 +45,7 @@ jobs:
           path: 'demos/demo-health.tape'
 
       - name: Commit updated demo GIFs
-        uses: stefanzweifel/git-auto-commit-action@v5
+        uses: stefanzweifel/git-auto-commit-action@v7
         with:
           commit_message: 'chore(docs): automatically regenerate VHS terminal demo GIFs'
           file_pattern: 'docs/assets/*.gif'
