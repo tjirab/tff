@@ -415,6 +415,51 @@ Architectural checks evaluate the structure, dependencies, and layout of your en
 
 ---
 
+### Join Type Parity (`join_type_parity`)
+
+* **What it checks**:
+  * Validates data type parity for joined columns across SQL queries to eliminate **Connascence of Type (CoT)**.
+  * Walks join condition expressions (`ON left.col = right.col` and `USING (col)`), extracts columns on both sides, resolves their data types from project model metadata, and flags any incompatible type mismatches.
+  * Honors explicit casts (e.g. `CAST(id AS VARCHAR) = user_id`) and recognizes dialect-equivalent type families (e.g. `VARCHAR` $\leftrightarrow$ `TEXT`, `INT` $\leftrightarrow$ `BIGINT`).
+
+* **Why it matters (The "Why")**:
+  Joining columns with mismatching data types (e.g. `VARCHAR` joined to `INTEGER`) causes dynamic type casting overhead across every processed row, disables database index and partition scans, or leads to runtime execution failures. It introduces **Connascence of Type (CoT)** where models are tightly and invisibly coupled to upstream internal type representations.
+
+* **How to configure**:
+  Defined under `checks.join_type_parity` in `fitness_functions.yaml`:
+  ```yaml
+  checks:
+    join_type_parity:
+      enabled: true
+      severity: error                # 'error' or 'warning'
+      skip_layers: [staging]          # Optional: layers to skip
+      equivalent_types:              # Optional: custom equivalent type families
+        text: [text, varchar, string, char, nvarchar]
+        integer: [int, integer, bigint, smallint, tinyint]
+        numeric: [decimal, numeric, number]
+        float: [float, double, real]
+        timestamp: [timestamp, timestamptz, timestamp_ntz, datetime]
+  ```
+
+* **Example Violation**:
+  ```sql
+  -- users.id is INT, orders.user_id is VARCHAR
+  SELECT u.name, o.amount
+  FROM raw.users u
+  JOIN raw.orders o ON u.id = o.user_id;  -- Flags CoT: INT compared with VARCHAR
+  ```
+
+* **How to Resolve**:
+  1. **Align Upstream Schema (Recommended)**: Cast or define the column with the correct canonical type in the upstream staging model.
+  2. **Explicit Casting**: If disparate types are intentional, add an explicit `CAST` at the join condition:
+     ```sql
+     SELECT u.name, o.amount
+     FROM raw.users u
+     JOIN raw.orders o ON CAST(u.id AS VARCHAR) = o.user_id;
+     ```
+
+---
+
 ## 2. Linter Rules
 
 Linter rules inspect individual model files to enforce code style, conventions, and database-independent references.

@@ -503,6 +503,7 @@ class CheckRegistry:
                 "dependency_graph",
                 "duplicate_ctes",
                 "connascence_of_value",
+                "join_type_parity",
             }
         )
 
@@ -613,6 +614,23 @@ def create_default_registry() -> CheckRegistry:
                 "tff.core.checks.schema_contracts", fromlist=["collect_schema_contract_findings"]
             ).collect_schema_contract_findings(models, cfg),
             is_enabled_fn=lambda cfg, p: bool(cfg.checks.schema_contracts.enabled),
+        )
+    )
+    reg.register(
+        CheckDefinition(
+            id="join_type_parity",
+            label="Join type parity",
+            category="Connascence of Type (CoT)",
+            scope="dag",
+            aliases=("jointypeparity", "type_parity", "join_types", "joined_column_types"),
+            finding_check_id="join_type_parity",
+            collector_module="tff.core.checks.join_type_parity",
+            collector_func_name="collect_join_type_parity_findings",
+            collector_fn=lambda models, cfg: __import__(
+                "tff.core.checks.join_type_parity",
+                fromlist=["collect_join_type_parity_findings"],
+            ).collect_join_type_parity_findings(models, cfg),
+            is_enabled_fn=lambda cfg, p: bool(cfg.checks.join_type_parity.enabled),
         )
     )
 

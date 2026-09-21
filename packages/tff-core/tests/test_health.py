@@ -61,6 +61,7 @@ def test_calculate_health_scores() -> None:
             "materialization_depth": {"enabled": False},
             "duplicate_ctes": {"enabled": False},
             "connascence_of_value": {"enabled": False},
+            "join_type_parity": {"enabled": False},
         },
         "rules": {
             "ban_select_star": {"enabled": True},
@@ -183,6 +184,8 @@ checks:
   duplicate_ctes:
     enabled: false
   connascence_of_value:
+    enabled: false
+  join_type_parity:
     enabled: false
 rules:
   ban_select_star:
@@ -592,6 +595,7 @@ def test_cli_health_scope(tmp_path, monkeypatch) -> None:
         "  materialization_depth:\n    enabled: false\n"
         "  duplicate_ctes:\n    enabled: false\n"
         "  connascence_of_value:\n    enabled: false\n"
+        "  join_type_parity:\n    enabled: false\n"
         "rules:\n"
         "  ban_select_star:\n    enabled: true\n"
         "  filename_equals_modelname:\n    enabled: false\n"
@@ -666,6 +670,7 @@ def test_configurable_weights_scoring() -> None:
             "materialization_depth": {"enabled": False},
             "duplicate_ctes": {"enabled": False},
             "connascence_of_value": {"enabled": False},
+            "join_type_parity": {"enabled": False},
         },
         "rules": {
             "ban_select_star": {"enabled": True},
@@ -734,6 +739,7 @@ def test_category_weights_and_overrides() -> None:
             "materialization_depth": {"enabled": False},
             "duplicate_ctes": {"enabled": False},
             "connascence_of_value": {"enabled": False},
+            "join_type_parity": {"enabled": False},
         },
         "rules": {
             "ban_select_star": {"enabled": True},
@@ -777,6 +783,7 @@ def test_category_weight_aliases_and_category_weights_field() -> None:
             "materialization_depth": {"enabled": False},
             "duplicate_ctes": {"enabled": False},
             "connascence_of_value": {"enabled": False},
+            "join_type_parity": {"enabled": False},
         },
         "rules": {
             "ban_select_star": {"enabled": True},
@@ -814,6 +821,7 @@ def test_weights_edge_cases() -> None:
             "materialization_depth": {"enabled": False},
             "duplicate_ctes": {"enabled": False},
             "connascence_of_value": {"enabled": False},
+            "join_type_parity": {"enabled": False},
         },
         "rules": {
             "ban_select_star": {"enabled": True},

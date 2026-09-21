@@ -75,6 +75,11 @@ checks:
     ignored_values: ["0", "1", ""]
     ignored_punctuation: ["|", " ", "-", "_", "/", ":"]
 
+  # Validate type parity for joined columns to prevent Connascence of Type (CoT)
+  join_type_parity:
+    enabled: true
+    severity: error
+
 # Model-level SQL rules
 rules:
   # Prohibit 'SELECT *' to avoid silent breakage from upstream schema drift
@@ -188,6 +193,53 @@ class ConnascenceOfValueCheckConfig(LayerFilterConfig):
     )
 
 
+class JoinTypeParityCheckConfig(LayerFilterConfig):
+    severity: str = "error"
+    equivalent_types: dict[str, list[str]] = Field(
+        default_factory=lambda: {
+            "text": ["text", "varchar", "string", "char", "nvarchar", "bpchar", "nchar"],
+            "integer": [
+                "int",
+                "integer",
+                "bigint",
+                "smallint",
+                "tinyint",
+                "int2",
+                "int4",
+                "int8",
+                "int16",
+                "int32",
+                "int64",
+                "uint",
+                "ubigint",
+                "usmallint",
+                "utinyint",
+            ],
+            "numeric": ["decimal", "numeric", "number", "fixed", "bignumeric", "bigdecimal"],
+            "float": [
+                "float",
+                "double",
+                "real",
+                "float4",
+                "float8",
+                "double precision",
+                "float64",
+                "float32",
+            ],
+            "timestamp": [
+                "timestamp",
+                "timestamptz",
+                "timestamp_ntz",
+                "timestamp_ltz",
+                "timestamp_tz",
+                "datetime",
+                "date",
+            ],
+            "boolean": ["boolean", "bool"],
+        }
+    )
+
+
 class CustomExclusionRule(BaseModel):
     source_layer: str | None = None
     source_domain: str | None = None
@@ -291,6 +343,9 @@ class ChecksConfig(BaseModel):
     )
     connascence_of_value: ConnascenceOfValueCheckConfig = Field(
         default_factory=ConnascenceOfValueCheckConfig
+    )
+    join_type_parity: JoinTypeParityCheckConfig = Field(
+        default_factory=JoinTypeParityCheckConfig
     )
 
 
