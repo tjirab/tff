@@ -2,7 +2,7 @@
   <img src="assets/tff.svg" alt="tff logo" width="160">
 </p>
 
-# Architectural Boundaries & DAG Governance
+# Fast, Zero-Warehouse-Cost Architectural Linter & DAG Governance
 
 **Enforce clean boundaries, layer integrity, and logic deduplication for dbt, SQLMesh, and Dataform.**
 
@@ -50,13 +50,16 @@ Run `tff` inside any existing transformation repository without creating any con
 === "dbt"
 
     ```bash
-    # 1. Install adapter
+    # Instant zero-install invocation:
+    uvx --from "tff-core[dbt]" tff check
+
+    # Or install adapter:
     pip install "tff-core[dbt]"
 
-    # 2. Audit existing models for layer violations & duplicate CTEs
+    # Audit existing models for layer violations & duplicate CTEs
     tff check
 
-    # 3. Compute baseline architectural health score (0–100)
+    # Compute baseline architectural health score (0–100)
     tff health
     ```
 
@@ -95,6 +98,19 @@ Run `tff` inside any existing transformation repository without creating any con
     * **DAG smells & governance**: Missing ownership, missing assertions, and `SELECT *` usages.
 
     To customize layer hierarchies or set up custom domain boundaries, run `tff init` to scaffold a `fitness_functions.yaml`.
+
+---
+
+## ⚖️ Why tff vs. `dbt-project-evaluator`?
+
+| Capability | `dbt-project-evaluator` | `tff` |
+| :--- | :--- | :--- |
+| **Execution Speed** | Minutes (warehouse model runs & queries) | **⚡ Seconds (100x faster)** via local SQLGlot AST static analysis |
+| **Warehouse Compute Costs** | Incurs cloud warehouse bills (Snowflake, BigQuery, Databricks) | **💰 $0 (Zero warehouse compute)** — runs 100% locally or in CI runner |
+| **Multi-Engine Support** | dbt only | **dbt, SQLMesh, and Google Cloud Dataform** |
+| **Auto-Fixing** | Read-only warnings/errors | **Automated fixes** for positional `GROUP BY`/`ORDER BY` and metadata scaffolding |
+| **Visual Standalone Dashboard** | dbt docs or external BI queries | **Built-in interactive HTML report & health trends** (`tff docs`) |
+| **CI/CD Quality Gates** | Standard test failures | **Health score gating (`--fail-under`) & PR annotations** (`tjirab/tff@v1`) |
 
 ---
 
