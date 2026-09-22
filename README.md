@@ -54,7 +54,9 @@ Run `tff` inside any existing dbt, SQLMesh, or Dataform repository. **No configu
 
 ```bash
 # Instant zero-install invocation via uvx:
-uvx --from "tff-core[dbt]" tff check
+uvx --from "tff-core[dbt]" tff check        # for dbt
+# uvx --from "tff-core[sqlmesh]" tff check  # for SQLMesh
+# uvx --from "tff-core[dataform]" tff check # for Dataform
 
 # Or install for your pipeline framework:
 pip install "tff-core[dbt]"        # for dbt (or: uv add "tff-core[dbt]")

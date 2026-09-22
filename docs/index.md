@@ -66,26 +66,32 @@ Run `tff` inside any existing transformation repository without creating any con
 === "SQLMesh"
 
     ```bash
-    # 1. Install adapter
+    # Instant zero-install invocation:
+    uvx --from "tff-core[sqlmesh]" tff check
+
+    # Or install adapter:
     pip install "tff-core[sqlmesh]"
 
-    # 2. Audit existing models for layer violations & duplicate CTEs
+    # Audit existing models for layer violations & duplicate CTEs
     tff check
 
-    # 3. Compute baseline architectural health score (0–100)
+    # Compute baseline architectural health score (0–100)
     tff health
     ```
 
 === "Dataform"
 
     ```bash
-    # 1. Install adapter
+    # Instant zero-install invocation:
+    uvx --from "tff-core[dataform]" tff check
+
+    # Or install adapter:
     pip install "tff-core[dataform]"
 
-    # 2. Audit existing models for layer violations & duplicate CTEs
+    # Audit existing models for layer violations & duplicate CTEs
     tff check
 
-    # 3. Compute baseline architectural health score (0–100)
+    # Compute baseline architectural health score (0–100)
     tff health
     ```
 
