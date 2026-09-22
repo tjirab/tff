@@ -1791,6 +1791,40 @@ def test_mask_sensitive_args_suffix_matching():
     assert mask_sensitive_args(raw_args) == expected
 
 
+def test_mask_sensitive_args_access_keys_and_webhooks():
+    raw_args = [
+        "--access-key",
+        "AKIAIOSFODNN7EXAMPLE",
+        "--private-key=my_private_key_content",
+        "--aws-access-key",
+        "secret_aws_key",
+        "--ssh-private-key=ssh_key_secret",
+        "--webhook-secret",
+        "whsec_abc123",
+        "--slack-webhook-url=https://hooks.slack.com/services/T00/B00/X00",
+        "--github-webhook-secret",
+        "gh_hook_sec",
+        "--webhook-url",
+        "https://example.com/webhook",
+    ]
+    expected = [
+        "--access-key",
+        "***",
+        "--private-key=***",
+        "--aws-access-key",
+        "***",
+        "--ssh-private-key=***",
+        "--webhook-secret",
+        "***",
+        "--slack-webhook-url=***",
+        "--github-webhook-secret",
+        "***",
+        "--webhook-url",
+        "***",
+    ]
+    assert mask_sensitive_args(raw_args) == expected
+
+
 def test_mask_sensitive_args_non_sensitive_args():
     raw_args = [
         "lint",

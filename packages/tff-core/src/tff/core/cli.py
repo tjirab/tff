@@ -339,6 +339,8 @@ SENSITIVE_ARG_FLAGS: frozenset[str] = frozenset(
         "--token",
         "--auth-token",
         "--access-token",
+        "--access-key",
+        "--private-key",
         "--secret",
         "--client-secret",
         "--password",
@@ -351,6 +353,10 @@ SENSITIVE_ARG_SUFFIXES: tuple[str, ...] = (
     "-secret",
     "-password",
     "-api-key",
+    "-access-key",
+    "-private-key",
+    "-webhook-secret",
+    "-webhook-url",
 )
 
 
