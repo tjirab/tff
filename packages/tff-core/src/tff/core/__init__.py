@@ -1,4 +1,4 @@
-from tff.core.cli import render_cli_error
+from tff.core.cli import mask_sensitive_args, render_cli_error
 from tff.core.exceptions import (
     TffConfigError,
     TffError,
@@ -21,6 +21,7 @@ __all__ = [
     "TffManifestNotFoundError",
     "TffModelError",
     "handle_os_errors",
+    "mask_sensitive_args",
     "normalize_os_error",
     "read_file_safe",
     "read_model_sql",

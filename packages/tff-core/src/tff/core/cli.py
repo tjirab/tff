@@ -333,6 +333,88 @@ class TffArgumentParser(argparse.ArgumentParser):
 # Backward compatibility alias
 TFFArgumentParser = TffArgumentParser
 
+SENSITIVE_ARG_FLAGS: frozenset[str] = frozenset(
+    {
+        "--github-token",
+        "--token",
+        "--auth-token",
+        "--access-token",
+        "--secret",
+        "--client-secret",
+        "--password",
+        "--api-key",
+    }
+)
+
+SENSITIVE_ARG_SUFFIXES: tuple[str, ...] = (
+    "-token",
+    "-secret",
+    "-password",
+    "-api-key",
+)
+
+
+def _is_sensitive_flag(
+    flag: str,
+    sensitive_flags: frozenset[str] | set[str] | None = None,
+) -> bool:
+    """Return True if the flag matches known sensitive CLI argument patterns."""
+    if not flag.startswith("-"):
+        return False
+    norm_flag = flag.lower().replace("_", "-")
+    if sensitive_flags is not None and (
+        flag in sensitive_flags or norm_flag in sensitive_flags
+    ):
+        return True
+    if norm_flag in SENSITIVE_ARG_FLAGS:
+        return True
+    return any(norm_flag.endswith(suffix) for suffix in SENSITIVE_ARG_SUFFIXES)
+
+
+def mask_sensitive_args(
+    args_list: Sequence[str],
+    sensitive_flags: frozenset[str] | set[str] | None = None,
+) -> list[str]:
+    """Sanitize sensitive flag values from command-line argument lists for safe logging.
+
+    Masks sensitive values passed either separately (e.g. ``--github-token <val>`` ->
+    ``['--github-token', '***']``) or joined with an equals sign (e.g.
+    ``--github-token=<val>`` -> ``['--github-token=***']``).
+
+    Args:
+        args_list: Raw sequence of command-line argument strings.
+        sensitive_flags: Optional custom set of flag names to treat as sensitive.
+
+    Returns:
+        A new list of strings with sensitive values masked with '***'.
+    """
+    sanitized: list[str] = []
+    i = 0
+    n = len(args_list)
+
+    while i < n:
+        arg = args_list[i]
+        if arg.startswith("-") and "=" in arg:
+            flag, sep, _val = arg.partition("=")
+            if _is_sensitive_flag(flag, sensitive_flags):
+                sanitized.append(f"{flag}=***")
+                i += 1
+                continue
+
+        if _is_sensitive_flag(arg, sensitive_flags):
+            sanitized.append(arg)
+            if i + 1 < n:
+                sanitized.append("***")
+                i += 2
+            else:
+                i += 1
+            continue
+
+        sanitized.append(arg)
+        i += 1
+
+    return sanitized
+
 
 def _main_impl(argv: list[str] | None = None) -> int:
     if argv is None:
@@ -831,7 +913,12 @@ def _main_impl(argv: list[str] | None = None) -> int:
 
     is_debug = is_debug_enabled(args)
     setup_cli_logging(debug=is_debug)
-    logger.debug("tff v%s initialized with command: %s (args: %s)", __version__, args.command, args_list)
+    logger.debug(
+        "tff v%s initialized with command: %s (args: %s)",
+        __version__,
+        args.command,
+        mask_sensitive_args(args_list),
+    )
 
     if args.command == "help":
         if args.subcommand in ("lint", "check"):

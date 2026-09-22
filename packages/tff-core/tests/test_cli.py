@@ -6,7 +6,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from tff.core.cli import _detect_provider, _get_runner, main
+from tff.core.cli import _detect_provider, _get_runner, main, mask_sensitive_args
 
 
 def test_detect_provider_dbt(tmp_path: Path):
@@ -1733,6 +1733,112 @@ def test_cli_check_alias(tmp_path: Path):
             exit_code = main(["check", "--project", str(tmp_path)])
             assert exit_code == 0
             mock_adapter.run_checks.assert_called_once()
+
+
+def test_mask_sensitive_args_separate_values():
+    raw_args = ["action", "--github-token", "ghp_secret_token_123", "--diff-against-base"]
+    expected = ["action", "--github-token", "***", "--diff-against-base"]
+    assert mask_sensitive_args(raw_args) == expected
+
+
+def test_mask_sensitive_args_equals_values():
+    raw_args = ["action", "--github-token=ghp_secret_token_123", "--diff-against-base"]
+    expected = ["action", "--github-token=***", "--diff-against-base"]
+    assert mask_sensitive_args(raw_args) == expected
+
+
+def test_mask_sensitive_args_case_and_underscores():
+    raw_args = [
+        "--GITHUB-TOKEN=secret1",
+        "--github_token",
+        "secret2",
+        "--api-key",
+        "key123",
+        "--api_key=key456",
+        "--password",
+        "pass1",
+        "--secret=sec1",
+    ]
+    expected = [
+        "--GITHUB-TOKEN=***",
+        "--github_token",
+        "***",
+        "--api-key",
+        "***",
+        "--api_key=***",
+        "--password",
+        "***",
+        "--secret=***",
+    ]
+    assert mask_sensitive_args(raw_args) == expected
+
+
+def test_mask_sensitive_args_suffix_matching():
+    raw_args = [
+        "--my-custom-token",
+        "custom_tok",
+        "--db-password=pass",
+        "--oauth-client-secret",
+        "oauth_sec",
+    ]
+    expected = [
+        "--my-custom-token",
+        "***",
+        "--db-password=***",
+        "--oauth-client-secret",
+        "***",
+    ]
+    assert mask_sensitive_args(raw_args) == expected
+
+
+def test_mask_sensitive_args_non_sensitive_args():
+    raw_args = [
+        "lint",
+        "--project",
+        "/path/to/project",
+        "--config=fitness_functions.yaml",
+        "--key-column",
+        "user_id",
+        "--primary-key=id",
+        "name=value",
+    ]
+    assert mask_sensitive_args(raw_args) == raw_args
+
+
+def test_mask_sensitive_args_custom_flags():
+    raw_args = ["--internal-cred", "secret_val", "--normal-flag", "normal_val"]
+    masked = mask_sensitive_args(raw_args, sensitive_flags=frozenset({"--internal-cred"}))
+    assert masked == ["--internal-cred", "***", "--normal-flag", "normal_val"]
+
+
+def test_mask_sensitive_args_edge_cases():
+    assert mask_sensitive_args([]) == []
+    # Trailing sensitive flag without value
+    assert mask_sensitive_args(["--github-token"]) == ["--github-token"]
+    # Consecutive sensitive flags
+    raw_args = ["--token", "tok", "--password", "pass"]
+    assert mask_sensitive_args(raw_args) == ["--token", "***", "--password", "***"]
+
+
+def test_cli_debug_logging_masks_github_token(capsys):
+    secret = "ghp_super_secret_token_12345"
+    with patch("tff.core.action.execute_action", return_value=0):
+        exit_code = main(["--debug", "action", "--github-token", secret])
+    assert exit_code == 0
+    captured = capsys.readouterr()
+    assert secret not in captured.err
+    assert "'--github-token', '***'" in captured.err
+
+
+def test_cli_debug_logging_masks_github_token_equals(capsys):
+    secret = "ghp_super_secret_token_67890"
+    with patch("tff.core.action.execute_action", return_value=0):
+        exit_code = main(["--debug", "action", f"--github-token={secret}"])
+    assert exit_code == 0
+    captured = capsys.readouterr()
+    assert secret not in captured.err
+    assert "'--github-token=***'" in captured.err
+
 
 
 
