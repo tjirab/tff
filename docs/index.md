@@ -101,19 +101,6 @@ Run `tff` inside any existing transformation repository without creating any con
 
 ---
 
-## ⚖️ Why tff vs. `dbt-project-evaluator`?
-
-| Capability | `dbt-project-evaluator` | `tff` |
-| :--- | :--- | :--- |
-| **Execution Speed** | Minutes (warehouse model runs & queries) | **⚡ Seconds (100x faster)** via local SQLGlot AST static analysis |
-| **Warehouse Compute Costs** | Incurs cloud warehouse bills (Snowflake, BigQuery, Databricks) | **💰 $0 (Zero warehouse compute)** — runs 100% locally or in CI runner |
-| **Multi-Engine Support** | dbt only | **dbt, SQLMesh, and Google Cloud Dataform** |
-| **Auto-Fixing** | Read-only warnings/errors | **Automated fixes** for positional `GROUP BY`/`ORDER BY` and metadata scaffolding |
-| **Visual Standalone Dashboard** | dbt docs or external BI queries | **Built-in interactive HTML report & health trends** (`tff docs`) |
-| **CI/CD Quality Gates** | Standard test failures | **Health score gating (`--fail-under`) & PR annotations** (`tjirab/tff@v1`) |
-
----
-
 ## Quick CLI Usage
 
 Once installed, use the unified `tff` CLI to run linting, calculate health scores, and enforce architectural quality gates:
