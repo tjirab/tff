@@ -72,19 +72,20 @@ def test_sqlmesh_example_corpus_snapshot():
         config=config,
     )
 
-    assert models_checked == 5
-    assert len(findings) == 7
+    assert models_checked == 6
+    assert len(findings) == 8
 
     error_findings = [f for f in findings if f.severity == "error"]
     warning_findings = [f for f in findings if f.severity == "warning"]
 
-    assert len(error_findings) == 3
+    assert len(error_findings) == 4
     assert len(warning_findings) == 4
 
     error_checks = {f.check for f in error_findings}
     assert "banselectstar" in error_checks
     assert "nomissingowner" in error_checks
     assert "layer_integrity" in error_checks
+    assert "join_type_parity" in error_checks
 
     # Verify duplicate CTEs (Connascence of Algorithm) are flagged with warnings
     dup_cte_findings = [f for f in warning_findings if f.check == "duplicate_ctes"]
@@ -127,7 +128,7 @@ def test_health_score_calibration_stability():
     sm_findings, sm_count, _ = sm_adapter.run_checks(project_root=sm_path, config=sm_config)
     sm_health = calculate_health_scores(sm_findings, sm_count, config=sm_config, provider="sqlmesh")
     assert 0.0 <= sm_health["overall_score"] < 100.0
-    assert len(sm_findings) == 7
+    assert len(sm_findings) == 8
 
 
 def test_rule_maturity_lifecycle_metadata():
