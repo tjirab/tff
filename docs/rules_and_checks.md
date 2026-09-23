@@ -407,11 +407,16 @@ Architectural checks evaluate the structure, dependencies, and layout of your en
      -- Downstream models
      SELECT * FROM {{ ref('stg_users') }} WHERE is_premium
      ```
-  2. **Project-Level Variables**: Define the value as a project variable in `dbt_project.yml` and reference it via Jinja:
+  2. **Classification Macros**: Encapsulate the comparison predicate or status value into a reusable macro, transforming Connascence of Value into weaker Connascence of Name:
+     ```sql
+     -- dbt macro or SQLMesh @macro
+     SELECT * FROM {{ ref('dim_users') }} WHERE {{ is_premium_tier('status') }}
+     ```
+  3. **Project-Level Variables**: Define the value as a project variable (e.g. in `dbt_project.yml` or SQLMesh config) for environment configurations or global thresholds, and reference it via Jinja:
      ```sql
      SELECT * FROM {{ ref('stg_users') }} WHERE status = '{{ var("premium_tier_name") }}'
      ```
-  3. **Mapping Tables (Seeds)**: For larger sets of constants (e.g., list of VIP email domains), load them via a seed CSV and perform a `JOIN` or `WHERE IN (SELECT ... FROM {{ ref('seed') }})`.
+  4. **Mapping Tables (Seeds)**: For larger sets of constants or multi-attribute categories (e.g., list of VIP email domains, country code lookups), load them via a seed CSV and perform a `JOIN` or `WHERE IN (SELECT ... FROM {{ ref('seed') }})`.
 
 ---
 

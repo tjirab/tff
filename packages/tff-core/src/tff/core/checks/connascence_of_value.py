@@ -11,6 +11,9 @@ from tff.core.config import FitnessFunctionsConfig
 from tff.core.report import LintFinding
 from tff.core.utils.paths import model_path_relative, get_layer_from_path
 
+COV_DOCS_URL = "https://tff.readthedocs.io/rules_and_checks/#connascence-of-value-connascence_of_value"
+
+
 
 def get_literal_value(node: exp.Literal) -> str:
     val = node.this
@@ -145,10 +148,10 @@ def collect_connascence_of_value_findings(
                     others_str = ", ".join(other_occs[:-1]) + f", and {other_occs[-1]}"
 
                 severity_type = "error" if rule_config.severity == "error" else "warning"
-                
+
                 message = (
-                    f"Literal '{occ['val']}' is duplicated in {others_str}. "
-                    "This indicates Connascence of Value (CoV) and should be promoted to a seed or project-level variable."
+                    f"Literal '{occ['val']}' is duplicated in {others_str} (CoV). "
+                    f"Centralize via macro, seed, or upstream model. See {COV_DOCS_URL}"
                 )
 
                 findings.append(

@@ -64,6 +64,9 @@ def test_cov_with_duplicates():
     
     assert "Literal 'active'" in m1_finding.message
     assert "Literal 'Active'" in m2_finding.message
+    assert "(CoV)" in m1_finding.message
+    assert "Centralize via macro, seed, or upstream model." in m1_finding.message
+    assert "https://tff.readthedocs.io/rules_and_checks/#connascence-of-value-connascence_of_value" in m1_finding.message
 
 
 def test_cov_ignored_values():
