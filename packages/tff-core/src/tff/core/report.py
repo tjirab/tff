@@ -50,6 +50,22 @@ def format_message(message: str | list[str]) -> str:
     return str(message)
 
 
+def _format_check_cell(check: str) -> Text:
+    label = CHECK_LABELS.get(check, check)
+    docs_url = registry.get_docs_url(check)
+    return (
+        Text(label, style=f"bold link {docs_url}")
+        if docs_url
+        else Text(label, style="bold")
+    )
+
+
+def _append_check_tag(text: Text, check: str) -> None:
+    docs_url = registry.get_docs_url(check)
+    tag_style = f"dim link {docs_url}" if docs_url else "dim"
+    text.append(f"({check})", style=tag_style)
+
+
 def _summary_check_names(
     executed_checks: list[str] | None,
     by_check: dict[str, dict[Severity, int]],
@@ -165,7 +181,7 @@ def render_lint_report(
             else Text("·", style="dim")
         )
         summary.add_row(
-            CHECK_LABELS.get(check, check),
+            _format_check_cell(check),
             error_cell,
             warn_cell,
         )
@@ -210,7 +226,7 @@ def render_lint_report(
                         msg_text.append("\n")
                     msg_text.append(line)
                 msg_text.append(" ")
-                msg_text.append(f"({finding.check})", style="dim")
+                _append_check_tag(msg_text, finding.check)
                 
                 table.add_row(f"  [{style}]{icon}[/{style}] ", msg_text)
             console.print(table)
@@ -232,7 +248,7 @@ def render_lint_report(
                         msg_text.append("\n")
                     msg_text.append(line)
                 msg_text.append(" ")
-                msg_text.append(f"({finding.check})", style="dim")
+                _append_check_tag(msg_text, finding.check)
                 
                 table.add_row(f"  [{style}]{icon}[/{style}] ", msg_text)
             console.print(table)
@@ -301,7 +317,7 @@ def render_lint_report(
                         msg_text.append("\n")
                     msg_text.append(line)
                 msg_text.append(" ")
-                msg_text.append(f"({finding.check})", style="dim")
+                _append_check_tag(msg_text, finding.check)
                 
                 cell_content.append(msg_text)
 

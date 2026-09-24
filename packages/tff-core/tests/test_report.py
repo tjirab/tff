@@ -226,3 +226,141 @@ def test_render_lint_report_warnings_and_multiline() -> None:
     assert "is prohibited." in output_model
 
 
+def test_format_check_cell_with_known_check() -> None:
+    from tff.core.registry import registry
+    from tff.core.report import _format_check_cell
+
+    cell = _format_check_cell("banselectstar")
+    assert cell.plain == "No SELECT *"
+    docs_url = registry.get_docs_url("banselectstar")
+    assert docs_url is not None
+    assert f"link {docs_url}" in str(cell.style)
+
+
+def test_format_check_cell_with_unknown_check() -> None:
+    from tff.core.report import _format_check_cell
+
+    cell = _format_check_cell("custom_unknown_check")
+    assert cell.plain == "custom_unknown_check"
+    assert cell.style == "bold"
+
+
+def test_append_check_tag_with_known_check() -> None:
+    from rich.text import Text
+
+    from tff.core.registry import registry
+    from tff.core.report import _append_check_tag
+
+    text = Text("Issue message ")
+    _append_check_tag(text, "banselectstar")
+    assert text.plain == "Issue message (banselectstar)"
+    span = text.spans[0]
+    assert span.start == len("Issue message ")
+    assert span.end == len("Issue message (banselectstar)")
+    docs_url = registry.get_docs_url("banselectstar")
+    assert docs_url is not None
+    assert f"link {docs_url}" in str(span.style)
+
+
+def test_append_check_tag_with_unknown_check() -> None:
+    from rich.text import Text
+
+    from tff.core.report import _append_check_tag
+
+    text = Text("Issue message ")
+    _append_check_tag(text, "custom_unknown_check")
+    assert text.plain == "Issue message (custom_unknown_check)"
+    span = text.spans[0]
+    assert span.style == "dim"
+
+
+def test_render_lint_report_hyperlinks_in_terminal_output() -> None:
+    from rich.console import Console
+
+    from tff.core.registry import registry
+    from tff.core.report import LintFinding, render_lint_report
+
+    console = Console(record=True, width=120)
+    findings = [
+        LintFinding(
+            check="banselectstar",
+            severity="error",
+            message="SELECT * is prohibited.",
+            model="marts.users",
+            path="models/marts/users.sql",
+        ),
+        LintFinding(
+            check="layer_integrity",
+            severity="error",
+            message="Repo level architecture failure.",
+            model=None,
+            path=None,
+        ),
+        LintFinding(
+            check="unknown_rule",
+            severity="warning",
+            message="Unknown warning.",
+            model=None,
+            path=None,
+        ),
+    ]
+
+    render_lint_report(
+        findings,
+        models_checked=1,
+        executed_checks=["sqlmesh"],
+        console=console,
+        group_by="model",
+    )
+
+    docs_url = registry.get_docs_url("banselectstar")
+    assert docs_url is not None
+    arch_docs_url = registry.get_docs_url("layer_integrity")
+    assert arch_docs_url is not None
+    # Rich export_html renders OSC-8 hyperlinks as HTML <a> anchors
+    html_output = console.export_html(clear=False)
+    assert f'href="{docs_url}"' in html_output
+    assert f'href="{arch_docs_url}"' in html_output
+    # Plain text export should not leak URL markup
+    text_output = console.export_text()
+    assert "https://tff.readthedocs.io" not in text_output
+    assert "(banselectstar)" in text_output
+    assert "(layer_integrity)" in text_output
+    assert "(unknown_rule)" in text_output
+
+
+def test_render_lint_report_connascence_grouping_hyperlinks() -> None:
+    from rich.console import Console
+
+    from tff.core.registry import registry
+    from tff.core.report import LintFinding, render_lint_report
+
+    console = Console(record=True, width=120)
+    findings = [
+        LintFinding(
+            check="banselectstar",
+            severity="error",
+            message="SELECT * is prohibited.",
+            model="marts.users",
+            path="models/marts/users.sql",
+        ),
+    ]
+
+    render_lint_report(
+        findings,
+        models_checked=1,
+        executed_checks=["sqlmesh"],
+        console=console,
+        group_by="connascence",
+    )
+
+    docs_url = registry.get_docs_url("banselectstar")
+    assert docs_url is not None
+    html_output = console.export_html(clear=False)
+    assert f'href="{docs_url}"' in html_output
+    text_output = console.export_text()
+    assert "https://tff.readthedocs.io" not in text_output
+    assert "(banselectstar)" in text_output
+
+
+
