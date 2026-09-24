@@ -538,7 +538,7 @@ class CheckRegistry:
 def create_default_registry() -> CheckRegistry:
     """Create and populate the default CheckRegistry with all tff checks and rules."""
     reg = CheckRegistry()
-    docs_base = "https://tff.readthedocs.io/rules_and_checks/#"
+    docs_base = "https://tff.readthedocs.io/en/latest/rules_and_checks/#"
 
     # 1. Connascence of Name (CoN)
     reg.register(
@@ -606,7 +606,7 @@ def create_default_registry() -> CheckRegistry:
             aliases=("ambiguousorinvalidcolumn",),
             finding_check_id="ambiguousorinvalidcolumn",
             is_enabled_fn=lambda cfg, p: p == "sqlmesh",
-            docs_url="https://tff.readthedocs.io/rules_and_checks/",
+            docs_url="https://tff.readthedocs.io/en/latest/rules_and_checks/",
         )
     )
     reg.register(
@@ -618,7 +618,7 @@ def create_default_registry() -> CheckRegistry:
             aliases=("invalidselectstarexpansion",),
             finding_check_id="invalidselectstarexpansion",
             is_enabled_fn=lambda cfg, p: p == "sqlmesh",
-            docs_url="https://tff.readthedocs.io/rules_and_checks/",
+            docs_url="https://tff.readthedocs.io/en/latest/rules_and_checks/",
         )
     )
 

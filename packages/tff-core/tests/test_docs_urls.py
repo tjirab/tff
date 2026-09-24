@@ -23,7 +23,7 @@ def test_registry_docs_urls_presence() -> None:
     all_checks = reg.all_checks()
     assert len(all_checks) > 0
 
-    base_url = "https://tff.readthedocs.io/rules_and_checks/"
+    base_url = "https://tff.readthedocs.io/en/latest/rules_and_checks/"
     for check_def in all_checks:
         assert check_def.docs_url is not None, f"Check {check_def.id} is missing docs_url"
         assert check_def.docs_url.startswith(base_url), (
@@ -35,12 +35,12 @@ def test_registry_docs_urls_presence() -> None:
 def test_registry_get_docs_url_resolution() -> None:
     """Test get_docs_url resolves canonical IDs, finding IDs, and aliases."""
     expected_cov = (
-        "https://tff.readthedocs.io/rules_and_checks/#connascence-of-value-connascence_of_value"
+        "https://tff.readthedocs.io/en/latest/rules_and_checks/#connascence-of-value-connascence_of_value"
     )
     assert registry.get_docs_url("connascence_of_value") == expected_cov
 
     # Check CoN and its alias
-    expected_ban = "https://tff.readthedocs.io/rules_and_checks/#ban-select-ban_select_star"
+    expected_ban = "https://tff.readthedocs.io/en/latest/rules_and_checks/#ban-select-ban_select_star"
     assert registry.get_docs_url("ban_select_star") == expected_ban
     assert registry.get_docs_url("banselectstar") == expected_ban
 
@@ -99,7 +99,7 @@ def test_action_format_check_cell() -> None:
     cell_cov = _format_check_cell("connascence_of_value")
     assert cell_cov == (
         "[`connascence_of_value`]"
-        "(https://tff.readthedocs.io/rules_and_checks/#connascence-of-value-connascence_of_value)"
+        "(https://tff.readthedocs.io/en/latest/rules_and_checks/#connascence-of-value-connascence_of_value)"
     )
 
     # Empty check
@@ -147,7 +147,7 @@ def test_action_pr_comment_includes_check_links() -> None:
     # Hyperlinked known check in both new violations and main detail table
     expected_cov_link = (
         "[`connascence_of_value`]"
-        "(https://tff.readthedocs.io/rules_and_checks/#connascence-of-value-connascence_of_value)"
+        "(https://tff.readthedocs.io/en/latest/rules_and_checks/#connascence-of-value-connascence_of_value)"
     )
     assert expected_cov_link in comment
 
@@ -182,13 +182,13 @@ def test_sarif_help_uri_mapping() -> None:
     # Known check should have exact section anchor
     assert "connascence_of_value" in rules_by_id
     assert rules_by_id["connascence_of_value"]["helpUri"] == (
-        "https://tff.readthedocs.io/rules_and_checks/#connascence-of-value-connascence_of_value"
+        "https://tff.readthedocs.io/en/latest/rules_and_checks/#connascence-of-value-connascence_of_value"
     )
 
     # Unknown check should fall back to base docs
     assert "unknown_external_check" in rules_by_id
     assert rules_by_id["unknown_external_check"]["helpUri"] == (
-        "https://tff.readthedocs.io/rules_and_checks/"
+        "https://tff.readthedocs.io/en/latest/rules_and_checks/"
     )
 
 
@@ -215,7 +215,7 @@ def test_docs_dashboard_embeds_docs_urls(
     assert "docs_urls" in html
     assert "connascence_of_value" in html
     assert (
-        "https://tff.readthedocs.io/rules_and_checks/#connascence-of-value-connascence_of_value"
+        "https://tff.readthedocs.io/en/latest/rules_and_checks/#connascence-of-value-connascence_of_value"
         in html
     )
 

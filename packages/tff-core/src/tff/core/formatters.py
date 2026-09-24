@@ -73,7 +73,7 @@ def generate_sarif_report(
     # Gather registered checks
     from tff.core.registry import registry
 
-    default_docs_url = "https://tff.readthedocs.io/rules_and_checks/"
+    default_docs_url = "https://tff.readthedocs.io/en/latest/rules_and_checks/"
     for check_def in registry.all_checks():
         cid = check_def.finding_id
         rules_map[cid] = {

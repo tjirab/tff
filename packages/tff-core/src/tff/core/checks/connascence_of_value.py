@@ -11,7 +11,7 @@ from tff.core.config import FitnessFunctionsConfig
 from tff.core.report import LintFinding
 from tff.core.utils.paths import model_path_relative, get_layer_from_path
 
-COV_DOCS_URL = "https://tff.readthedocs.io/rules_and_checks/#connascence-of-value-connascence_of_value"
+COV_DOCS_URL = "https://tff.readthedocs.io/en/latest/rules_and_checks/#connascence-of-value-connascence_of_value"
 
 
 
