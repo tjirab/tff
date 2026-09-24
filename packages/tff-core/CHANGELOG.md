@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.21.0](https://github.com/tjirab/tff/compare/tff-core-v0.20.0...tff-core-v0.21.0) (2026-09-24)
+
+
+### Features
+
+* **ci:** add corpus snapshot regression tests, performance SLA benchmark, rule lifecycle, and false positive template ([#268](https://github.com/tjirab/tff/issues/268)) ([1316cd2](https://github.com/tjirab/tff/commit/1316cd25393d446712f8b93877b1ba536ff00acd))
+* **cli:** support clickable documentation links in terminal reporting with Rich OSC-8 hyperlinks ([#286](https://github.com/tjirab/tff/issues/286)) ([d84571f](https://github.com/tjirab/tff/commit/d84571f2a76cb93df3b3d6d383dfe7e962f9fe5d))
+* **core:** add join_type_parity check for Connascence of Type ([#27](https://github.com/tjirab/tff/issues/27)) ([#275](https://github.com/tjirab/tff/issues/275)) ([36b4149](https://github.com/tjirab/tff/commit/36b4149246479a9ca57db0c665c00655989d6a9c))
+* **core:** add systematic documentation URL references across checks, PR comments, and reports ([#283](https://github.com/tjirab/tff/issues/283)) ([ffab51f](https://github.com/tjirab/tff/commit/ffab51faab8568abc2c87c9bd4d228831206e24d))
+* **health:** support clickable documentation links in project health report breakdown ([#288](https://github.com/tjirab/tff/issues/288)) ([9808832](https://github.com/tjirab/tff/commit/9808832cb3af53da25470fff9baf79e089402c28))
+
+
+### Bug Fixes
+
+* **cov:** refine finding message and include macro resolution guidance ([#282](https://github.com/tjirab/tff/issues/282)) ([f2e48e3](https://github.com/tjirab/tff/commit/f2e48e333ff2fda31ac33113dd9e2a9117355905))
+
 ## [0.20.0](https://github.com/tjirab/tff/compare/tff-core-v0.19.0...tff-core-v0.20.0) (2026-09-18)
 
 
