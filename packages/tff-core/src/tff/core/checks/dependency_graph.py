@@ -39,7 +39,7 @@ def collect_dependency_graph_findings(
                 LintFinding(
                     check="dependency_graph",
                     severity="error",
-                    model=str(model_name),
+                    model=str(model.name or model_name),
                     path=model_path_relative(model),
                     message=(
                         f"fan_out={fan_out} (fail>{graph_config.fan_out_fail}) — "
@@ -52,7 +52,7 @@ def collect_dependency_graph_findings(
                 LintFinding(
                     check="dependency_graph",
                     severity="warning",
-                    model=str(model_name),
+                    model=str(model.name or model_name),
                     path=model_path_relative(model),
                     message=(
                         f"fan_out={fan_out} (warn>{graph_config.fan_out_warn}) — "
@@ -66,7 +66,7 @@ def collect_dependency_graph_findings(
                 LintFinding(
                     check="dependency_graph",
                     severity="warning",
-                    model=str(model_name),
+                    model=str(model.name or model_name),
                     path=model_path_relative(model),
                     message=(
                         f"fan_in={fan_in} (warn>{graph_config.fan_in_warn}) — "

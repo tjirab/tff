@@ -4,13 +4,15 @@ from __future__ import annotations
 
 from collections import defaultdict
 from dataclasses import dataclass
-from typing import Literal
+from typing import Any, Literal
 
 from rich import box
 from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
 from rich.text import Text
+
+from pathlib import Path
 
 from tff.core.registry import registry
 
@@ -38,7 +40,15 @@ ALWAYS_VISIBLE_CHECKS: list[str] = [
 
 
 def normalize_model_name(name: str) -> str:
+    """Normalize model identifier for human-readable reporting.
+
+    Strips quotes and dbt resource-type prefixes (e.g. 'model.pkg.name' -> 'name',
+    'source.pkg.name' -> 'name'). For SQLMesh multi-part names (e.g. 'catalog.db.table'),
+    preserves the standard two-part 'db.table' representation.
+    """
     parts = name.replace('"', "").split(".")
+    if parts and parts[0] in ("model", "seed", "source", "snapshot", "test"):
+        return parts[-1]
     if len(parts) >= 2:
         return f"{parts[-2]}.{parts[-1]}"
     return name
@@ -193,19 +203,70 @@ def render_lint_report(
         return True
 
     if group_by == "model":
-        by_model: dict[str, list[LintFinding]] = defaultdict(list)
+        model_groups: dict[str, dict[str, Any]] = {}
+        path_to_key: dict[str, str] = {}
+        name_to_key: dict[str, str] = {}
         repo_level: list[LintFinding] = []
+
         for finding in findings:
-            if finding.model:
-                by_model[normalize_model_name(finding.model)].append(finding)
-            else:
+            if not finding.model and not finding.path:
                 repo_level.append(finding)
+                continue
+
+            raw_model = finding.model or ""
+            norm_name = normalize_model_name(raw_model) if raw_model else ""
+            raw_path = finding.path or ""
+            norm_path = raw_path.replace("\\", "/").strip() if raw_path else ""
+
+            target_key: str | None = None
+            if norm_path and norm_path in path_to_key:
+                target_key = path_to_key[norm_path]
+            elif norm_name and norm_name in name_to_key:
+                target_key = name_to_key[norm_name]
+            elif norm_path:
+                stem = Path(norm_path).stem
+                if stem in name_to_key:
+                    target_key = name_to_key[stem]
+
+            if target_key is None:
+                target_key = norm_path if norm_path else norm_name
+                model_groups[target_key] = {
+                    "name": norm_name,
+                    "path": norm_path or None,
+                    "names": {norm_name} if norm_name else set(),
+                    "findings": [],
+                }
+                if norm_path:
+                    path_to_key[norm_path] = target_key
+                if norm_name:
+                    name_to_key[norm_name] = target_key
+
+            group = model_groups[target_key]
+            group["findings"].append(finding)
+            if norm_path and not group["path"]:
+                group["path"] = norm_path
+                path_to_key[norm_path] = target_key
+            if norm_name:
+                group["names"].add(norm_name)
+                name_to_key[norm_name] = target_key
 
         console.print("\n[bold cyan]Issues by Model[/bold cyan]")
 
-        for model_name in sorted(by_model):
-            model_findings = by_model[model_name]
-            path = next((f.path for f in model_findings if f.path), None)
+        # Determine canonical display name and sort
+        for group in model_groups.values():
+            if group["path"]:
+                stem = Path(group["path"]).stem
+                if stem in group["names"] or not group["name"]:
+                    group["name"] = stem
+
+        sorted_groups = sorted(
+            model_groups.values(),
+            key=lambda g: (g["name"] or "", g["path"] or ""),
+        )
+
+        for group in sorted_groups:
+            model_name = group["name"]
+            path = group["path"]
             header = f"[bold cyan]● {model_name}[/bold cyan]"
             if path:
                 header += f" [dim]({path})[/dim]"
@@ -215,7 +276,7 @@ def render_lint_report(
             table.add_column(width=4, no_wrap=True)
             table.add_column()
 
-            for finding in sorted(model_findings, key=lambda f: (f.severity, f.check)):
+            for finding in sorted(group["findings"], key=lambda f: (f.severity, f.check)):
                 icon = "✘" if finding.severity == "error" else "⚠"
                 style = "red" if finding.severity == "error" else "yellow"
                 

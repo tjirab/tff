@@ -363,4 +363,158 @@ def test_render_lint_report_connascence_grouping_hyperlinks() -> None:
     assert "(banselectstar)" in text_output
 
 
+def test_normalize_model_name() -> None:
+    from tff.core.report import normalize_model_name
+
+    assert normalize_model_name("model.my_project.dim_users") == "dim_users"
+    assert normalize_model_name("source.my_project.raw_users") == "raw_users"
+    assert normalize_model_name("seed.my_project.country_codes") == "country_codes"
+    assert normalize_model_name("snapshot.my_project.orders_snapshot") == "orders_snapshot"
+    assert normalize_model_name('"model"."my_project"."dim_users"') == "dim_users"
+    assert normalize_model_name("sqlmesh_example.dim_users") == "sqlmesh_example.dim_users"
+    assert normalize_model_name("catalog.sqlmesh_example.dim_users") == "sqlmesh_example.dim_users"
+    assert normalize_model_name("dim_users") == "dim_users"
+
+
+def test_render_lint_report_unifies_model_headings_across_checks() -> None:
+    from rich.console import Console
+
+    from tff.core.report import LintFinding, render_lint_report
+
+    console = Console(record=True, width=120)
+    findings = [
+        LintFinding(
+            check="dependency_graph",
+            severity="error",
+            message="fan_out=5 (fail>2) — high blast-radius hub model",
+            model="dbt_example.dim_users",
+            path="models/core/dim_users.sql",
+        ),
+        LintFinding(
+            check="banselectstar",
+            severity="error",
+            message="SELECT * is prohibited.",
+            model="dim_users",
+            path="models/core/dim_users.sql",
+        ),
+        LintFinding(
+            check="materialization_depth",
+            severity="warning",
+            message="View nesting depth is 3",
+            model="model.dbt_example.dim_users",
+            path="models/core/dim_users.sql",
+        ),
+    ]
+
+    success = render_lint_report(
+        findings,
+        models_checked=1,
+        executed_checks=["sqlmesh", "dependency_graph"],
+        console=console,
+        group_by="model",
+    )
+
+    assert success is False
+    output = console.export_text()
+
+    # The canonical heading ● dim_users should appear exactly once
+    assert output.count("● dim_users") == 1
+    # Qualified model prefix should not appear as a separate heading
+    assert "● dbt_example.dim_users" not in output
+    assert "● model.dbt_example.dim_users" not in output
+    # All 3 findings should be present under the single heading
+    assert "fan_out=5" in output
+    assert "SELECT * is prohibited" in output
+    assert "View nesting depth is 3" in output
+
+
+def test_render_lint_report_model_grouping_edge_cases() -> None:
+    from rich.console import Console
+
+    from tff.core.report import LintFinding, render_lint_report
+
+    console = Console(record=True, width=120)
+    findings = [
+        # 1. Finding with path only (no model name)
+        LintFinding(
+            check="banselectstar",
+            severity="error",
+            message="No select star",
+            model=None,
+            path="models/staging/stg_only_path.sql",
+        ),
+        # 2. Finding with model name only first (no path)
+        LintFinding(
+            check="sqlcomplexity",
+            severity="warning",
+            message="High complexity",
+            model="orders",
+            path=None,
+        ),
+        # 3. Subsequent finding with path that matches the previous model name by stem
+        LintFinding(
+            check="banselectstar",
+            severity="error",
+            message="No select star in orders",
+            model="orders",
+            path="models/marts/orders.sql",
+        ),
+        # 4. Finding with path first
+        LintFinding(
+            check="banselectstar",
+            severity="error",
+            message="No select star in customers",
+            model="customers",
+            path="models/marts/customers.sql",
+        ),
+        # 5. Subsequent finding with model name only that matches by norm_name
+        LintFinding(
+            check="sqlcomplexity",
+            severity="warning",
+            message="High complexity in customers",
+            model="customers",
+            path=None,
+        ),
+        # 6. Model name only first
+        LintFinding(
+            check="nomissingowner",
+            severity="error",
+            message="Missing owner",
+            model="reports",
+            path=None,
+        ),
+        # 7. Subsequent finding with no model name, but path stem matches previous model
+        LintFinding(
+            check="banselectstar",
+            severity="error",
+            message="No select star in reports",
+            model=None,
+            path="models/marts/reports.sql",
+        ),
+    ]
+
+    success = render_lint_report(
+        findings,
+        models_checked=4,
+        executed_checks=["sqlmesh"],
+        console=console,
+        group_by="model",
+    )
+
+    assert success is False
+    output = console.export_text()
+    assert "● stg_only_path" in output
+    assert "● orders" in output
+    assert "● customers" in output
+    assert "● reports" in output
+    assert output.count("● orders") == 1
+    assert output.count("● customers") == 1
+    assert output.count("● reports") == 1
+    assert "models/marts/orders.sql" in output
+    assert "models/marts/customers.sql" in output
+    assert "models/marts/reports.sql" in output
+
+
+
+
 
