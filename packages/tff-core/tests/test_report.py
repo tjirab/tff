@@ -555,6 +555,24 @@ def test_render_lint_report_multiline_finding_formatting() -> None:
     assert "  + extra columns: email_flag" in out_cat
 
 
+def test_render_lint_report_with_duration() -> None:
+    from rich.console import Console
+    from tff.core.report import render_lint_report
+
+    console = Console(record=True, width=120)
+    render_lint_report(
+        [],
+        models_checked=15,
+        executed_checks=["rules"],
+        console=console,
+        duration=0.42,
+    )
+    output = console.export_text()
+    assert "15 models checked" in output
+    assert "0.42s" in output
+
+
+
 
 
 

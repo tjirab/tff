@@ -72,6 +72,10 @@ def test_get_lint_json_data():
     data_warn_fail = get_lint_json_data(only_warnings, models_checked=3, fail_level="warning")
     assert data_warn_fail["passed"] is False
 
+    # Test with duration
+    data_duration = get_lint_json_data(findings, models_checked=5, fail_level="error", duration=0.4567)
+    assert data_duration["duration_seconds"] == 0.457
+
 
 def test_get_health_json_data():
     scores = {
@@ -113,6 +117,11 @@ def test_get_health_json_data():
     assert data["enabled_checks"] == ["banselectstar", "nomissingowner"]
     assert len(data["findings"]) == 1
     assert data["findings"][0]["check"] == "nomissingowner"
+    assert "duration_seconds" not in data
+
+    # Test with duration
+    data_dur = get_health_json_data(scores, models_checked=10, duration=0.8888)
+    assert data_dur["duration_seconds"] == 0.889
 
 
 def test_save_log_and_pruning(tmp_path: Path):

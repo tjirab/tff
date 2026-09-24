@@ -121,13 +121,14 @@ def test_main_lint_dbt(
         checks=None,
         dialect="duckdb",
     )
-    mock_render.assert_called_once_with(
-        [],
-        models_checked=5,
-        executed_checks=["rules"],
-        fail_level="error",
-        group_by="model",
-    )
+    assert mock_render.call_count == 1
+    call_args, call_kwargs = mock_render.call_args
+    assert call_args == ([],)
+    assert call_kwargs["models_checked"] == 5
+    assert call_kwargs["executed_checks"] == ["rules"]
+    assert call_kwargs["fail_level"] == "error"
+    assert call_kwargs["group_by"] == "model"
+    assert call_kwargs["duration"] is not None
 
 
 @patch("tff.core.cli._get_runner")
@@ -269,13 +270,14 @@ def test_main_lint_group_by_connascence(
     )
 
     assert exit_code == 0
-    mock_render.assert_called_once_with(
-        [],
-        models_checked=5,
-        executed_checks=["rules"],
-        fail_level="error",
-        group_by="connascence",
-    )
+    assert mock_render.call_count == 1
+    call_args, call_kwargs = mock_render.call_args
+    assert call_args == ([],)
+    assert call_kwargs["models_checked"] == 5
+    assert call_kwargs["executed_checks"] == ["rules"]
+    assert call_kwargs["fail_level"] == "error"
+    assert call_kwargs["group_by"] == "connascence"
+    assert call_kwargs["duration"] is not None
 
 
 def test_cli_main_block(tmp_path: Path):
@@ -1872,6 +1874,77 @@ def test_cli_debug_logging_masks_github_token_equals(capsys):
     captured = capsys.readouterr()
     assert secret not in captured.err
     assert "'--github-token=***'" in captured.err
+
+
+def test_cli_lint_interactive_spinner(tmp_path: Path):
+    (tmp_path / "dbt_project.yml").touch()
+    mock_runner = MagicMock()
+    mock_runner.run_all_checks.return_value = ([], 3, ["rules"])
+
+    with patch("tff.core.cli._get_runner", return_value=mock_runner), \
+         patch("sys.stderr.isatty", return_value=True), \
+         patch.dict(os.environ, {"TERM": "xterm-256color", "CI": ""}, clear=False), \
+         patch("tff.core.cli.render_lint_report", return_value=True) as mock_render:
+        exit_code = main(["lint", "--project", str(tmp_path)])
+        assert exit_code == 0
+        assert mock_render.call_count == 1
+        call_kwargs = mock_render.call_args[1]
+        assert call_kwargs["duration"] is not None
+
+
+def test_cli_lint_autofix_interactive_spinner(tmp_path: Path):
+    (tmp_path / "dbt_project.yml").touch()
+    from tff.core.model import ModelRepresentation
+    from tff.core.report import LintFinding
+
+    finding = LintFinding(
+        check="nomissingowner",
+        severity="error",
+        message="Missing owner",
+        model="user_model",
+        path="models/marts/user_model.sql",
+    )
+    model = ModelRepresentation(
+        name="user_model",
+        path=str(tmp_path / "models/marts/user_model.sql"),
+        dialect="duckdb",
+        is_symbolic=False,
+        is_external=False,
+        columns_to_types={},
+        depends_on=set(),
+        description=None,
+        owner=None,
+        grains=[],
+        audits=[],
+        materialized="table",
+        expression=None,
+        tags=[],
+        meta={},
+        provider="dbt",
+    )
+
+    mock_adapter = MagicMock()
+    mock_adapter.provider_name = "dbt"
+    # First run returns finding, second run returns clean
+    mock_adapter.run_checks.side_effect = [
+        ([finding], 1, ["nomissingowner"]),
+        ([], 1, ["nomissingowner"]),
+    ]
+    mock_adapter.load_models.return_value = {"user_model": model}
+    mock_adapter.apply_metadata_fix.return_value = "Fixed owner"
+
+    with patch("tff.core.cli._get_adapter", return_value=mock_adapter), \
+         patch("tff.core.cli._detect_provider", return_value="dbt"), \
+         patch("sys.stderr.isatty", return_value=True), \
+         patch.dict(os.environ, {"TERM": "xterm-256color", "CI": ""}, clear=False), \
+         patch("tff.core.autofix.apply_autofixes", return_value=["Fixed owner"]), \
+         patch("tff.core.cli.render_lint_report", return_value=True) as mock_render:
+        exit_code = main(["lint", "--project", str(tmp_path), "--fix"])
+        assert exit_code == 0
+        assert mock_adapter.run_checks.call_count == 2
+        assert mock_render.call_count == 1
+        assert mock_render.call_args[1]["duration"] is not None
+
 
 
 

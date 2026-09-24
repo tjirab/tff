@@ -151,6 +151,19 @@ def test_render_health_report() -> None:
     assert "[dim]Disabled[/dim]" not in output
 
 
+def test_render_health_report_with_duration() -> None:
+    config = FitnessFunctionsConfig.model_validate({
+        "checks": {"layer_integrity": {"enabled": True}},
+        "rules": {"ban_select_star": {"enabled": True}},
+    })
+    scores = calculate_health_scores([], 5, config, provider="dbt")
+    console = Console(record=True, width=100)
+    render_health_report(scores, config, provider="dbt", console=console, duration=1.23)
+    output = console.export_text()
+    assert "tff PROJECT HEALTH REPORT" in output
+    assert "Duration: 1.23s" in output
+
+
 def test_cli_health_command(tmp_path, monkeypatch) -> None:
     # We will mock the runner to avoid actually parsing a project directory
     mock_runner = MagicMock()

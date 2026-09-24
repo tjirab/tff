@@ -302,6 +302,7 @@ def render_health_report(
     console: Console | None = None,
     *,
     group_by: str = "connascence",
+    duration: float | None = None,
 ) -> None:
     """Render a beautiful CLI health report using rich.
 
@@ -312,6 +313,8 @@ def render_health_report(
         connascence category.  ``"domain"`` groups by the path segment
         directly under ``models/`` and optionally a sub-domain, e.g.
         ``models/sources``, ``models/marts/marketing``.
+    duration:
+        Execution duration in seconds (optional).
     """
     console = console or Console()
     
@@ -323,12 +326,16 @@ def render_health_report(
     
     score_color = "green" if overall_score >= 90 else "yellow" if overall_score >= 70 else "red"
     
+    panel_info = f"Active checks: {len(enabled_checks)}  ·  Categories: {sum(1 for v in category_scores.values() if v is not None)}"
+    if duration is not None:
+        panel_info += f"  ·  Duration: {duration:.2f}s"
+
     score_panel = Panel(
         Text.assemble(
             ("Overall Project Health Score: ", "bold white"),
             (f"{overall_score:.1f}%", f"bold {score_color}"),
             ("\n", ""),
-            (f"Active checks: {len(enabled_checks)}  ·  Categories: {sum(1 for v in category_scores.values() if v is not None)}", "dim")
+            (panel_info, "dim")
         ),
         title=f"[bold {score_color}]tff PROJECT HEALTH REPORT[/bold {score_color}]",
         border_style=score_color,

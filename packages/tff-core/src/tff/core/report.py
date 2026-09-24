@@ -116,6 +116,7 @@ def render_lint_report(
     console: Console | None = None,
     fail_level: Severity = "error",
     group_by: Literal["connascence", "model"] = "model",
+    duration: float | None = None,
 ) -> bool:
     """Render lint report. Returns True when findings are below fail_level."""
     console = console or Console()
@@ -147,13 +148,16 @@ def render_lint_report(
         title = "[bold green]LINT PASSED[/bold green]"
         border_style = "green"
 
+    summary_text = Text()
+    summary_text.append(f"{models_checked} models checked", style="bold")
+    if duration is not None:
+        summary_text.append(f"  ·  {duration:.2f}s", style="dim")
+    summary_text.append("\n")
+    summary_text.append_text(status)
+
     console.print(
         Panel(
-            Text.assemble(
-                (f"{models_checked} models checked", "bold"),
-                "\n",
-                status,
-            ),
+            summary_text,
             title=title,
             border_style=border_style,
             padding=(1, 2),

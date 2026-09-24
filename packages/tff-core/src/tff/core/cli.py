@@ -982,7 +982,6 @@ def _main_impl(argv: list[str] | None = None) -> int:
 
     if args.command == "info":
         # Run info command: show diagnostics
-        from rich.console import Console
         from rich.table import Table
         import importlib.metadata as metadata
 
@@ -1181,8 +1180,6 @@ def _main_impl(argv: list[str] | None = None) -> int:
         warnings = [item["warnings_count"] for item in history]
 
         # 1. Health Score Trend
-        from rich.console import Console
-
         console = Console()
         console.print("[bold cyan]● tff Project Health Score Trend[/bold cyan]")
         has_health_data = any(h is not None for h in health_scores)
@@ -1415,16 +1412,45 @@ def _main_impl(argv: list[str] | None = None) -> int:
             args.dialect,
             manifest_path,
         )
+
+        is_interactive = (
+            sys.stderr.isatty()
+            and not getattr(args, "json", False)
+            and getattr(args, "format", None) not in ("json", "sarif", "github")
+            and os.environ.get("TERM") != "dumb"
+            and os.environ.get("CI") not in ("1", "true")
+        )
+
+        import time
+
+        start_time = time.perf_counter()
         try:
-            findings, models_checked, executed_checks = adapter.run_checks(
-                project_root=project_roots,
-                config=config,
-                checks=checks,
-                dialect=args.dialect,
-                manifest_path=manifest_path,
-            )
+            if is_interactive:
+                from rich.status import Status
+
+                with Status(
+                    f"Evaluating fitness functions with {adapter.provider_name}...",
+                    console=Console(stderr=True),
+                ):
+                    findings, models_checked, executed_checks = adapter.run_checks(
+                        project_root=project_roots,
+                        config=config,
+                        checks=checks,
+                        dialect=args.dialect,
+                        manifest_path=manifest_path,
+                    )
+            else:
+                findings, models_checked, executed_checks = adapter.run_checks(
+                    project_root=project_roots,
+                    config=config,
+                    checks=checks,
+                    dialect=args.dialect,
+                    manifest_path=manifest_path,
+                )
+            execution_duration = time.perf_counter() - start_time
             logger.debug(
-                "Check execution completed: evaluated %d model(s), executed %s, found %d violation(s)",
+                "Check execution completed in %.2fs: evaluated %d model(s), executed %s, found %d violation(s)",
+                execution_duration,
                 models_checked,
                 executed_checks,
                 len(findings),
@@ -1456,20 +1482,35 @@ def _main_impl(argv: list[str] | None = None) -> int:
                 fix_logs = apply_autofixes(project_roots, adapter, findings, models)
                 if fix_logs:
                     if not args.json:
-                        from rich.console import Console
-
                         console = Console(stderr=True)
                         for log in fix_logs:
                             console.print(f"[green]✓[/green] {log}")
                     # Re-run checks to get the final state of the files
                     try:
-                        findings, models_checked, executed_checks = adapter.run_checks(
-                            project_root=project_roots,
-                            config=config,
-                            checks=checks,
-                            dialect=args.dialect,
-                            manifest_path=manifest_path,
-                        )
+                        rerun_start = time.perf_counter()
+                        if is_interactive:
+                            from rich.status import Status
+
+                            with Status(
+                                f"Re-evaluating fitness functions with {adapter.provider_name}...",
+                                console=Console(stderr=True),
+                            ):
+                                findings, models_checked, executed_checks = adapter.run_checks(
+                                    project_root=project_roots,
+                                    config=config,
+                                    checks=checks,
+                                    dialect=args.dialect,
+                                    manifest_path=manifest_path,
+                                )
+                        else:
+                            findings, models_checked, executed_checks = adapter.run_checks(
+                                project_root=project_roots,
+                                config=config,
+                                checks=checks,
+                                dialect=args.dialect,
+                                manifest_path=manifest_path,
+                            )
+                        execution_duration = time.perf_counter() - rerun_start
                     except TffError:
                         raise
                     except Exception as e:
@@ -1489,7 +1530,12 @@ def _main_impl(argv: list[str] | None = None) -> int:
             )
             import json
 
-            json_data = get_lint_json_data(findings, models_checked, args.fail_level)
+            json_data = get_lint_json_data(
+                findings,
+                models_checked,
+                args.fail_level,
+                duration=execution_duration,
+            )
             save_log(
                 project_root,
                 "lint",
@@ -1548,6 +1594,7 @@ def _main_impl(argv: list[str] | None = None) -> int:
                     executed_checks=executed_checks,
                     fail_level=args.fail_level,  # type: ignore[arg-type]
                     group_by=args.group_by,  # type: ignore[arg-type]
+                    duration=execution_duration,
                 )
             logger.debug("Lint report finished: passed=%s", passed)
             return 0 if passed else 1
@@ -1588,7 +1635,11 @@ def _main_impl(argv: list[str] | None = None) -> int:
                 if scoped_models_count is not None
                 else models_checked
             )
-            json_data = get_health_json_data(scores, effective_models_checked)
+            json_data = get_health_json_data(
+                scores,
+                effective_models_checked,
+                duration=execution_duration,
+            )
             save_log(
                 project_root,
                 "health",
@@ -1599,7 +1650,13 @@ def _main_impl(argv: list[str] | None = None) -> int:
             if args.json:
                 print(json.dumps(json_data, indent=2))
             else:
-                render_health_report(scores, config, provider, group_by=group_by)
+                render_health_report(
+                    scores,
+                    config,
+                    provider,
+                    group_by=group_by,
+                    duration=execution_duration,
+                )
 
             overall_score = scores["overall_score"]
             logger.debug("Overall project health score: %.2f%% (fail_under=%.1f%%)", overall_score, args.fail_under)

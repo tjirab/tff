@@ -33,6 +33,7 @@ def get_lint_json_data(
     findings: list[LintFinding],
     models_checked: int,
     fail_level: str,
+    duration: float | None = None,
 ) -> dict[str, Any]:
     """Compile tff lint findings and stats into a JSON-serializable dictionary."""
     errors = [f for f in findings if f.severity == "error"]
@@ -46,7 +47,7 @@ def get_lint_json_data(
         or (fail_level == "warning" and any(f.severity == "warning" for f in findings))
     )
 
-    return {
+    data: dict[str, Any] = {
         "timestamp": datetime.now().astimezone().isoformat(),
         "command": "lint",
         "models_checked": models_checked,
@@ -55,11 +56,15 @@ def get_lint_json_data(
         "passed": passed,
         "findings": [serialize_finding(f) for f in findings],
     }
+    if duration is not None:
+        data["duration_seconds"] = round(duration, 3)
+    return data
 
 
 def get_health_json_data(
     scores: dict[str, Any],
     models_checked: int,
+    duration: float | None = None,
 ) -> dict[str, Any]:
     """Compile tff health scores and findings into a JSON-serializable dictionary."""
     overall_score = scores["overall_score"]
@@ -88,6 +93,8 @@ def get_health_json_data(
     }
     if "check_weights" in scores:
         data["check_weights"] = scores["check_weights"]
+    if duration is not None:
+        data["duration_seconds"] = round(duration, 3)
     return data
 
 
