@@ -1068,3 +1068,127 @@ def test_get_health_json_data_includes_weights() -> None:
     assert data["check_weights"]["layer_integrity"] == 3.0
 
 
+def test_format_health_check_desc_enabled_known_check() -> None:
+    """Enabled known check should have OSC-8 hyperlinks for label and check ID."""
+    from tff.core.health import _format_health_check_desc
+    from tff.core.registry import registry
+
+    desc = _format_health_check_desc("[green]✔[/green]", "banselectstar", "No SELECT *", weight_str=" · weight: 2")
+    assert desc.plain == "  ✔ No SELECT *\n    (banselectstar · weight: 2)"
+
+    docs_url = registry.get_docs_url("banselectstar")
+    assert docs_url is not None
+
+    # Check styles applied across spans
+    styles = [str(span.style) for span in desc.spans]
+    assert any(f"link {docs_url}" in s for s in styles)
+    assert any(f"dim link {docs_url}" in s for s in styles)
+
+
+def test_format_health_check_desc_enabled_unknown_check() -> None:
+    """Enabled unknown check should not have hyperlinks."""
+    from tff.core.health import _format_health_check_desc
+
+    desc = _format_health_check_desc("[red]✘[/red]", "custom_check", "Custom Check")
+    assert desc.plain == "  ✘ Custom Check\n    (custom_check)"
+    styles = [str(span.style) for span in desc.spans]
+    assert not any("link" in s for s in styles)
+
+
+def test_format_health_check_desc_disabled_known_check() -> None:
+    """Disabled known check should have dim OSC-8 hyperlinks for label and check ID."""
+    from tff.core.health import _format_health_check_desc
+    from tff.core.registry import registry
+
+    desc = _format_health_check_desc("-", "banselectstar", "No SELECT *", disabled=True)
+    assert desc.plain == "  - No SELECT *\n    (banselectstar)"
+
+    docs_url = registry.get_docs_url("banselectstar")
+    assert docs_url is not None
+
+    styles = [str(span.style) for span in desc.spans]
+    assert any(f"dim link {docs_url}" in s for s in styles)
+
+
+def test_format_health_check_desc_disabled_unknown_check() -> None:
+    """Disabled unknown check should have purely dim styles without hyperlinks."""
+    from tff.core.health import _format_health_check_desc
+
+    desc = _format_health_check_desc("-", "unknown_check", "Unknown Check", disabled=True)
+    assert desc.plain == "  - Unknown Check\n    (unknown_check)"
+
+    styles = [str(span.style) for span in desc.spans]
+    assert all("dim" in s and "link" not in s for s in styles)
+
+
+def test_render_health_report_connascence_breakdown_hyperlinks() -> None:
+    """render_health_report connascence breakdown includes Rich OSC-8 hyperlinks without plain text leakage."""
+    from tff.core.registry import registry
+
+    config = FitnessFunctionsConfig.model_validate({
+        "rules": {"ban_select_star": {"enabled": True}},
+        "checks": {"layer_integrity": {"enabled": True}},
+    })
+    findings = [
+        LintFinding(
+            check="banselectstar", severity="error", message="error",
+            model="model_a", path="models/marts/marketing/model_a.sql",
+        ),
+    ]
+    scores = calculate_health_scores(findings, models_checked=5, config=config, provider="dbt")
+
+    console = Console(record=True, width=120)
+    render_health_report(scores, config, provider="dbt", console=console, group_by="connascence")
+    html = console.export_html()
+    text = console.export_text()
+
+    docs_url = registry.get_docs_url("banselectstar")
+    assert docs_url is not None
+    assert f'href="{docs_url}"' in html
+    assert "https://tff.readthedocs.io" not in text
+
+
+def test_render_health_report_connascence_unknown_enabled_hyperlinks() -> None:
+    """render_health_report handles unknown enabled checks in breakdown gracefully."""
+    config = FitnessFunctionsConfig.model_validate({})
+    scores = calculate_health_scores([], models_checked=5, config=config, provider="dbt")
+    # Artificially inject an unknown check into enabled_checks
+    scores["enabled_checks"].add("custom_external_check")
+    scores["check_scores"]["custom_external_check"] = 100.0
+    scores["check_findings"]["custom_external_check"] = []
+
+    console = Console(record=True, width=120)
+    render_health_report(scores, config, provider="dbt", console=console, group_by="connascence")
+    text = console.export_text()
+
+    assert "Other Checks" in text
+    assert "custom_external_check" in text
+
+
+def test_render_health_report_domain_breakdown_hyperlinks() -> None:
+    """render_health_report domain breakdown includes Rich OSC-8 hyperlinks without plain text leakage."""
+    from tff.core.registry import registry
+
+    config = FitnessFunctionsConfig.model_validate({
+        "rules": {"ban_select_star": {"enabled": True}},
+    })
+    findings = [
+        LintFinding(
+            check="banselectstar", severity="error", message="error",
+            model="model_a", path="models/marts/marketing/model_a.sql",
+        ),
+    ]
+    scores = calculate_health_scores(findings, models_checked=5, config=config, provider="dbt")
+
+    console = Console(record=True, width=120)
+    render_health_report(scores, config, provider="dbt", console=console, group_by="domain")
+    html = console.export_html()
+    text = console.export_text()
+
+    docs_url = registry.get_docs_url("banselectstar")
+    assert docs_url is not None
+    assert f'href="{docs_url}"' in html
+    assert "https://tff.readthedocs.io" not in text
+
+
+

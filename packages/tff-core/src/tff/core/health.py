@@ -395,6 +395,36 @@ def render_health_report(
         _render_health_by_connascence(scores, enabled_checks, check_scores, check_findings, console)
 
 
+def _format_health_check_desc(
+    icon_markup: str,
+    check: str,
+    label: str,
+    weight_str: str = "",
+    disabled: bool = False,
+) -> Text:
+    """Format check description column with status icon, label, and OSC-8 hyperlink if available."""
+    docs_url = registry.get_docs_url(check)
+    desc = Text()
+    if disabled:
+        desc.append("  - ", style="dim")
+        desc.append(label, style=f"dim link {docs_url}" if docs_url else "dim")
+        desc.append("\n    (", style="dim")
+        desc.append(check, style=f"dim link {docs_url}" if docs_url else "dim")
+        desc.append(")", style="dim")
+        return desc
+
+    desc.append("  ")
+    desc.append_text(Text.from_markup(icon_markup))
+    desc.append(" ")
+    desc.append(label, style=f"link {docs_url}" if docs_url else None)
+    desc.append("\n    (", style="dim")
+    desc.append(check, style=f"dim link {docs_url}" if docs_url else "dim")
+    if weight_str:
+        desc.append(weight_str, style="dim")
+    desc.append(")", style="dim")
+    return desc
+
+
 def _render_health_by_connascence(
     scores: dict[str, Any],
     enabled_checks: set[str],
@@ -453,13 +483,13 @@ def _render_health_by_connascence(
 
                 weight = check_weights.get(check, 1.0)
                 weight_str = f" · weight: {weight:g}" if weight != 1.0 else ""
-                check_desc = Text.from_markup(f"  {icon} {label}\n    [dim]({check}{weight_str})[/dim]")
+                check_desc = _format_health_check_desc(icon, check, label, weight_str=weight_str)
                 bar = make_progress_bar(score, width=10)
                 score_cell = Text.from_markup(f"{bar} {score_text}")
 
                 table.add_row(check_desc, score_cell, Text.from_markup(violation_text))
             else:
-                check_desc = Text.from_markup(f"  [dim]- {label}\n    ({check})[/dim]")
+                check_desc = _format_health_check_desc("-", check, label, disabled=True)
                 table.add_row(check_desc, Text("Disabled", style="dim"), "")
 
     # Print other checks if any
@@ -498,7 +528,7 @@ def _render_health_by_connascence(
 
             weight = check_weights.get(check, 1.0)
             weight_str = f" · weight: {weight:g}" if weight != 1.0 else ""
-            check_desc = Text.from_markup(f"  {icon} {label}\n    [dim]({check}{weight_str})[/dim]")
+            check_desc = _format_health_check_desc(icon, check, label, weight_str=weight_str)
             bar = make_progress_bar(score, width=10)
             score_cell = Text.from_markup(f"{bar} {score_text}")
 
@@ -646,7 +676,7 @@ def _render_health_by_domain(
                     parts.append(f"{warnings} warning{'s' if warnings != 1 else ''}")
                 violation_text = f"[dim]({', '.join(parts)})[/dim]"
 
-            check_desc = Text.from_markup(f"  {icon} {label}\n    [dim]({check})[/dim]")
+            check_desc = _format_health_check_desc(icon, check, label)
             bar = make_progress_bar(local_score, width=10)
             score_cell = Text.from_markup(f"{bar} {score_text}")
             table.add_row(check_desc, score_cell, Text.from_markup(violation_text))

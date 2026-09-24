@@ -306,7 +306,7 @@ tff supports multiple structured output formats for seamless CI/CD and tool inte
 
 | Format | CLI Option | Primary Target | Description |
 | :--- | :--- | :--- | :--- |
-| **Terminal Text** | (default) | Local developers, CI terminal | Rich colored ASCII tables, violation callouts, and recommendations. |
+| **Terminal Text** | (default) | Local developers, CI terminal | Rich colored ASCII tables, violation callouts, recommendations, and clickable OSC-8 documentation hyperlinks. |
 | **JSON** | `--format json` or `--json` | `jq`, custom telemetry, scripts | Pure JSON output of findings, health scores, and metrics. |
 | **SARIF v2.1.0** | `--format sarif` | GitHub Code Scanning | OASIS standard format for GitHub Security Alerts and PR file annotations. |
 | **GitHub Annotations**| `--format github` or `--github-annotations` | GitHub Actions Runners | Emits `::error` and `::warning` workflow commands to annotate changed lines in PRs. |
