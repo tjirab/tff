@@ -515,6 +515,47 @@ def test_render_lint_report_model_grouping_edge_cases() -> None:
     assert "models/marts/reports.sql" in output
 
 
+def test_render_lint_report_multiline_finding_formatting() -> None:
+    """Multi-line findings format cleanly with rule tag on line 1 and sub-bullets indented below."""
+    from rich.console import Console
+    from tff.core.report import LintFinding, render_lint_report
+
+    multiline_msg = "another_user_model.sql does not match dim_users.sql:\n  - missing columns: api_request, bad_id\n  + extra columns: email_flag"
+    findings = [
+        LintFinding(
+            check="schema_contracts",
+            severity="error",
+            message=multiline_msg,
+            model=None,
+            path=None,
+        ),
+        LintFinding(
+            check="schema_contracts",
+            severity="error",
+            message=multiline_msg,
+            model="user_model",
+            path="models/marts/user_model.sql",
+        ),
+    ]
+
+    console_model = Console(record=True, width=120)
+    render_lint_report(findings, models_checked=2, executed_checks=["schema_contracts"], console=console_model, group_by="model")
+    out_model = console_model.export_text()
+
+    assert "another_user_model.sql does not match dim_users.sql: (schema_contracts)" in out_model
+    assert "  - missing columns: api_request, bad_id" in out_model
+    assert "  + extra columns: email_flag" in out_model
+
+    console_cat = Console(record=True, width=120)
+    render_lint_report(findings, models_checked=2, executed_checks=["schema_contracts"], console=console_cat, group_by="connascence")
+    out_cat = console_cat.export_text()
+
+    assert "another_user_model.sql does not match dim_users.sql: (schema_contracts)" in out_cat
+    assert "  - missing columns: api_request, bad_id" in out_cat
+    assert "  + extra columns: email_flag" in out_cat
+
+
+
 
 
 

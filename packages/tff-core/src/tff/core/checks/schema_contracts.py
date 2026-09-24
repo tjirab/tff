@@ -206,7 +206,7 @@ def collect_schema_contract_findings(
         LintFinding(
             check="schema_contracts",
             severity="error",
-            message=error.replace("\n", " — "),
+            message=error,
         )
         for error in _schema_contract_errors(project_root, contract_config, models=models)
     ]

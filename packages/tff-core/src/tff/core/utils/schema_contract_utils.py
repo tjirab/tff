@@ -81,13 +81,13 @@ def check_column_list_parity(
     extra = other_set - ref_set
     detail = []
     if missing:
-        detail.append(f"  missing columns: {sorted(missing)}")
+        detail.append(f"  missing columns: {', '.join(sorted(missing))}")
     if extra:
-        detail.append(f"  extra columns: {sorted(extra)}")
+        detail.append(f"  extra columns: {', '.join(sorted(extra))}")
     if not missing and not extra:
         detail.append("  column order differs")
-        detail.append(f"    {reference_name}: {reference_cols}")
-        detail.append(f"    {other_name}: {other_cols}")
+        detail.append(f"    {reference_name}: {', '.join(reference_cols)}")
+        detail.append(f"    {other_name}: {', '.join(other_cols)}")
     return [f"{other_name} does not match {reference_name}:\n" + "\n".join(detail)]
 
 
@@ -103,11 +103,11 @@ def check_dimension_set_parity(
     if in_left_not_right:
         errors.append(
             f"Dimension columns in {left_name} but missing from {right_name}: "
-            f"{sorted(in_left_not_right)}"
+            f"{', '.join(sorted(in_left_not_right))}"
         )
     if in_right_not_left:
         errors.append(
             f"Dimension columns in {right_name} but missing from {left_name}: "
-            f"{sorted(in_right_not_left)}"
+            f"{', '.join(sorted(in_right_not_left))}"
         )
     return errors

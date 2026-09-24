@@ -435,11 +435,6 @@ def _render_health_by_connascence(
     """Render detailed breakdown grouped by connascence category."""
     console.print("[bold cyan]Detailed Breakdown by Check[/bold cyan]")
 
-    table = Table(box=None, show_header=False, padding=(0, 2, 0, 0))
-    table.add_column()
-    table.add_column(width=22, no_wrap=True)
-    table.add_column(no_wrap=True)
-
     check_weights = scores.get("check_weights", {})
     first_cat = True
     for cat_name, cat_checks in CATEGORIES.items():
@@ -449,10 +444,15 @@ def _render_health_by_connascence(
             continue
 
         if not first_cat:
-            table.add_row("", "", "")
+            console.print()
         first_cat = False
 
-        table.add_row(Text.from_markup(f"[bold cyan]● {cat_name}[/bold cyan]"), "", "")
+        console.print(f"[bold cyan]● {cat_name}[/bold cyan]")
+
+        table = Table(box=None, show_header=False, padding=(0, 2, 0, 0))
+        table.add_column(min_width=38)
+        table.add_column(width=22, no_wrap=True)
+        table.add_column(no_wrap=True)
 
         for check in cat_checks:
             label = CHECK_LABELS.get(check, check)
@@ -492,6 +492,8 @@ def _render_health_by_connascence(
                 check_desc = _format_health_check_desc("-", check, label, disabled=True)
                 table.add_row(check_desc, Text("Disabled", style="dim"), "")
 
+        console.print(table)
+
     # Print other checks if any
     all_known_checks: set[str] = set()
     for cat_checks in CATEGORIES.values():
@@ -499,8 +501,13 @@ def _render_health_by_connascence(
     unknown_enabled = [c for c in enabled_checks if c not in all_known_checks]
     if unknown_enabled:
         if not first_cat:
-            table.add_row("", "", "")
-        table.add_row(Text.from_markup("[bold cyan]● Other Checks[/bold cyan]"), "", "")
+            console.print()
+        console.print("[bold cyan]● Other Checks[/bold cyan]")
+
+        table = Table(box=None, show_header=False, padding=(0, 2, 0, 0))
+        table.add_column(min_width=38)
+        table.add_column(width=22, no_wrap=True)
+        table.add_column(no_wrap=True)
 
         for check in unknown_enabled:
             label = CHECK_LABELS.get(check, check)
@@ -534,7 +541,8 @@ def _render_health_by_connascence(
 
             table.add_row(check_desc, score_cell, Text.from_markup(violation_text))
 
-    console.print(table)
+        console.print(table)
+
     console.print()
 
 
@@ -638,7 +646,7 @@ def _render_health_by_domain(
         console.print(header_line)
 
         table = Table(box=None, show_header=False, padding=(0, 2, 0, 0))
-        table.add_column()
+        table.add_column(min_width=38)
         table.add_column(width=22, no_wrap=True)
         table.add_column(no_wrap=True)
 

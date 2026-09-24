@@ -298,7 +298,7 @@ def render_ascii_chart(
         min_val = max(0.0, min_val - 5.0)
         max_val = min_val + 10.0
 
-    col_spacing = 6
+    col_spacing = 8
     num_cols = (len(values) - 1) * col_spacing + 1
     grid = [[" " for _ in range(num_cols)] for _ in range(height)]
 
@@ -364,14 +364,14 @@ def render_ascii_chart(
     # Add x-axis line
     lines.append("       └" + "─" * (num_cols + 1))
 
-    # Add x-axis labels (dates) formatted as "MMM DD" (6 characters)
+    # Add x-axis labels (dates) formatted as "MMM DD" padded to col_spacing
     formatted_dates = []
     for d_str in dates:
         try:
             dt = datetime.strptime(d_str, "%Y-%m-%d")
-            formatted_dates.append(dt.strftime("%b %d"))
+            formatted_dates.append(dt.strftime("%b %d").ljust(col_spacing))
         except Exception:
-            formatted_dates.append(d_str[:6].ljust(6))
+            formatted_dates.append(d_str[:col_spacing].ljust(col_spacing))
 
     date_line = " " * 7 + "".join(formatted_dates)
     lines.append(date_line)

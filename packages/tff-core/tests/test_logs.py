@@ -251,6 +251,12 @@ def test_render_ascii_chart():
     assert "●" in chart_down
     assert "╮" in chart_down or "╰" in chart_down or "│" in chart_down
 
+    # Test date labels are spaced cleanly without collisions (col_spacing=8)
+    multi_dates = ["2026-07-01", "2026-07-02", "2026-07-03"]
+    multi_values = [10.0, 20.0, 30.0]
+    chart_multi = render_ascii_chart(multi_values, multi_dates, height=4)
+    assert "Jul 01  Jul 02  Jul 03  " in chart_multi
+
 
 def test_collect_stats_corrupt_files(tmp_path: Path):
     health_dir = tmp_path / ".tff_logs" / "health"

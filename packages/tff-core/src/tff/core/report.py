@@ -282,12 +282,12 @@ def render_lint_report(
                 
                 msg_text = Text()
                 msg_lines = finding.message.split("\n")
-                for i, line in enumerate(msg_lines):
-                    if i > 0:
-                        msg_text.append("\n")
-                    msg_text.append(line)
+                msg_text.append(msg_lines[0])
                 msg_text.append(" ")
                 _append_check_tag(msg_text, finding.check)
+                for line in msg_lines[1:]:
+                    msg_text.append("\n")
+                    msg_text.append(line)
                 
                 table.add_row(f"  [{style}]{icon}[/{style}] ", msg_text)
             console.print(table)
@@ -304,12 +304,12 @@ def render_lint_report(
                 
                 msg_text = Text()
                 msg_lines = finding.message.split("\n")
-                for i, line in enumerate(msg_lines):
-                    if i > 0:
-                        msg_text.append("\n")
-                    msg_text.append(line)
+                msg_text.append(msg_lines[0])
                 msg_text.append(" ")
                 _append_check_tag(msg_text, finding.check)
+                for line in msg_lines[1:]:
+                    msg_text.append("\n")
+                    msg_text.append(line)
                 
                 table.add_row(f"  [{style}]{icon}[/{style}] ", msg_text)
             console.print(table)
@@ -373,12 +373,12 @@ def render_lint_report(
                 
                 msg_text = Text()
                 msg_lines = finding.message.split("\n")
-                for i, line in enumerate(msg_lines):
-                    if i > 0:
-                        msg_text.append("\n")
-                    msg_text.append(line)
+                msg_text.append(msg_lines[0])
                 msg_text.append(" ")
                 _append_check_tag(msg_text, finding.check)
+                for line in msg_lines[1:]:
+                    msg_text.append("\n")
+                    msg_text.append(line)
                 
                 cell_content.append(msg_text)
 
