@@ -105,6 +105,7 @@ class CheckDefinition:
     collector_module: str | None = None
     collector_func_name: str | None = None
     is_enabled_fn: Callable[[FitnessFunctionsConfig, str], bool] | None = None
+    docs_url: str | None = None
 
     @property
     def canonical_id(self) -> str:
@@ -219,6 +220,7 @@ class CheckRegistry:
         aliases: tuple[str, ...] = (),
         finding_check_id: str | None = None,
         is_enabled_fn: Callable[[FitnessFunctionsConfig, str], bool] | None = None,
+        docs_url: str | None = None,
     ) -> CheckDefinition:
         """Convenience method to register a model-level Rule class."""
         rule_id = (
@@ -246,6 +248,11 @@ class CheckRegistry:
             or rule_id
         )
         rule_maturity = getattr(rule_cls, "maturity", "stable")
+        rule_docs_url = (
+            docs_url
+            or getattr(rule_cls, "docs_url", None)
+            or getattr(rule_cls, "help_url", None)
+        )
 
         check_def = CheckDefinition(
             id=rule_id,
@@ -258,6 +265,7 @@ class CheckRegistry:
             maturity=rule_maturity,
             rule_cls=rule_cls,
             is_enabled_fn=is_enabled_fn,
+            docs_url=rule_docs_url,
         )
         self.register(check_def)
         return check_def
@@ -304,6 +312,25 @@ class CheckRegistry:
 
     def all_checks(self) -> list[CheckDefinition]:
         return list(self._checks.values())
+
+    def get_docs_url(self, name_or_alias: str) -> str | None:
+        """Resolve documentation URL for a check or rule name/alias."""
+        check = self.get(name_or_alias)
+        if check is not None:
+            return check.docs_url
+        return None
+
+    def get_docs_urls(self) -> dict[str, str]:
+        """Return a mapping of check IDs, finding IDs, and aliases to their documentation URLs."""
+        urls: dict[str, str] = {}
+        for c in self.all_checks():
+            if c.docs_url:
+                urls[c.id] = c.docs_url
+                if c.finding_check_id:
+                    urls[c.finding_check_id] = c.docs_url
+                for alias in c.aliases:
+                    urls[alias] = c.docs_url
+        return urls
 
     def model_rules(self) -> list[CheckDefinition]:
         return [
@@ -511,6 +538,7 @@ class CheckRegistry:
 def create_default_registry() -> CheckRegistry:
     """Create and populate the default CheckRegistry with all tff checks and rules."""
     reg = CheckRegistry()
+    docs_base = "https://tff.readthedocs.io/rules_and_checks/#"
 
     # 1. Connascence of Name (CoN)
     reg.register(
@@ -524,6 +552,7 @@ def create_default_registry() -> CheckRegistry:
             rule_module="tff.core.rules.ban_select_star",
             rule_class_name="BanSelectStar",
             is_enabled_fn=lambda cfg, p: bool(cfg.rules.ban_select_star.enabled),
+            docs_url=f"{docs_base}ban-select-ban_select_star",
         )
     )
     reg.register(
@@ -537,6 +566,7 @@ def create_default_registry() -> CheckRegistry:
             rule_module="tff.core.rules.filename_equals_modelname",
             rule_class_name="FilenameEqualsModelname",
             is_enabled_fn=lambda cfg, p: bool(cfg.rules.filename_equals_modelname.enabled),
+            docs_url=f"{docs_base}filename-equals-model-name-filename_equals_modelname",
         )
     )
     reg.register(
@@ -550,6 +580,7 @@ def create_default_registry() -> CheckRegistry:
             rule_module="tff.core.rules.column_names",
             rule_class_name="ColumnNames",
             is_enabled_fn=lambda cfg, p: bool(cfg.rules.column_names.enabled),
+            docs_url=f"{docs_base}column-names-column_names",
         )
     )
     reg.register(
@@ -563,6 +594,7 @@ def create_default_registry() -> CheckRegistry:
             rule_module="tff.core.rules.mart_naming",
             rule_class_name="MartModelNamingConvention",
             is_enabled_fn=lambda cfg, p: bool(cfg.rules.mart_naming.enabled),
+            docs_url=f"{docs_base}mart-naming-mart_naming",
         )
     )
     reg.register(
@@ -574,6 +606,7 @@ def create_default_registry() -> CheckRegistry:
             aliases=("ambiguousorinvalidcolumn",),
             finding_check_id="ambiguousorinvalidcolumn",
             is_enabled_fn=lambda cfg, p: p == "sqlmesh",
+            docs_url="https://tff.readthedocs.io/rules_and_checks/",
         )
     )
     reg.register(
@@ -585,6 +618,7 @@ def create_default_registry() -> CheckRegistry:
             aliases=("invalidselectstarexpansion",),
             finding_check_id="invalidselectstarexpansion",
             is_enabled_fn=lambda cfg, p: p == "sqlmesh",
+            docs_url="https://tff.readthedocs.io/rules_and_checks/",
         )
     )
 
@@ -600,6 +634,7 @@ def create_default_registry() -> CheckRegistry:
             rule_module="tff.core.rules.column_types",
             rule_class_name="ColumnTypes",
             is_enabled_fn=lambda cfg, p: bool(cfg.rules.column_types.enabled),
+            docs_url=f"{docs_base}column-types-column_types",
         )
     )
     reg.register(
@@ -614,6 +649,7 @@ def create_default_registry() -> CheckRegistry:
                 "tff.core.checks.schema_contracts", fromlist=["collect_schema_contract_findings"]
             ).collect_schema_contract_findings(models, cfg),
             is_enabled_fn=lambda cfg, p: bool(cfg.checks.schema_contracts.enabled),
+            docs_url=f"{docs_base}schema-contracts-schema_contracts",
         )
     )
     reg.register(
@@ -631,6 +667,7 @@ def create_default_registry() -> CheckRegistry:
                 fromlist=["collect_join_type_parity_findings"],
             ).collect_join_type_parity_findings(models, cfg),
             is_enabled_fn=lambda cfg, p: bool(cfg.checks.join_type_parity.enabled),
+            docs_url=f"{docs_base}join-type-parity-join_type_parity",
         )
     )
 
@@ -648,6 +685,7 @@ def create_default_registry() -> CheckRegistry:
             is_enabled_fn=lambda cfg, p: bool(
                 cfg.rules.no_positional_group_by_or_order_by.enabled
             ),
+            docs_url=f"{docs_base}no-positional-group-byorder-by-no_positional_group_by_or_order_by-auto-fixable",
         )
     )
 
@@ -663,6 +701,7 @@ def create_default_registry() -> CheckRegistry:
             rule_module="tff.core.rules.classification_macros",
             rule_class_name="ClassificationMacros",
             is_enabled_fn=lambda cfg, p: bool(cfg.rules.classification_macros.enabled),
+            docs_url=f"{docs_base}classification-macros-classification_macros",
         )
     )
 
@@ -676,6 +715,7 @@ def create_default_registry() -> CheckRegistry:
             collector_module="tff.core.checks.duplicate_ctes",
             collector_func_name="collect_duplicate_cte_findings",
             is_enabled_fn=lambda cfg, p: bool(cfg.checks.duplicate_ctes.enabled),
+            docs_url=f"{docs_base}duplicate-ctes-duplicate_ctes",
         )
     )
 
@@ -689,6 +729,7 @@ def create_default_registry() -> CheckRegistry:
             collector_module="tff.core.checks.connascence_of_value",
             collector_func_name="collect_connascence_of_value_findings",
             is_enabled_fn=lambda cfg, p: bool(cfg.checks.connascence_of_value.enabled),
+            docs_url=f"{docs_base}connascence-of-value-connascence_of_value",
         )
     )
 
@@ -702,6 +743,7 @@ def create_default_registry() -> CheckRegistry:
             collector_module="tff.core.checks.layer_integrity",
             collector_func_name="collect_layer_integrity_findings",
             is_enabled_fn=lambda cfg, p: bool(cfg.checks.layer_integrity.enabled),
+            docs_url=f"{docs_base}layer-integrity-layer_integrity",
         )
     )
     reg.register(
@@ -713,6 +755,7 @@ def create_default_registry() -> CheckRegistry:
             collector_module="tff.core.checks.custom_exclusions",
             collector_func_name="collect_custom_exclusion_findings",
             is_enabled_fn=lambda cfg, p: bool(cfg.checks.custom_exclusions.enabled),
+            docs_url=f"{docs_base}custom-exclusions-custom_exclusions",
         )
     )
     reg.register(
@@ -724,6 +767,7 @@ def create_default_registry() -> CheckRegistry:
             collector_module="tff.core.checks.dependency_graph",
             collector_func_name="collect_dependency_graph_findings",
             is_enabled_fn=lambda cfg, p: bool(cfg.checks.dependency_graph.enabled),
+            docs_url=f"{docs_base}dependency-graph-dependency_graph",
         )
     )
     reg.register(
@@ -735,6 +779,7 @@ def create_default_registry() -> CheckRegistry:
             collector_module="tff.core.checks.materialization_depth",
             collector_func_name="collect_materialization_depth_findings",
             is_enabled_fn=lambda cfg, p: bool(cfg.checks.materialization_depth.enabled),
+            docs_url=f"{docs_base}materialization-depth-materialization_depth",
         )
     )
     reg.register(
@@ -750,6 +795,7 @@ def create_default_registry() -> CheckRegistry:
             is_enabled_fn=lambda cfg, p: bool(
                 cfg.rules.environment_agnostic_references.enabled
             ),
+            docs_url=f"{docs_base}environment-agnostic-references-environment_agnostic_references",
         )
     )
 
@@ -767,6 +813,7 @@ def create_default_registry() -> CheckRegistry:
             is_enabled_fn=lambda cfg, p: bool(
                 cfg.rules.metadata.enabled and cfg.rules.metadata.owner
             ),
+            docs_url=f"{docs_base}metadata-metadata-partially-auto-fixable",
         )
     )
     reg.register(
@@ -782,6 +829,7 @@ def create_default_registry() -> CheckRegistry:
             is_enabled_fn=lambda cfg, p: bool(
                 cfg.rules.metadata.enabled and cfg.rules.metadata.description
             ),
+            docs_url=f"{docs_base}metadata-metadata-partially-auto-fixable",
         )
     )
     reg.register(
@@ -797,6 +845,7 @@ def create_default_registry() -> CheckRegistry:
             is_enabled_fn=lambda cfg, p: bool(
                 cfg.rules.metadata.enabled and cfg.rules.metadata.grain
             ),
+            docs_url=f"{docs_base}metadata-metadata-partially-auto-fixable",
         )
     )
     reg.register(
@@ -812,6 +861,7 @@ def create_default_registry() -> CheckRegistry:
             is_enabled_fn=lambda cfg, p: bool(
                 cfg.rules.metadata.enabled and cfg.rules.metadata.not_null
             ),
+            docs_url=f"{docs_base}metadata-metadata-partially-auto-fixable",
         )
     )
     reg.register(
@@ -827,6 +877,7 @@ def create_default_registry() -> CheckRegistry:
             is_enabled_fn=lambda cfg, p: bool(
                 cfg.rules.metadata.enabled and cfg.rules.metadata.unique_values
             ),
+            docs_url=f"{docs_base}metadata-metadata-partially-auto-fixable",
         )
     )
     reg.register(
@@ -838,6 +889,7 @@ def create_default_registry() -> CheckRegistry:
             aliases=("nomissingaudits",),
             finding_check_id="nomissingaudits",
             is_enabled_fn=lambda cfg, p: False,
+            docs_url=f"{docs_base}metadata-metadata-partially-auto-fixable",
         )
     )
     reg.register(
@@ -851,6 +903,7 @@ def create_default_registry() -> CheckRegistry:
             rule_module="tff.core.rules.sql_complexity",
             rule_class_name="SqlComplexity",
             is_enabled_fn=lambda cfg, p: bool(cfg.rules.sql_complexity.enabled),
+            docs_url=f"{docs_base}sql-complexity-sql_complexity",
         )
     )
 

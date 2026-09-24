@@ -73,6 +73,7 @@ def generate_sarif_report(
     # Gather registered checks
     from tff.core.registry import registry
 
+    default_docs_url = "https://tff.readthedocs.io/rules_and_checks/"
     for check_def in registry.all_checks():
         cid = check_def.finding_id
         rules_map[cid] = {
@@ -84,7 +85,7 @@ def generate_sarif_report(
                 if check_def.default_severity == "error"
                 else "warning"
             },
-            "helpUri": "https://github.com/tjirab/tff",
+            "helpUri": check_def.docs_url or default_docs_url,
         }
 
     # Ensure all finding checks are defined in rules_map
@@ -98,7 +99,7 @@ def generate_sarif_report(
                 "defaultConfiguration": {
                     "level": "error" if f.severity == "error" else "warning"
                 },
-                "helpUri": "https://github.com/tjirab/tff",
+                "helpUri": registry.get_docs_url(f.check) or default_docs_url,
             }
 
     sarif_rules = sorted(rules_map.values(), key=lambda r: r["id"])

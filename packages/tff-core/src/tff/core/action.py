@@ -19,11 +19,22 @@ from tff.core.adapter import detect_provider, get_adapter
 from tff.core.config import load_fitness_config
 from tff.core.formatters import emit_github_annotations
 from tff.core.health import calculate_health_scores, render_health_report
+from tff.core.registry import registry
 from tff.core.report import LintFinding
 
 logger = logging.getLogger(__name__)
 
 PR_COMMENT_MARKER = "<!-- tff-pr-comment -->"
+
+
+def _format_check_cell(check_name: str) -> str:
+    """Format check name with documentation hyperlink if available."""
+    if not check_name:
+        return "`unknown`"
+    url = registry.get_docs_url(check_name)
+    if url:
+        return f"[`{check_name}`]({url})"
+    return f"`{check_name}`"
 
 
 def parse_bool(val: Any) -> bool:
@@ -371,7 +382,7 @@ def generate_pr_comment_markdown(
                     if nv.get("severity") == "error"
                     else "🟡 Warning"
                 )
-                chk = f"`{nv.get('check', '')}`"
+                chk = _format_check_cell(nv.get("check", ""))
                 target = nv.get("model") or nv.get("path") or "-"
                 msg = (
                     nv.get("message", "")
@@ -445,7 +456,7 @@ def generate_pr_comment_markdown(
         lines.append("| :---: | :--- | :--- | :--- |")
         for f in findings[:50]:
             sev = "🔴 Error" if f.get("severity") == "error" else "🟡 Warning"
-            chk = f"`{f.get('check', '')}`"
+            chk = _format_check_cell(f.get("check", ""))
             target = f.get("model") or f.get("path") or "-"
             msg = f.get("message", "").replace("\n", " ").replace("|", "\\|")
             lines.append(f"| {sev} | {chk} | `{target}` | {msg} |")

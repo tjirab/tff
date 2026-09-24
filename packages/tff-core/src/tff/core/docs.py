@@ -10,6 +10,7 @@ from typing import Any, Sequence
 from tff.core.config import load_fitness_config
 from tff.core.health import calculate_health_scores
 from tff.core.logs import collect_stats, get_health_json_data, save_log
+from tff.core.registry import registry
 from tff.core.utils.paths import model_path_relative
 
 
@@ -141,6 +142,7 @@ def generate_docs_dashboard(
         "project_findings": project_findings,
         "history": history,
         "provider": provider,
+        "docs_urls": registry.get_docs_urls(),
         "generated_at": json_data["timestamp"],
     }
 
@@ -915,7 +917,12 @@ HTML_TEMPLATE = """<!DOCTYPE html>
           
           const label = document.createElement('div');
           label.className = `font-extrabold uppercase tracking-wider text-[9px] mb-0.5 opacity-80`;
-          label.textContent = f.check;
+          const checkUrl = (TFF_DATA.docs_urls && TFF_DATA.docs_urls[f.check]) || '';
+          if (checkUrl) {
+            label.innerHTML = `<a href="${checkUrl}" target="_blank" rel="noopener noreferrer" class="hover:underline">${f.check} ↗</a>`;
+          } else {
+            label.textContent = f.check;
+          }
           box.appendChild(label);
           
           const msg = document.createElement('div');
@@ -1020,7 +1027,11 @@ HTML_TEMPLATE = """<!DOCTYPE html>
           item.className = `p-3 rounded-lg border text-xs ${
             isErr ? 'bg-rose-50 text-rose-800 border-rose-100' : 'bg-amber-50 text-amber-800 border-amber-100'
           }`;
-          item.innerHTML = `<div class="font-extrabold uppercase text-[9px] tracking-wider mb-0.5 opacity-80">${f.check}</div><div>${f.message}</div>`;
+          const checkUrl = (TFF_DATA.docs_urls && TFF_DATA.docs_urls[f.check]) || '';
+          const checkHeader = checkUrl
+            ? `<a href="${checkUrl}" target="_blank" rel="noopener noreferrer" class="hover:underline">${f.check} ↗</a>`
+            : f.check;
+          item.innerHTML = `<div class="font-extrabold uppercase text-[9px] tracking-wider mb-0.5 opacity-80">${checkHeader}</div><div>${f.message}</div>`;
           projContainer.appendChild(item);
         });
       }
@@ -1048,7 +1059,11 @@ HTML_TEMPLATE = """<!DOCTYPE html>
           const modelCell = `<td class="px-6 py-4 font-bold text-slate-800">${model.name}</td>`;
           
           // Check/Rule Name Cell
-          const checkCell = `<td class="px-6 py-4 text-xs font-mono text-slate-500">${f.check}</td>`;
+          const checkUrl = (TFF_DATA.docs_urls && TFF_DATA.docs_urls[f.check]) || '';
+          const checkContent = checkUrl
+            ? `<a href="${checkUrl}" target="_blank" rel="noopener noreferrer" onclick="event.stopPropagation();" class="text-indigo-600 hover:text-indigo-800 hover:underline font-mono text-xs">${f.check} ↗</a>`
+            : `<span class="text-xs font-mono text-slate-500">${f.check}</span>`;
+          const checkCell = `<td class="px-6 py-4">${checkContent}</td>`;
           
           // Detail message Cell
           const msgCell = `<td class="px-6 py-4 text-slate-600 break-words max-w-md">${f.message}</td>`;
