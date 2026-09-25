@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.22.0](https://github.com/tjirab/tff/compare/tff-core-v0.21.0...tff-core-v0.22.0) (2026-09-25)
+
+
+### Features
+
+* **ci:** enrich GitHub workflow annotations with title, coordinates, and priority capping ([#300](https://github.com/tjirab/tff/issues/300)) ([#320](https://github.com/tjirab/tff/issues/320)) ([d01cb36](https://github.com/tjirab/tff/commit/d01cb36dddd236870a0456e0ca2cc93c3ea58073))
+* **cli:** add clickable terminal hyperlinks with line numbers and fuzzy typo suggestions ([#307](https://github.com/tjirab/tff/issues/307)) ([08c06ac](https://github.com/tjirab/tff/commit/08c06ac6664a0b12e2a1d572184e627695f042bc))
+* **cli:** add live transient progress spinners and execution timing ([#306](https://github.com/tjirab/tff/issues/306)) ([a3f7a93](https://github.com/tjirab/tff/commit/a3f7a93416ac294aafd125f2f7acdf1f81aa0f7f))
+* **cli:** introduce tff explain command for in-terminal rule documentation ([#294](https://github.com/tjirab/tff/issues/294)) ([#309](https://github.com/tjirab/tff/issues/309)) ([5eadec6](https://github.com/tjirab/tff/commit/5eadec61e27c6ebc13a458e9a1805e18c5ce0d1e))
+* **cli:** support staged and git diff model scoping for fast pre-commit workflows ([#295](https://github.com/tjirab/tff/issues/295)) ([#310](https://github.com/tjirab/tff/issues/310)) ([71af721](https://github.com/tjirab/tff/commit/71af721713283c226e133997fb5eb41ba2a73e34))
+
+
+### Bug Fixes
+
+* **cli:** improve table layout in health breakdown and format repo-level schema errors ([#299](https://github.com/tjirab/tff/issues/299)) ([bfb0025](https://github.com/tjirab/tff/commit/bfb00254daa02b0d0e911dc41e1faf599c4549bd))
+* **cli:** unify model normalization in lint report to prevent split headings ([#296](https://github.com/tjirab/tff/issues/296)) ([0a09f3a](https://github.com/tjirab/tff/commit/0a09f3a0ffffc2e3c48deec9de8b9ebb118f88ac))
+
 ## [0.21.0](https://github.com/tjirab/tff/compare/tff-core-v0.20.0...tff-core-v0.21.0) (2026-09-24)
 
 
