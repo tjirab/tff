@@ -1,6 +1,6 @@
-"""Tests for lint report check filtering."""
-
-from tff.core.report import _summary_check_names
+from typing import Any
+import pytest
+from tff.core.report import LintFinding, _summary_check_names
 
 
 def test_summary_shows_only_executed_architectural_check() -> None:
@@ -701,6 +701,130 @@ def test_render_lint_report_model_header_has_clickable_file_link() -> None:
     # HTML export should contain file:// hyperlinks
     html_output = console.export_html(clear=False)
     assert "file://" in html_output
+
+
+
+
+
+def _make_finding(
+    model: str | None = None,
+    path: str | None = None,
+    msg: str = "violation",
+    check: str = "check_a",
+) -> LintFinding:
+    return LintFinding(check=check, severity="error", message=msg, model=model, path=path)
+
+
+@pytest.mark.parametrize(
+    "findings,expected_name,expected_path",
+    [
+        # Path-only arriving before model-name
+        (
+            [
+                _make_finding(path="models/core/dim_users.sql"),
+                _make_finding(model="dim_users"),
+            ],
+            "dim_users",
+            "models/core/dim_users.sql",
+        ),
+        # Model-name arriving before path-only
+        (
+            [
+                _make_finding(model="dim_users"),
+                _make_finding(path="models/core/dim_users.sql"),
+            ],
+            "dim_users",
+            "models/core/dim_users.sql",
+        ),
+        # Path-first followed by qualified model name unifies via stem
+        (
+            [
+                _make_finding(path="models/core/dim_users.sql"),
+                _make_finding(model="analytics.dim_users"),
+            ],
+            "analytics.dim_users",
+            "models/core/dim_users.sql",
+        ),
+        # Qualified model-first followed by path unifies via stem
+        (
+            [
+                _make_finding(model="analytics.dim_users"),
+                _make_finding(path="models/core/dim_users.sql"),
+            ],
+            "analytics.dim_users",
+            "models/core/dim_users.sql",
+        ),
+    ],
+)
+def test_group_findings_by_model_order_independent(
+    findings: list[Any], expected_name: str, expected_path: str
+) -> None:
+    from tff.core.report import group_findings_by_model
+
+    groups, repo = group_findings_by_model(findings)
+    assert len(groups) == 1
+    assert groups[0]["name"] == expected_name
+    assert groups[0]["path"] == expected_path
+    assert len(groups[0]["findings"]) == len(findings)
+    assert len(repo) == 0
+
+
+def test_group_findings_by_model_bridge_merges_disjoint_and_prevents_stale_lookup() -> None:
+    """Findings that bridge disjoint groups merge them and re-point path_to_key without KeyError."""
+    from tff.core.report import group_findings_by_model
+
+    findings = [
+        _make_finding(model="users", path="models/staging/users.sql", msg="Staging model"),
+        _make_finding(model=None, path="models/other/users.sql", msg="Other path"),
+        _make_finding(model="users", path="models/other/users.sql", msg="Bridge"),
+        _make_finding(model=None, path="models/staging/users.sql", msg="Subsequent staging"),
+    ]
+    groups, repo = group_findings_by_model(findings)
+    assert len(groups) == 1
+    assert len(groups[0]["findings"]) == 4
+    assert len(repo) == 0
+
+
+def test_group_findings_by_model_same_stem_different_folders_remain_isolated() -> None:
+    """Models with same stem in different folders remain distinct groups."""
+    from tff.core.report import group_findings_by_model
+
+    findings = [
+        _make_finding(model="staging.users", path="models/staging/users.sql"),
+        _make_finding(model="marts.users", path="models/marts/users.sql"),
+        _make_finding(model="staging.users", path=None),
+        _make_finding(model="marts.users", path=None),
+    ]
+    groups, _ = group_findings_by_model(findings)
+    assert len(groups) == 2
+    assert {g["name"] for g in groups} == {"staging.users", "marts.users"}
+
+
+def test_render_lint_report_model_grouping_e2e() -> None:
+    """End-to-end integration test verifying Rich console output with model header."""
+    from rich.console import Console
+    from tff.core.report import render_lint_report
+
+    console = Console(record=True, width=120)
+    findings = [
+        _make_finding(path="models/core/dim_users.sql", msg="Column type mismatch."),
+        _make_finding(model="dim_users", msg="SELECT * prohibited."),
+    ]
+    render_lint_report(
+        findings,
+        models_checked=1,
+        executed_checks=["sqlmesh"],
+        console=console,
+        group_by="model",
+    )
+    output = console.export_text()
+    assert output.count("● dim_users") == 1
+    assert "models/core/dim_users.sql" in output
+    assert "Column type mismatch." in output
+    assert "SELECT * prohibited." in output
+
+
+
 
 
 
