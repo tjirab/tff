@@ -11,6 +11,10 @@ if t.TYPE_CHECKING:
 @dataclass
 class RuleViolation:
     violation_msg: str | list[str]
+    line: int | None = None
+    col: int | None = None
+    end_line: int | None = None
+    end_col: int | None = None
 
 
 class Rule:
@@ -37,10 +41,23 @@ class Rule:
     def check_model(self, model: ModelRepresentation) -> RuleViolation | None:
         raise NotImplementedError()
 
-    def violation(self, message: str | list[str] = "") -> RuleViolation:
+    def violation(
+        self,
+        message: str | list[str] = "",
+        line: int | None = None,
+        col: int | None = None,
+        end_line: int | None = None,
+        end_col: int | None = None,
+    ) -> RuleViolation:
         if not message:
             message = self.__doc__ or ""
-        return RuleViolation(violation_msg=message)
+        return RuleViolation(
+            violation_msg=message,
+            line=line,
+            col=col,
+            end_line=end_line,
+            end_col=end_col,
+        )
 
     def get_rule_config(self, rule_name: str | None = None) -> t.Any:
         """Retrieve the configuration object or dict for this rule from config.rules."""

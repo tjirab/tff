@@ -33,31 +33,110 @@ def _get_relative_path(file_path: str | Path, project_root: Path | None = None) 
     return str(path_obj).replace("\\", "/")
 
 
+def _format_annotation_title(check: str) -> str:
+    """Format human-friendly rule label and connascence category for annotation title."""
+    from tff.core.report import CONNASCENCE_CATEGORIES
+
+    label = CHECK_LABELS.get(check, check)
+    category = CONNASCENCE_CATEGORIES.get(check)
+    if category:
+        clean_cat = category.split(" (")[0]
+        return f"{label} ({clean_cat})"
+    return label
+
+
 def format_github_annotation(
     finding: LintFinding,
     project_root: Path | None = None,
 ) -> str:
     """Format a LintFinding as a GitHub Actions workflow command annotation."""
+    from tff.core.registry import registry
+
     command = "error" if finding.severity == "error" else "warning"
     msg = format_message(finding.message)
+    docs_url = registry.get_docs_url(finding.check)
+    if docs_url and docs_url not in msg:
+        msg = f"{msg} ({docs_url})"
+
     # GitHub Actions workflow command escaping for message
     msg = msg.replace("%", "%25").replace("\r", "%0D").replace("\n", "%0A")
 
+    title = _format_annotation_title(finding.check)
+
+    params: list[str] = []
     if finding.path:
         file_str = _get_relative_path(finding.path, project_root)
         line_num = finding.line if finding.line is not None else 1
-        return f"::{command} file={file_str},line={line_num}::{msg}"
-    return f"::{command}::{msg}"
+        params.append(f"file={file_str}")
+        params.append(f"line={line_num}")
+        if finding.end_line is not None:
+            params.append(f"endLine={finding.end_line}")
+        if finding.col is not None:
+            params.append(f"col={finding.col}")
+        if finding.end_col is not None:
+            params.append(f"endColumn={finding.end_col}")
+
+    params.append(f"title={title}")
+
+    param_str = f" {','.join(params)}" if params else ""
+    return f"::{command}{param_str}::{msg}"
+
+
+def _is_finding_in_modified_files(
+    finding: LintFinding,
+    modified_files: set[str],
+    project_root: Path | None = None,
+) -> bool:
+    """Check whether a finding matches any file in modified_files."""
+    if not modified_files:
+        return False
+
+    raw_path = finding.path
+    path_str = str(raw_path or "").replace("\\", "/")
+    rel_proj_str = _get_relative_path(path_str, project_root) if (path_str and project_root is not None) else path_str
+
+    for mf in modified_files:
+        norm_mf = mf.replace("\\", "/")
+        if path_str and (norm_mf == path_str or norm_mf.endswith(f"/{path_str}")):
+            return True
+        if rel_proj_str and (norm_mf == rel_proj_str or norm_mf.endswith(f"/{rel_proj_str}")):
+            return True
+        if finding.model and Path(norm_mf).stem == finding.model:
+            return True
+    return False
 
 
 def emit_github_annotations(
     findings: list[LintFinding],
     project_root: Path | None = None,
     stream: Any = None,
+    modified_files: set[str] | None = None,
+    max_annotations: int = 50,
 ) -> None:
-    """Emit GitHub Actions annotations to stdout or the specified stream."""
+    """Emit GitHub Actions annotations with priority sorting and capping."""
     target_stream = stream if stream is not None else sys.stdout
-    for finding in findings:
+
+    mod_files = modified_files or set()
+
+    # Prioritize: violations in modified files first, then errors before warnings
+    def _priority_key(f: LintFinding) -> tuple[int, int]:
+        in_modified = 0 if _is_finding_in_modified_files(f, mod_files, project_root) else 1
+        sev_order = 0 if f.severity == "error" else 1
+        return (in_modified, sev_order)
+
+    sorted_findings = sorted(findings, key=_priority_key)
+
+    total_count = len(sorted_findings)
+    if total_count > max_annotations:
+        notice = (
+            f"::warning::tff found {total_count} violations. "
+            f"Displaying the {max_annotations} highest-priority annotations; "
+            f"see Job Summary or PR comment for the complete list."
+        )
+        print(notice, file=target_stream)
+        sorted_findings = sorted_findings[:max_annotations]
+
+    for finding in sorted_findings:
         annotation = format_github_annotation(finding, project_root=project_root)
         print(annotation, file=target_stream)
 

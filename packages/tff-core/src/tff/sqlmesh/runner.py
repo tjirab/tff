@@ -100,6 +100,19 @@ def collect_sqlmesh_findings(
                 else:
                     part_severity = rule_severity
 
+                v_line = None
+                v_col = None
+                v_end_line = None
+                v_end_col = None
+                v_range = getattr(violation, "violation_range", None)
+                if v_range is not None:
+                    if hasattr(v_range, "start") and v_range.start is not None:
+                        v_line = getattr(v_range.start, "line", None)
+                        v_col = getattr(v_range.start, "character", None)
+                    if hasattr(v_range, "end") and v_range.end is not None:
+                        v_end_line = getattr(v_range.end, "line", None)
+                        v_end_col = getattr(v_range.end, "character", None)
+
                 findings.append(
                     LintFinding(
                         check=violation.rule.name,
@@ -107,6 +120,10 @@ def collect_sqlmesh_findings(
                         model=str(model.name),
                         path=model_path_relative(model),
                         message=part,
+                        line=v_line,
+                        col=v_col,
+                        end_line=v_end_line,
+                        end_col=v_end_col,
                     )
                 )
 

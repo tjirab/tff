@@ -145,6 +145,10 @@ def test_finding_fingerprint_and_comparison() -> None:
     assert len(new_viols2) == 0
     assert len(resolved_viols2) == 1
     assert resolved_viols2[0]["check"] == "banselectstar"
+    assert resolved_viols2[0]["line"] == 10
+    assert "col" in resolved_viols2[0]
+    assert "end_line" in resolved_viols2[0]
+    assert "end_col" in resolved_viols2[0]
 
 
 def test_evaluate_project_minimal_dbt() -> None:
@@ -905,6 +909,36 @@ def test_evaluate_project_with_workers() -> None:
     res = evaluate_project(_MINIMAL_DBT, workers=2)
     assert res["config"].workers == 2
     assert "overall_score" in res["scores"]
+
+
+def test_execute_action_annotations_with_modified_files(capsys) -> None:
+    args = argparse.Namespace(
+        project=_MINIMAL_DBT,
+        provider="auto",
+        config="fitness_functions.yaml",
+        checks=None,
+        fail_under=0.0,
+        fail_level="error",
+        only_changed=False,
+        comment_pr="false",
+        github_token=None,
+        base_ref="main",
+        diff_against_base=False,
+        annotations=True,
+        pr_number=None,
+        repo=None,
+        dialect=None,
+        manifest=None,
+        json=False,
+    )
+    with patch("subprocess.run", side_effect=RuntimeError("git rev-parse error")), \
+         patch("tff.core.action.get_modified_files", return_value={"models/staging/stg_orders.sql"}), \
+         patch("tff.core.action.render_health_report"):
+        code = execute_action(args)
+        assert code == 1
+        captured = capsys.readouterr()
+        assert "::error" in captured.out
+
 
 
 

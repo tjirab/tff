@@ -126,3 +126,42 @@ def test_collect_sqlmesh_findings_severities():
     findings_loader = collect_sqlmesh_findings(mock_context, config=None)
     assert len(findings_loader) == 4
 
+
+def test_collect_sqlmesh_findings_coordinates():
+    from unittest.mock import MagicMock
+    from sqlmesh.core.linter.definition import AnnotatedRuleViolation
+    from sqlmesh.core.linter.rule import Position, Range
+    from tff.sqlmesh.runner import collect_sqlmesh_findings
+
+    mock_context = MagicMock()
+    mock_model = MagicMock()
+    mock_model.name = "coords_model"
+    mock_model.project = "default"
+    mock_model.kind.is_symbolic = False
+    mock_model._path = Path("models/coords_model.sql")
+    mock_context.models = {"coords_model": mock_model}
+
+    mock_linter = MagicMock()
+    mock_linter.enabled = True
+    mock_context._linters = {"default": mock_linter}
+
+    mock_rule = MagicMock()
+    mock_rule.name = "ban_select_star"
+
+    v_range = Range(start=Position(line=10, character=2), end=Position(line=10, character=15))
+    v = AnnotatedRuleViolation(
+        rule=mock_rule,
+        violation_msg="coords_model: SELECT * is banned",
+        model=mock_model,
+        violation_type="error",
+        violation_range=v_range,
+    )
+    mock_linter.lint_model.return_value = (True, [v])
+
+    findings = collect_sqlmesh_findings(mock_context)
+    assert len(findings) == 1
+    assert findings[0].line == 10
+    assert findings[0].col == 2
+    assert findings[0].end_line == 10
+    assert findings[0].end_col == 15
+

@@ -67,7 +67,7 @@ def test_format_github_annotation_error_and_warning():
     res_err = format_github_annotation(f_err)
     assert (
         res_err
-        == "::error file=models/marts/fct_orders.sql,line=42::Duplicate CTE found in model."
+        == "::error file=models/marts/fct_orders.sql,line=42,title=Duplicate CTEs (Connascence of Algorithm)::Duplicate CTE found in model. (https://tff.readthedocs.io/en/latest/rules_and_checks/#duplicate-ctes-duplicate_ctes)"
     )
 
     f_warn = LintFinding(
@@ -81,7 +81,7 @@ def test_format_github_annotation_error_and_warning():
     # When line is not provided, it defaults to line 1
     assert (
         res_warn
-        == "::warning file=models/marts/bad_name.sql,line=1::Model in marts must start with fct_ or dim_."
+        == "::warning file=models/marts/bad_name.sql,line=1,title=Mart naming convention (Connascence of Name)::Model in marts must start with fct_ or dim_. (https://tff.readthedocs.io/en/latest/rules_and_checks/#mart-naming-mart_naming)"
     )
 
 
@@ -92,7 +92,39 @@ def test_format_github_annotation_repo_level_no_path():
         message="Missing layers in config.",
     )
     res = format_github_annotation(f_repo)
-    assert res == "::error::Missing layers in config."
+    assert (
+        res
+        == "::error title=Layer integrity (Dynamic Coupling & DAG Structure)::Missing layers in config. (https://tff.readthedocs.io/en/latest/rules_and_checks/#layer-integrity-layer_integrity)"
+    )
+
+
+def test_format_github_annotation_with_coordinates():
+    f = LintFinding(
+        check="duplicate_ctes",
+        severity="error",
+        message="Duplicate CTE found in model.",
+        path="models/marts/fct_orders.sql",
+        line=42,
+        col=5,
+        end_line=45,
+        end_col=20,
+    )
+    res = format_github_annotation(f)
+    assert "line=42" in res
+    assert "endLine=45" in res
+    assert "col=5" in res
+    assert "endColumn=20" in res
+    assert "title=Duplicate CTEs (Connascence of Algorithm)" in res
+
+
+def test_format_github_annotation_custom_rule_no_category():
+    f = LintFinding(
+        check="my_custom_check",
+        severity="warning",
+        message="Custom violation",
+    )
+    res = format_github_annotation(f)
+    assert res == "::warning title=my_custom_check::Custom violation"
 
 
 def test_format_github_annotation_escaping():
@@ -130,8 +162,104 @@ def test_emit_github_annotations():
     output = stream.getvalue()
     lines = output.strip().split("\n")
     assert len(lines) == 2
-    assert lines[0] == "::error file=models/a.sql,line=10::Error 1"
-    assert lines[1] == "::warning file=models/b.sql,line=1::Warning 1"
+    assert lines[0] == "::error file=models/a.sql,line=10,title=c1::Error 1"
+    assert lines[1] == "::warning file=models/b.sql,line=1,title=c2::Warning 1"
+
+
+def test_emit_github_annotations_prioritization_and_capping(tmp_path: Path):
+    root = tmp_path / "project"
+    root.mkdir()
+    mod_file = root / "models" / "modified.sql"
+    mod_file.parent.mkdir()
+    mod_file.touch()
+
+    # Findings:
+    # 1. Unmodified file, warning
+    # 2. Unmodified file, error
+    # 3. Modified file, warning
+    # 4. Modified file, error
+    f_unmod_warn = LintFinding(
+        check="c_unmod_warn",
+        severity="warning",
+        message="Unmodified warning",
+        path="models/other.sql",
+    )
+    f_unmod_err = LintFinding(
+        check="c_unmod_err",
+        severity="error",
+        message="Unmodified error",
+        path="models/other.sql",
+    )
+    f_mod_warn = LintFinding(
+        check="c_mod_warn",
+        severity="warning",
+        message="Modified warning",
+        path="models/modified.sql",
+    )
+    f_mod_err = LintFinding(
+        check="c_mod_err",
+        severity="error",
+        message="Modified error",
+        model="modified",
+        path="models/modified.sql",
+    )
+
+    findings = [f_unmod_warn, f_unmod_err, f_mod_warn, f_mod_err]
+    stream = io.StringIO()
+    emit_github_annotations(
+        findings,
+        project_root=root,
+        stream=stream,
+        modified_files={"models/modified.sql"},
+        max_annotations=3,
+    )
+    output = stream.getvalue().strip().split("\n")
+
+    # Should emit notice because 4 > 3 max_annotations
+    assert len(output) == 4  # 1 notice + 3 annotations
+    assert output[0].startswith("::warning::tff found 4 violations. Displaying the 3 highest-priority annotations")
+    # Priority order:
+    # 1. Modified file error (f_mod_err)
+    # 2. Modified file warning (f_mod_warn)
+    # 3. Unmodified file error (f_unmod_err)
+    assert "title=c_mod_err" in output[1]
+    assert "title=c_mod_warn" in output[2]
+    assert "title=c_unmod_err" in output[3]
+
+
+def test_is_finding_in_modified_files_branches(tmp_path: Path):
+    from tff.core.formatters import _is_finding_in_modified_files
+
+    root = tmp_path / "project"
+    root.mkdir()
+
+    # Empty modified files
+    f1 = LintFinding(check="c", severity="error", message="msg", path="models/a.sql")
+    assert _is_finding_in_modified_files(f1, set()) is False
+
+    # Finding matching via model name stem
+    f2 = LintFinding(check="c", severity="error", message="msg", model="stg_users")
+    assert _is_finding_in_modified_files(f2, {"models/staging/stg_users.sql"}) is True
+
+    # Finding matching via relative project path
+    f3 = LintFinding(
+        check="c",
+        severity="error",
+        message="msg",
+        path=str(root / "models" / "marts" / "fct.sql"),
+    )
+    assert (
+        _is_finding_in_modified_files(
+            f3,
+            {"models/marts/fct.sql"},
+            project_root=root,
+        )
+        is True
+    )
+
+    # Finding not matching
+    f4 = LintFinding(check="c", severity="error", message="msg", path="models/b.sql", model="b")
+    assert _is_finding_in_modified_files(f4, {"models/c.sql"}) is False
 
 
 def test_generate_sarif_report_structure(tmp_path: Path):

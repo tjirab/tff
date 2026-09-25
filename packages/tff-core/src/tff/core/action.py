@@ -78,6 +78,9 @@ def compare_findings(
                 "model": f.model,
                 "path": str(f.path) if f.path else None,
                 "line": f.line,
+                "col": f.col,
+                "end_line": f.end_line,
+                "end_col": f.end_col,
             }
         return dict(f)
 
@@ -682,13 +685,30 @@ def execute_action(args: argparse.Namespace) -> int:
         current_data["warnings_count"] = sum(
             1 for f in filtered_findings if f.get("severity") == "warning"
         )
+    else:
+        diff_base = getattr(args, "base_ref", None) or os.environ.get("GITHUB_BASE_REF") or "main"
+        try:
+            res = subprocess.run(
+                ["git", "rev-parse", "--show-toplevel"],
+                cwd=str(project_root),
+                capture_output=True,
+                text=True,
+                check=True,
+            )
+            repo_root = Path(res.stdout.strip()).resolve()
+        except Exception:
+            repo_root = project_root
+        modified_files = get_modified_files(repo_root, base_ref=diff_base)
 
     # 3. Emit GitHub Actions annotations
     if getattr(args, "annotations", True):
         raw_findings = current_data.get("raw_findings", [])
         if raw_findings:
             emit_github_annotations(
-                raw_findings, project_root=project_root, stream=sys.stdout
+                raw_findings,
+                project_root=project_root,
+                stream=sys.stdout,
+                modified_files=modified_files,
             )
 
     # 4. Base branch diff calculation if requested
