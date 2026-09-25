@@ -88,6 +88,11 @@ runs:
         python-version: ${{ inputs.python-version }}
         check-latest: false
 
+    - name: Set up uv
+      uses: astral-sh/setup-uv@v5
+      with:
+        enable-cache: true
+
     - name: Install tff
       shell: bash
       run: |
@@ -107,11 +112,23 @@ runs:
 
         PKG="tff-core${EXTRA}"
         if [ -n "${{ inputs.version }}" ]; then
-          PKG="${PKG}==${{ inputs.version }}"
+          if [ "${{ inputs.version }}" = "local" ] || [ "${{ inputs.version }}" = "action" ] || [ "${{ inputs.version }}" = "repo" ]; then
+            PKG="${{ github.action_path }}/packages/tff-core${EXTRA}"
+          elif [[ "${{ inputs.version }}" == git+* ]] || [[ "${{ inputs.version }}" == *://* ]]; then
+            PKG="${{ inputs.version }}"
+          else
+            PKG="${PKG}==${{ inputs.version }}"
+          fi
+        elif [ -f "${{ github.action_path }}/packages/tff-core/pyproject.toml" ]; then
+          PKG="${{ github.action_path }}/packages/tff-core${EXTRA}"
         fi
 
         echo "Installing ${PKG}..."
-        pip install --upgrade "${PKG}"
+        if command -v uv >/dev/null 2>&1; then
+          uv pip install --system "${PKG}"
+        else
+          pip install --upgrade "${PKG}"
+        fi
 
     - name: Run tff Action
       id: run-tff
