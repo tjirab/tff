@@ -43,6 +43,7 @@ def run_all_checks(
     manifest_path: str | Path | None = None,
     models: dict[str, ModelRepresentation] | None = None,
     workers: int | None = None,
+    scoped_models: set[str] | None = None,
 ) -> tuple[list[LintFinding], int, list[str]]:
     project_root = project_root or Path.cwd()
     if config is None:
@@ -66,11 +67,15 @@ def run_all_checks(
         checks=checks,
         provider="dataform",
         max_workers=resolved_workers,
+        scoped_models=scoped_models,
     )
 
-    # Count of non-external, non-symbolic models checked
-    models_checked = sum(
-        1 for m in models.values() if not m.is_external and not m.is_symbolic
-    )
+    if scoped_models is not None:
+        models_checked = len(scoped_models)
+    else:
+        # Count of non-external, non-symbolic models checked
+        models_checked = sum(
+            1 for m in models.values() if not m.is_external and not m.is_symbolic
+        )
 
     return findings, models_checked, selected

@@ -27,7 +27,7 @@ def test_pre_commit_hooks_structure() -> None:
     tff_lint = hooks_by_id["tff-lint"]
     assert tff_lint["name"] == "tff Lint"
     assert "Run Transformation Fitness Functions" in tff_lint["description"]
-    assert tff_lint["entry"] == "tff lint"
+    assert tff_lint["entry"] == "tff lint --staged"
     assert tff_lint["language"] == "python"
     assert tff_lint["types_or"] == ["sql", "yaml", "json"]
     assert tff_lint["pass_filenames"] is False
@@ -37,8 +37,16 @@ def test_pre_commit_hooks_structure() -> None:
     tff_lint_fix = hooks_by_id["tff-lint-fix"]
     assert tff_lint_fix["name"] == "tff Auto-Fix"
     assert "Automatically fix" in tff_lint_fix["description"]
-    assert tff_lint_fix["entry"] == "tff lint --fix"
+    assert tff_lint_fix["entry"] == "tff lint --fix --staged"
     assert tff_lint_fix["language"] == "python"
     assert tff_lint_fix["types_or"] == ["sql", "yaml"]
     assert tff_lint_fix["pass_filenames"] is False
     assert tff_lint_fix["additional_dependencies"] == ["tff-core"]
+
+    # Validate tff-check hook
+    assert "tff-check" in hooks_by_id
+    tff_check = hooks_by_id["tff-check"]
+    assert tff_check["name"] == "tff Check"
+    assert tff_check["entry"] == "tff check --staged"
+    assert tff_check["language"] == "python"
+    assert tff_check["pass_filenames"] is False

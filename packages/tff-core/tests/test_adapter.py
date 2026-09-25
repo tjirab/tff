@@ -212,6 +212,15 @@ def test_sqlmesh_adapter(tmp_path: Path):
             checks=["sqlmesh"],
             models=models,
         )
+        # Test with scoped_models
+        adapter.run_checks(tmp_path, cfg, checks=["sqlmesh"], models=models, scoped_models={"m"})
+        mock_run.assert_called_with(
+            project_root=tmp_path,
+            config=cfg,
+            checks=["sqlmesh"],
+            models=models,
+            scoped_models={"m"},
+        )
 
     with patch(
         "tff.core.autofix.fix_sqlmesh_metadata", return_value="fixed"
@@ -272,6 +281,25 @@ def test_dataform_adapter(tmp_path: Path):
             manifest_path="manifest.json",
             models=models,
         )
+        # Test with scoped_models
+        adapter.run_checks(
+            tmp_path,
+            cfg,
+            checks=["rules"],
+            dialect="bigquery",
+            manifest_path="manifest.json",
+            models=models,
+            scoped_models={"m"},
+        )
+        mock_run.assert_called_with(
+            project_root=tmp_path,
+            config=cfg,
+            checks=["rules"],
+            dialect="bigquery",
+            manifest_path="manifest.json",
+            models=models,
+            scoped_models={"m"},
+        )
 
     assert (
         adapter.apply_metadata_fix(
@@ -312,7 +340,7 @@ def test_mock_runner_adapter_all_methods(tmp_path: Path):
         assert "m1" in dbt_adapter.load_models(tmp_path, dialect="duckdb")
     cfg = FitnessFunctionsConfig()
     assert dbt_adapter.run_checks(
-        tmp_path, cfg, dialect="duckdb", models={"m1": MagicMock()}
+        tmp_path, cfg, dialect="duckdb", models={"m1": MagicMock()}, scoped_models={"m1"}
     ) == ([], 3, ["rules"])
     with patch("tff.core.autofix.fix_dbt_metadata", return_value="fixed"):
         assert (
@@ -334,7 +362,9 @@ def test_mock_runner_adapter_all_methods(tmp_path: Path):
         ),
     ):
         assert "m2" in sqlmesh_adapter.load_models(tmp_path)
-    assert sqlmesh_adapter.run_checks(tmp_path, cfg, models={"m2": MagicMock()}) == (
+    assert sqlmesh_adapter.run_checks(
+        tmp_path, cfg, models={"m2": MagicMock()}, scoped_models={"m2"}
+    ) == (
         [],
         3,
         ["rules"],
@@ -361,6 +391,7 @@ def test_mock_runner_adapter_all_methods(tmp_path: Path):
         dialect="bigquery",
         manifest_path="m.json",
         models={"m3": MagicMock()},
+        scoped_models={"m3"},
     ) == ([], 3, ["rules"])
 
     # other/unknown provider

@@ -34,6 +34,7 @@ class _SilentLinterConsole:
 def collect_sqlmesh_findings(
     context: Context,
     config: FitnessFunctionsConfig | None = None,
+    scoped_models: set[str] | None = None,
 ) -> list[LintFinding]:
     findings: list[LintFinding] = []
     silent_console = _SilentLinterConsole()
@@ -41,9 +42,23 @@ def collect_sqlmesh_findings(
     if config is None and hasattr(context, "loader") and hasattr(context.loader, "_ff_config"):
         config = getattr(context.loader, "_ff_config", None)
 
+    norm_scoped = (
+        {normalize_model_name(m) for m in scoped_models}
+        if scoped_models is not None
+        else None
+    )
+
     for model in context.models.values():
         if model.kind.is_symbolic:
             continue
+
+        if norm_scoped is not None:
+            m_name_str = str(model.name)
+            if (
+                m_name_str not in scoped_models  # type: ignore[operator]
+                and normalize_model_name(m_name_str) not in norm_scoped
+            ):
+                continue
 
         linter = context._linters.get(model.project)
         if not linter or not linter.enabled:
@@ -119,6 +134,7 @@ def run_all_checks(
     config: FitnessFunctionsConfig | None = None,
     checks: list[str] | None = None,
     models: dict[str, ModelRepresentation] | None = None,
+    scoped_models: set[str] | None = None,
 ) -> tuple[list[LintFinding], int, list[str]]:
     roots = normalize_project_roots(project_root or Path.cwd())
     primary_root = roots[0]
@@ -126,6 +142,11 @@ def run_all_checks(
         config = load_fitness_config(primary_root)
 
     findings: list[LintFinding] = []
+    norm_scoped = (
+        {normalize_model_name(m) for m in scoped_models}
+        if scoped_models is not None
+        else None
+    )
 
     if checks is None:
         selected = ["sqlmesh"] + [
@@ -138,7 +159,7 @@ def run_all_checks(
             )
 
         if context is not None:
-            findings.extend(collect_sqlmesh_findings(context, config=config))
+            findings.extend(collect_sqlmesh_findings(context, config=config, scoped_models=scoped_models))
 
         mapped_models = (
             models if models is not None else map_sqlmesh_context_models(context)
@@ -146,7 +167,18 @@ def run_all_checks(
 
         for check_name, collector in CHECK_COLLECTORS.items():
             if _check_enabled(config, check_name) and collector is not None:
-                findings.extend(collector(mapped_models, config))
+                dag_res = collector(mapped_models, config)
+                if norm_scoped is not None:
+                    dag_res = [
+                        f
+                        for f in dag_res
+                        if f.model
+                        and (
+                            f.model in scoped_models  # type: ignore[operator]
+                            or normalize_model_name(str(f.model)) in norm_scoped
+                        )
+                    ]
+                findings.extend(dag_res)
     else:
         selected = checks
         # Validate checks or raise ValueError
@@ -176,10 +208,10 @@ def run_all_checks(
         # Run SQLMesh linter / model rules
         if "sqlmesh" in selected:
             if context is not None:
-                findings.extend(collect_sqlmesh_findings(context, config=config))
+                findings.extend(collect_sqlmesh_findings(context, config=config, scoped_models=scoped_models))
         elif model_rules_requested:
             if context is not None:
-                all_sqlmesh_findings = collect_sqlmesh_findings(context, config=config)
+                all_sqlmesh_findings = collect_sqlmesh_findings(context, config=config, scoped_models=scoped_models)
                 if any(normalize_check_name(c) == "rules" for c in checks):
                     findings.extend(all_sqlmesh_findings)
                 else:
@@ -198,7 +230,7 @@ def run_all_checks(
                 for chk in checks:
                     c_def = registry.get(chk)
                     if c_def is not None and c_def.scope == "model":
-                        findings.extend(c_def.run(mapped_models, config))
+                        findings.extend(c_def.run(mapped_models, config, scoped_models=scoped_models))
 
         # Run DAG checks
         for chk in checks:
@@ -206,12 +238,26 @@ def run_all_checks(
             if c_def is not None and c_def.scope == "dag":
                 collector = c_def.get_collector_fn()
                 if collector is not None:
-                    findings.extend(collector(mapped_models, config))
+                    dag_res = collector(mapped_models, config)
+                    if norm_scoped is not None:
+                        dag_res = [
+                            f
+                            for f in dag_res
+                            if f.model
+                            and (
+                                f.model in scoped_models  # type: ignore[operator]
+                                or normalize_model_name(str(f.model)) in norm_scoped
+                            )
+                        ]
+                    findings.extend(dag_res)
 
-    checked_count = (
-        count_models_checked(context)
-        if context is not None
-        else sum(1 for m in mapped_models.values() if not m.is_symbolic)
-    )
+    if scoped_models is not None:
+        checked_count = len(scoped_models)
+    else:
+        checked_count = (
+            count_models_checked(context)
+            if context is not None
+            else sum(1 for m in mapped_models.values() if not m.is_symbolic)
+        )
 
     return findings, checked_count, selected

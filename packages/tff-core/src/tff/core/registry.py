@@ -175,14 +175,22 @@ class CheckDefinition:
         config: FitnessFunctionsConfig,
         max_workers: int | None = None,
         chunk_size: int | None = None,
+        scoped_models: set[str] | None = None,
     ) -> list[LintFinding]:
         if self.scope == "model":
             rule_cls = self.get_rule_cls()
             if rule_cls is not None:
                 severity = self.get_severity(config)
+                target_models = (
+                    {k: v for k, v in models.items() if k in scoped_models}
+                    if scoped_models is not None
+                    else models
+                )
+                if not target_models:
+                    return []
                 return run_model_rule(
                     rule_cls,
-                    models,
+                    target_models,
                     severity=severity,
                     check_name=self.finding_id,
                     config=config,
@@ -197,8 +205,20 @@ class CheckDefinition:
 
                 sig = inspect.signature(collector)
                 if "max_workers" in sig.parameters:
-                    return collector(models, config, max_workers=max_workers)
-                return collector(models, config)
+                    findings = collector(models, config, max_workers=max_workers)
+                else:
+                    findings = collector(models, config)
+
+                if scoped_models is not None:
+                    from tff.core.report import normalize_model_name
+
+                    norm_scoped = {normalize_model_name(m) for m in scoped_models}
+                    return [
+                        f
+                        for f in findings
+                        if f.model and (f.model in scoped_models or normalize_model_name(f.model) in norm_scoped)
+                    ]
+                return findings
             return []
         return []
 
@@ -452,6 +472,7 @@ class CheckRegistry:
         checks: list[str] | None = None,
         provider: str = "dbt",
         max_workers: int | None = None,
+        scoped_models: set[str] | None = None,
     ) -> tuple[list[LintFinding], list[str]]:
         from tff.core.parallel import get_max_workers
 
@@ -470,7 +491,7 @@ class CheckRegistry:
             for check_def in resolved:
                 logger.debug("Executing check '%s' (scope=%s, category=%s)", check_def.id, check_def.scope, check_def.category)
                 try:
-                    res = check_def.run(models, config, max_workers=workers)
+                    res = check_def.run(models, config, max_workers=workers, scoped_models=scoped_models)
                     logger.debug("Check '%s' produced %d finding(s)", check_def.id, len(res))
                     findings.extend(res)
                 except Exception as exc:
@@ -495,7 +516,7 @@ class CheckRegistry:
                 def _run_single(c: CheckDefinition) -> list[LintFinding]:
                     logger.debug("Executing check '%s' (scope=%s, category=%s)", c.id, c.scope, c.category)
                     try:
-                        res = c.run(models, config, max_workers=1)
+                        res = c.run(models, config, max_workers=1, scoped_models=scoped_models)
                         logger.debug("Check '%s' produced %d finding(s)", c.id, len(res))
                         return res
                     except Exception as exc:

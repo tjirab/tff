@@ -1,7 +1,7 @@
 - id: tff-lint
   name: tff Lint
-  description: Run Transformation Fitness Functions architectural linter
-  entry: tff lint
+  description: Run Transformation Fitness Functions architectural linter on staged models
+  entry: tff lint --staged
   language: python
   types_or: [sql, yaml, json]
   pass_filenames: false
@@ -9,9 +9,18 @@
 
 - id: tff-lint-fix
   name: tff Auto-Fix
-  description: Automatically fix simple tff lint violations
-  entry: tff lint --fix
+  description: Automatically fix simple tff lint violations on staged models
+  entry: tff lint --fix --staged
   language: python
   types_or: [sql, yaml]
+  pass_filenames: false
+  additional_dependencies: ["tff-core"]
+
+- id: tff-check
+  name: tff Check
+  description: Run Transformation Fitness Functions architectural checks on staged models
+  entry: tff check --staged
+  language: python
+  types_or: [sql, yaml, json]
   pass_filenames: false
   additional_dependencies: ["tff-core"]

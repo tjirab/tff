@@ -204,6 +204,7 @@ class _MockRunnerAdapter(PipelineAdapter):
         dialect: str | None = None,
         manifest_path: str | Path | None = None,
         models: dict[str, ModelRepresentation] | None = None,
+        scoped_models: set[str] | None = None,
     ) -> tuple[list[LintFinding], int, list[str]]:
         roots = normalize_project_roots(project_root)
         root_arg = roots[0] if len(roots) == 1 else roots
@@ -216,14 +217,20 @@ class _MockRunnerAdapter(PipelineAdapter):
             kwargs["dialect"] = dialect
             if models is not None:
                 kwargs["models"] = models
+            if scoped_models is not None:
+                kwargs["scoped_models"] = scoped_models
         elif self._provider == "dataform":
             kwargs["dialect"] = dialect
             kwargs["manifest_path"] = manifest_path
             if models is not None:
                 kwargs["models"] = models
+            if scoped_models is not None:
+                kwargs["scoped_models"] = scoped_models
         elif self._provider == "sqlmesh":
             if models is not None:
                 kwargs["models"] = models
+            if scoped_models is not None:
+                kwargs["scoped_models"] = scoped_models
         return self._runner.run_all_checks(**kwargs)
 
     def apply_metadata_fix(
@@ -817,6 +824,20 @@ def _main_impl(argv: list[str] | None = None) -> int:
         action="store_true",
         help="Clear persistent AST disk cache before execution",
     )
+    lint_parser.add_argument(
+        "--staged",
+        action="store_true",
+        default=False,
+        help="Only evaluate models/files currently staged in git",
+    )
+    lint_parser.add_argument(
+        "--since",
+        "--diff",
+        dest="since",
+        metavar="REF",
+        default=None,
+        help="Only evaluate models/files modified relative to git ref (e.g. origin/main, HEAD~1)",
+    )
 
     health_parser = subparsers.add_parser(
         "health", parents=[debug_parent], help="Show project health report and scores"
@@ -900,6 +921,20 @@ def _main_impl(argv: list[str] | None = None) -> int:
         "--clear-cache",
         action="store_true",
         help="Clear persistent AST disk cache before execution",
+    )
+    health_parser.add_argument(
+        "--staged",
+        action="store_true",
+        default=False,
+        help="Only evaluate models/files currently staged in git",
+    )
+    health_parser.add_argument(
+        "--since",
+        "--diff",
+        dest="since",
+        metavar="REF",
+        default=None,
+        help="Only evaluate models/files modified relative to git ref (e.g. origin/main, HEAD~1)",
     )
 
     # Info subcommand
@@ -1716,6 +1751,79 @@ def _main_impl(argv: list[str] | None = None) -> int:
             manifest_path,
         )
 
+        # Git-scoping evaluation (--staged / --since / --diff)
+        is_staged = getattr(args, "staged", False) is True
+        since_raw = getattr(args, "since", None)
+        since_ref = since_raw if isinstance(since_raw, str) and since_raw.strip() else None
+        is_git_scoped = is_staged or (since_ref is not None)
+
+        scoped_models: set[str] | None = None
+        models: dict[str, ModelRepresentation] | None = None
+
+        if is_git_scoped:
+            from tff.core.git import (
+                get_git_root,
+                get_staged_files,
+                get_changed_files_since,
+                map_files_to_model_names,
+            )
+            from tff.core.exceptions import TffGitError
+
+            repo_root = get_git_root(project_root)
+            if repo_root is None:
+                raise TffGitError(
+                    "Git repository not found for git-scoped execution (--staged / --since / --diff).",
+                    hint="Ensure you are running inside a git repository or remove git scoping flags.",
+                )
+
+            changed_files: set[str] = set()
+            if is_staged:
+                changed_files.update(get_staged_files(repo_root))
+            if since_ref:
+                changed_files.update(get_changed_files_since(repo_root, since_ref))
+
+            logger.debug("Git-scoped files detected: %s", changed_files)
+
+            model_candidate_files = {
+                f
+                for f in changed_files
+                if Path(f).suffix.lower() in (".sql", ".sqlx", ".py", ".yaml", ".yml")
+            }
+
+            if not model_candidate_files:
+                scoped_models = set()
+                models = {}
+            else:
+                models = adapter.load_models(
+                    project_root=project_roots,
+                    dialect=args.dialect,
+                    manifest_path=manifest_path,
+                )
+
+                scoped_models = map_files_to_model_names(
+                    models,
+                    changed_files,
+                    project_root=project_root,
+                    repo_root=repo_root,
+                )
+                logger.debug("Mapped git-scoped files to models: %s", scoped_models)
+
+        def _run_adapter(
+            models_arg: dict[str, ModelRepresentation] | None = None,
+        ) -> tuple[list[LintFinding], int, list[str]]:
+            call_kwargs: dict[str, Any] = {
+                "project_root": project_roots,
+                "config": config,
+                "checks": checks,
+                "dialect": args.dialect,
+                "manifest_path": manifest_path,
+            }
+            if models_arg is not None:
+                call_kwargs["models"] = models_arg
+            if scoped_models is not None:
+                call_kwargs["scoped_models"] = scoped_models
+            return adapter.run_checks(**call_kwargs)
+
         is_interactive = (
             sys.stderr.isatty()
             and not getattr(args, "json", False)
@@ -1727,57 +1835,52 @@ def _main_impl(argv: list[str] | None = None) -> int:
         import time
 
         start_time = time.perf_counter()
-        try:
-            if is_interactive:
-                from rich.status import Status
+        if is_git_scoped and len(scoped_models) == 0:  # type: ignore[arg-type]
+            findings = []
+            models_checked = 0
+            executed_checks = checks or []
+            execution_duration = 0.0
+        else:
+            try:
+                if is_interactive:
+                    from rich.status import Status
 
-                with Status(
-                    f"Evaluating fitness functions with {adapter.provider_name}...",
-                    console=Console(stderr=True),
-                ):
-                    findings, models_checked, executed_checks = adapter.run_checks(
-                        project_root=project_roots,
-                        config=config,
-                        checks=checks,
-                        dialect=args.dialect,
-                        manifest_path=manifest_path,
-                    )
-            else:
-                findings, models_checked, executed_checks = adapter.run_checks(
-                    project_root=project_roots,
-                    config=config,
-                    checks=checks,
-                    dialect=args.dialect,
-                    manifest_path=manifest_path,
+                    with Status(
+                        f"Evaluating fitness functions with {adapter.provider_name}...",
+                        console=Console(stderr=True),
+                    ):
+                        findings, models_checked, executed_checks = _run_adapter(models)
+                else:
+                    findings, models_checked, executed_checks = _run_adapter(models)
+                execution_duration = time.perf_counter() - start_time
+                logger.debug(
+                    "Check execution completed in %.2fs: evaluated %d model(s), executed %s, found %d violation(s)",
+                    execution_duration,
+                    models_checked,
+                    executed_checks,
+                    len(findings),
                 )
-            execution_duration = time.perf_counter() - start_time
-            logger.debug(
-                "Check execution completed in %.2fs: evaluated %d model(s), executed %s, found %d violation(s)",
-                execution_duration,
-                models_checked,
-                executed_checks,
-                len(findings),
-            )
-        except TffError:
-            raise
-        except Exception as e:
-            logger.debug("Error executing checks: %s", e)
-            print(f"Error executing checks: {e}", file=sys.stderr)
-            return 1
+            except TffError:
+                raise
+            except Exception as e:
+                logger.debug("Error executing checks: %s", e)
+                print(f"Error executing checks: {e}", file=sys.stderr)
+                return 1
 
         # Apply auto-fixes if --fix is set
         if args.command in ("lint", "check") and getattr(args, "fix", False) and findings:
-            try:
-                models = adapter.load_models(
-                    project_root=project_roots,
-                    dialect=args.dialect,
-                    manifest_path=manifest_path,
-                )
-            except Exception as e:
-                models = {}
-                print(
-                    f"Warning: Could not load models for autofix: {e}", file=sys.stderr
-                )
+            if models is None:
+                try:
+                    models = adapter.load_models(
+                        project_root=project_roots,
+                        dialect=args.dialect,
+                        manifest_path=manifest_path,
+                    )
+                except Exception as e:
+                    models = {}
+                    print(
+                        f"Warning: Could not load models for autofix: {e}", file=sys.stderr
+                    )
 
             if models:
                 from tff.core.autofix import apply_autofixes
@@ -1788,7 +1891,7 @@ def _main_impl(argv: list[str] | None = None) -> int:
                         console = Console(stderr=True)
                         for log in fix_logs:
                             console.print(f"[green]✓[/green] {log}")
-                    # Re-run checks to get the final state of the files
+                    # Re-run checks to get the final state of the files (pass models_arg=None so adapter reloads from disk)
                     try:
                         rerun_start = time.perf_counter()
                         if is_interactive:
@@ -1798,21 +1901,9 @@ def _main_impl(argv: list[str] | None = None) -> int:
                                 f"Re-evaluating fitness functions with {adapter.provider_name}...",
                                 console=Console(stderr=True),
                             ):
-                                findings, models_checked, executed_checks = adapter.run_checks(
-                                    project_root=project_roots,
-                                    config=config,
-                                    checks=checks,
-                                    dialect=args.dialect,
-                                    manifest_path=manifest_path,
-                                )
+                                findings, models_checked, executed_checks = _run_adapter(None)
                         else:
-                            findings, models_checked, executed_checks = adapter.run_checks(
-                                project_root=project_roots,
-                                config=config,
-                                checks=checks,
-                                dialect=args.dialect,
-                                manifest_path=manifest_path,
-                            )
+                            findings, models_checked, executed_checks = _run_adapter(None)
                         execution_duration = time.perf_counter() - rerun_start
                     except TffError:
                         raise
@@ -1923,6 +2014,8 @@ def _main_impl(argv: list[str] | None = None) -> int:
                                 scoped_files.add(p.resolve())
                 if scoped_files:
                     scoped_models_count = len(scoped_files)
+            elif is_git_scoped:
+                scoped_models_count = models_checked
 
             scores = calculate_health_scores(
                 findings,

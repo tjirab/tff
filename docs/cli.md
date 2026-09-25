@@ -65,6 +65,8 @@ tff lint [options]
 | `--github-annotations` | Flag | (auto if CI) | Emit GitHub Actions workflow commands (`::error` / `::warning`) to stderr. |
 | `--junit-xml PATH` | File Path | (none) | Write JUnit XML test report for CI results tabs (GitLab, Azure DevOps, Bitbucket). |
 | `--workers NUM` | Integer | (auto / CPU count) | Number of worker processes for parallel model loading, AST parsing, and CTE analysis (or set `TFF_WORKERS`). Task chunk size for rule evaluation can be tuned via `TFF_CHUNK_SIZE`. |
+| `--staged` | Flag | `false` | Only evaluate models/files currently staged in git. |
+| `--since REF`, `--diff REF` | Git Ref String | (none) | Only evaluate models/files modified relative to git ref (e.g. `origin/main`, `HEAD~1`). |
 | `--no-cache` | Flag | `false` | Disable disk-based AST caching in `.tff_cache/`. |
 | `--clear-cache` | Flag | `false` | Clear the persistent `.tff_cache/` directory before running. |
 | `--no-log` | Flag | `false` | Disable writing execution logs to `.tff_logs/lint/`. |
@@ -75,6 +77,12 @@ tff lint [options]
 ```bash
 # Standard linting run (zero-config out of the box)
 tff lint
+
+# Check only models currently staged in git (fast pre-commit checks)
+tff check --staged
+
+# Check only models changed relative to main branch
+tff check --since origin/main
 
 # Run specific rules only
 tff lint --checks layer_integrity,ban_select_star
@@ -112,6 +120,8 @@ tff health [options]
 | `--dialect DIALECT` | String | (auto-inferred) | SQL dialect of models. |
 | `--manifest PATH` | File Path | (auto-discovered) | Path to precompiled manifest. |
 | `--workers NUM` | Integer | (auto / CPU count) | Number of worker processes for parallel model loading and AST parsing. |
+| `--staged` | Flag | `false` | Only evaluate models/files currently staged in git. |
+| `--since REF`, `--diff REF` | Git Ref String | (none) | Only evaluate models/files modified relative to git ref (e.g. `origin/main`, `HEAD~1`). |
 | `--no-cache` | Flag | `false` | Disable disk-based AST caching in `.tff_cache/`. |
 | `--clear-cache` | Flag | `false` | Clear the persistent `.tff_cache/` directory before running. |
 | `--json` | Flag | `false` | Output results in JSON format to stdout. |
@@ -123,6 +133,12 @@ tff health [options]
 ```bash
 # Display overall health score and category breakdown
 tff health
+
+# Compute health score for models staged in git
+tff health --staged
+
+# Compute health score for models modified relative to main branch
+tff health --since origin/main
 
 # Require an 80% health score to pass CI
 tff health --fail-under 80
