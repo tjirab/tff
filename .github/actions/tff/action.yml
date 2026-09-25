@@ -112,7 +112,15 @@ runs:
 
         PKG="tff-core${EXTRA}"
         if [ -n "${{ inputs.version }}" ]; then
-          PKG="${PKG}==${{ inputs.version }}"
+          if [ "${{ inputs.version }}" = "local" ] || [ "${{ inputs.version }}" = "action" ] || [ "${{ inputs.version }}" = "repo" ]; then
+            PKG="${{ github.action_path }}/packages/tff-core${EXTRA}"
+          elif [[ "${{ inputs.version }}" == git+* ]] || [[ "${{ inputs.version }}" == *://* ]]; then
+            PKG="${{ inputs.version }}"
+          else
+            PKG="${PKG}==${{ inputs.version }}"
+          fi
+        elif [ -f "${{ github.action_path }}/packages/tff-core/pyproject.toml" ]; then
+          PKG="${{ github.action_path }}/packages/tff-core${EXTRA}"
         fi
 
         echo "Installing ${PKG}..."
