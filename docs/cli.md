@@ -18,6 +18,8 @@ The CLI provides the following subcommands:
 | [`tff stats`](#8-tff-stats) | Displays historical execution trends and metric logs | Tracking architectural drift over time |
 | [`tff info`](#9-tff-info) | Prints diagnostic info about environment and adapters | Debugging engine discovery, site-packages, config |
 | [`tff help`](#10-tff-help) | Displays help and usage information for commands | Exploring command arguments and syntax |
+| [`tff explain`](#11-tff-explain) | Displays in-terminal rule docs, rationale, and remediation | Understanding rules, learning how to fix violations |
+| [`tff rules`](#11-tff-explain) | Lists all available fitness checks and descriptions | Exploring rule catalog and default severities |
 
 ---
 
@@ -300,7 +302,45 @@ tff [subcommand] --help
 
 ---
 
-## 11. Output Formats & Integrations
+## 11. `tff explain` & `tff rules`
+
+Display in-terminal rule documentation, coupling rationale, and actionable remediation instructions for any fitness check or connascence category without leaving your terminal:
+
+```bash
+tff explain [rule_or_category] [options]
+# or list all available rules
+tff rules
+```
+
+### Options Reference Table
+
+| Option | Type / Choices | Default | Description |
+| :--- | :--- | :--- | :--- |
+| `rule` | String (optional) | (none) | Check ID, alias, or category abbreviation (e.g. `duplicate_ctes`, `ban_select_star`, `CoA`, `CoV`, `CoN`). |
+| `--all` | Flag | `false` | Display tabular catalog of all available checks and linter rules. |
+| `--json` | Flag | `false` | Output rule documentation or catalog in JSON format to stdout. |
+
+### Examples
+
+```bash
+# Explain a specific rule with rationale, remediation, and YAML configuration
+tff explain duplicate_ctes
+
+# Explain by category abbreviation (CoA -> Connascence of Algorithm)
+tff explain CoA
+
+# List all available checks and descriptions
+tff rules
+# or
+tff explain --all
+
+# Machine-readable rule metadata for IDE integrations or CI bots
+tff explain duplicate_ctes --json
+```
+
+---
+
+## 12. Output Formats & Integrations
 
 tff supports multiple structured output formats for seamless CI/CD and tool integration:
 
@@ -314,7 +354,7 @@ tff supports multiple structured output formats for seamless CI/CD and tool inte
 
 ---
 
-## 12. Error Diagnostics & Stream Discipline
+## 13. Error Diagnostics & Stream Discipline
 
 tff provides human-readable diagnostic reporting to prevent raw stack traces during normal CLI usage while preserving stream integrity for automation:
 
@@ -333,7 +373,7 @@ All error diagnostics, warnings, and progress indicators are routed exclusively 
 
 ---
 
-## 13. Environment Variables
+## 14. Environment Variables
 
 tff supports environment variables for configuring runtime concurrency, batch chunk sizes, AST caching, logging, and debugging across local and CI environments:
 

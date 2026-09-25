@@ -24,6 +24,7 @@ from tff.core.config import (
 )
 from tff.core.exceptions import TffError
 from tff.core.logs import is_debug_enabled, setup_cli_logging
+from tff.core.registry import CheckDefinition, normalize_check_name, registry
 from tff.core.report import render_lint_report
 
 if TYPE_CHECKING:
@@ -309,7 +310,7 @@ def _parse_checks(value: str | None) -> list[str] | None:
 class TffArgumentParser(argparse.ArgumentParser):
     _current_argv: list[str] | None = None
     _KNOWN_SUBCOMMANDS: tuple[str, ...] = (
-        "lint", "check", "health", "info", "help", "stats", "docs", "init", "action",
+        "lint", "check", "health", "info", "help", "stats", "docs", "init", "action", "explain", "rules",
     )
 
     def error(self, message: str) -> None:
@@ -437,6 +438,236 @@ def mask_sensitive_args(
         i += 1
 
     return sanitized
+
+
+def _check_to_dict(check: CheckDefinition) -> dict[str, Any]:
+    """Serialize a check definition into a JSON-friendly dictionary."""
+    return {
+        "id": check.id,
+        "label": check.label,
+        "category": check.category,
+        "scope": check.scope,
+        "default_severity": check.default_severity,
+        "aliases": list(check.aliases),
+        "providers": list(check.providers),
+        "is_fixable": check.is_fixable,
+        "what_it_checks": check.description,
+        "why_it_matters": check.why_it_matters,
+        "how_to_fix": check.how_to_fix,
+        "configuration": check.configuration_example,
+        "docs_url": check.docs_url,
+    }
+
+
+def _explain_single_check(check: CheckDefinition, console: Console | None = None) -> None:
+    """Render terminal documentation and remediation instructions for a single check."""
+    if console is None:
+        console = Console()
+
+    console.print(f"[bold cyan]{check.id}[/bold cyan] [dim]({check.category})[/dim]")
+    width = min(console.width if console.width else 80, 78)
+    console.print("[dim]" + "─" * width + "[/dim]")
+
+    sev_label = "Error (Default)" if check.default_severity == "error" else "Warning (Default)"
+    sev_style = "bold red" if check.default_severity == "error" else "bold yellow"
+    console.print(f"[bold]Severity:[/bold]   [{sev_style}]{sev_label}[/{sev_style}]")
+
+    prov_names = []
+    for p in check.providers:
+        if p.lower() == "sqlmesh":
+            prov_names.append("SQLMesh")
+        elif p.lower() == "dbt":
+            prov_names.append("dbt")
+        elif p.lower() == "dataform":
+            prov_names.append("Dataform")
+        else:
+            prov_names.append(p)
+    console.print(f"[bold]Provider:[/bold]   {', '.join(prov_names)}")
+
+    if check.is_fixable:
+        console.print("[bold]Auto-fix:[/bold]   [bold green]Yes[/bold green] [dim](run 'tff lint --fix')[/dim]")
+
+    if check.aliases:
+        console.print(f"[bold]Aliases:[/bold]    {', '.join(check.aliases)}")
+
+    if check.description:
+        console.print("\n[bold]What it checks:[/bold]")
+        console.print(check.description)
+
+    if check.why_it_matters:
+        console.print("\n[bold]Why it matters:[/bold]")
+        console.print(check.why_it_matters)
+
+    if check.how_to_fix:
+        console.print("\n[bold]How to fix:[/bold]")
+        console.print(check.how_to_fix)
+
+    if check.configuration_example:
+        console.print("\n[bold]Configuration (fitness_functions.yaml):[/bold]")
+        console.print(f"[dim]{check.configuration_example}[/dim]")
+
+    if check.docs_url:
+        console.print(f"\n[bold]Documentation:[/bold] [link={check.docs_url}]{check.docs_url}[/link]")
+
+
+def _render_rules_table(
+    checks: list[CheckDefinition],
+    title: str | None = None,
+    console: Console | None = None,
+) -> None:
+    """Render a tabular catalog of checks with categories, severities, and descriptions."""
+    from rich import box
+    from rich.table import Table
+
+    if console is None:
+        console = Console()
+
+    header_text = title or "Available Fitness Checks & Rules"
+    console.print(f"[bold cyan]● {header_text}[/bold cyan]\n")
+
+    table = Table(
+        box=box.SIMPLE,
+        show_header=True,
+        header_style="bold cyan",
+        padding=(0, 2, 0, 0),
+    )
+    table.add_column("Rule / Check", style="bold", no_wrap=True)
+    table.add_column("Category", style="dim")
+    table.add_column("Severity")
+    table.add_column("Auto-fix", justify="center")
+    table.add_column("Description")
+
+    for check in checks:
+        sev_style = "bold red" if check.default_severity == "error" else "bold yellow"
+        sev_label = "error" if check.default_severity == "error" else "warning"
+        fixable_label = "[green]✓[/green]" if check.is_fixable else "·"
+        table.add_row(
+            check.id,
+            check.category,
+            f"[{sev_style}]{sev_label}[/{sev_style}]",
+            fixable_label,
+            check.description,
+        )
+
+    console.print(table)
+    console.print("\n[dim]For detailed remediation guidance, try 'tff explain <rule_name>'[/dim]")
+
+
+def handle_explain(
+    rule_arg: str | None,
+    as_json: bool = False,
+    show_all: bool = False,
+    console: Console | None = None,
+) -> int:
+    """Handle explain and rules subcommands."""
+    import json
+
+    if console is None:
+        console = Console()
+
+    # If no rule argument given or --all, list all checks
+    if not rule_arg or show_all:
+        all_checks = registry.all_checks()
+        if as_json:
+            print(json.dumps({"checks": [_check_to_dict(c) for c in all_checks]}, indent=2))
+            return 0
+        _render_rules_table(all_checks, console=console)
+        return 0
+
+    # 1. Direct check lookup (id, finding_check_id, or alias)
+    check = registry.get(rule_arg)
+    if check is not None:
+        if as_json:
+            print(json.dumps(_check_to_dict(check), indent=2))
+            return 0
+        _explain_single_check(check, console=console)
+        return 0
+
+    # 2. Category lookup (e.g. CoA, CoV, CoN, CoT, CoP, CoM, DAG, quality, metadata)
+    cat_checks = registry.get_by_category(rule_arg)
+    if cat_checks:
+        if len(cat_checks) == 1:
+            if as_json:
+                print(json.dumps(_check_to_dict(cat_checks[0]), indent=2))
+                return 0
+            _explain_single_check(cat_checks[0], console=console)
+            return 0
+        else:
+            cat_name = cat_checks[0].category
+            if as_json:
+                print(
+                    json.dumps(
+                        {
+                            "category": cat_name,
+                            "checks": [_check_to_dict(c) for c in cat_checks],
+                        },
+                        indent=2,
+                    )
+                )
+                return 0
+            _render_rules_table(cat_checks, title=cat_name, console=console)
+            return 0
+
+    # 3. Partial substring matching
+    norm_query = normalize_check_name(rule_arg)
+    if len(norm_query) >= 3:
+        sub_matches = [
+            c
+            for c in registry.all_checks()
+            if norm_query in normalize_check_name(c.id)
+            or any(norm_query in normalize_check_name(a) for a in c.aliases)
+        ]
+        if len(sub_matches) == 1:
+            if as_json:
+                print(json.dumps(_check_to_dict(sub_matches[0]), indent=2))
+                return 0
+            _explain_single_check(sub_matches[0], console=console)
+            return 0
+        elif len(sub_matches) > 1:
+            if as_json:
+                print(
+                    json.dumps(
+                        {
+                            "query": rule_arg,
+                            "checks": [_check_to_dict(c) for c in sub_matches],
+                        },
+                        indent=2,
+                    )
+                )
+                return 0
+            _render_rules_table(
+                sub_matches,
+                title=f"Matches for '{rule_arg}'",
+                console=console,
+            )
+            return 0
+
+    # 4. Fuzzy matching for typos
+    all_targets: list[str] = []
+    for c in registry.all_checks():
+        all_targets.append(c.id)
+        if c.finding_check_id:
+            all_targets.append(c.finding_check_id)
+        all_targets.extend(c.aliases)
+
+    abbr_keys = ["con", "cot", "cop", "com", "coa", "cov", "dag"]
+    all_targets.extend(abbr_keys)
+    unique_targets = sorted(set(all_targets))
+
+    close_matches = difflib.get_close_matches(rule_arg.lower(), unique_targets, n=1, cutoff=0.6)
+    suggestion = f"\n  Did you mean '{close_matches[0]}'?" if close_matches else ""
+
+    if as_json:
+        payload: dict[str, Any] = {"error": f"Unknown check or category '{rule_arg}'."}
+        if close_matches:
+            payload["suggestion"] = close_matches[0]
+        print(json.dumps(payload, indent=2))
+        return 1
+
+    err_console = Console(stderr=True)
+    err_console.print(f"[bold red]✖ Error:[/bold red] Unknown check or category '{rule_arg}'.{suggestion}")
+    err_console.print("  [dim]Run 'tff rules' or 'tff explain --all' to list all available checks.[/dim]")
+    return 1
 
 
 def _main_impl(argv: list[str] | None = None) -> int:
@@ -924,11 +1155,52 @@ def _main_impl(argv: list[str] | None = None) -> int:
         help="Number of parallel worker processes for model loading and AST traversal",
     )
 
+    explain_parser = subparsers.add_parser(
+        "explain",
+        parents=[debug_parent],
+        help="Explain a fitness check, connascence category, and remediation steps",
+        description="Explain a fitness check, connascence category, and remediation steps",
+    )
+    explain_parser.add_argument(
+        "rule",
+        nargs="?",
+        default=None,
+        help="Name or alias of the check or category to explain (e.g. duplicate_ctes, ban_select_star, CoA, CoV)",
+    )
+    explain_parser.add_argument(
+        "--all",
+        action="store_true",
+        help="List and describe all available fitness checks",
+    )
+    explain_parser.add_argument(
+        "--json",
+        action="store_true",
+        help="Output check explanation or rule list in JSON format to stdout",
+    )
+
+    rules_parser = subparsers.add_parser(
+        "rules",
+        parents=[debug_parent],
+        help="List all available fitness checks and linter rules",
+        description="List all available fitness checks and linter rules",
+    )
+    rules_parser.add_argument(
+        "rule",
+        nargs="?",
+        default=None,
+        help="Optional name or alias of a specific rule to explain",
+    )
+    rules_parser.add_argument(
+        "--json",
+        action="store_true",
+        help="Output rules list in JSON format to stdout",
+    )
+
     help_parser = subparsers.add_parser("help", parents=[debug_parent], help="Show help details for a command")
     help_parser.add_argument(
         "subcommand",
         nargs="?",
-        choices=["lint", "check", "health", "info", "stats", "docs", "init", "action"],
+        choices=["lint", "check", "health", "info", "stats", "docs", "init", "action", "explain", "rules"],
         help="Specific command to get help for",
     )
 
@@ -958,9 +1230,23 @@ def _main_impl(argv: list[str] | None = None) -> int:
             init_parser.print_help()
         elif args.subcommand == "action":
             action_parser.print_help()
+        elif args.subcommand == "explain":
+            explain_parser.print_help()
+        elif args.subcommand == "rules":
+            rules_parser.print_help()
         else:
             parser.print_help()
         return 0
+
+    if args.command in ("explain", "rules"):
+        rule_arg = getattr(args, "rule", None)
+        show_all = getattr(args, "all", False) or (args.command == "rules" and not rule_arg)
+        as_json = getattr(args, "json", False)
+        return handle_explain(
+            rule_arg=rule_arg,
+            as_json=as_json,
+            show_all=show_all,
+        )
 
     # Normalize project roots
     project_roots: list[Path] = []

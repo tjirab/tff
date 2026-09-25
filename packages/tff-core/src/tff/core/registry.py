@@ -106,6 +106,16 @@ class CheckDefinition:
     collector_func_name: str | None = None
     is_enabled_fn: Callable[[FitnessFunctionsConfig, str], bool] | None = None
     docs_url: str | None = None
+    description: str = ""
+    why_it_matters: str = ""
+    how_to_fix: str = ""
+    configuration_example: str = ""
+    providers: tuple[str, ...] = ("dbt", "sqlmesh", "dataform")
+    is_fixable: bool = False
+
+    @property
+    def what_it_checks(self) -> str:
+        return self.description
 
     @property
     def canonical_id(self) -> str:
@@ -221,6 +231,12 @@ class CheckRegistry:
         finding_check_id: str | None = None,
         is_enabled_fn: Callable[[FitnessFunctionsConfig, str], bool] | None = None,
         docs_url: str | None = None,
+        description: str = "",
+        why_it_matters: str = "",
+        how_to_fix: str = "",
+        configuration_example: str = "",
+        providers: tuple[str, ...] = ("dbt", "sqlmesh", "dataform"),
+        is_fixable: bool = False,
     ) -> CheckDefinition:
         """Convenience method to register a model-level Rule class."""
         rule_id = (
@@ -253,6 +269,16 @@ class CheckRegistry:
             or getattr(rule_cls, "docs_url", None)
             or getattr(rule_cls, "help_url", None)
         )
+        rule_description = (
+            description
+            or getattr(rule_cls, "description", None)
+            or (rule_cls.__doc__.strip() if rule_cls.__doc__ else "")
+        )
+        rule_why = why_it_matters or getattr(rule_cls, "why_it_matters", "")
+        rule_how = how_to_fix or getattr(rule_cls, "how_to_fix", "")
+        rule_config = configuration_example or getattr(rule_cls, "configuration_example", "")
+        rule_providers = getattr(rule_cls, "providers", providers)
+        rule_fixable = getattr(rule_cls, "is_fixable", is_fixable)
 
         check_def = CheckDefinition(
             id=rule_id,
@@ -266,6 +292,12 @@ class CheckRegistry:
             rule_cls=rule_cls,
             is_enabled_fn=is_enabled_fn,
             docs_url=rule_docs_url,
+            description=rule_description,
+            why_it_matters=rule_why,
+            how_to_fix=rule_how,
+            configuration_example=rule_config,
+            providers=rule_providers,
+            is_fixable=rule_fixable,
         )
         self.register(check_def)
         return check_def
@@ -312,6 +344,33 @@ class CheckRegistry:
 
     def all_checks(self) -> list[CheckDefinition]:
         return list(self._checks.values())
+
+    def get_by_category(self, query: str) -> list[CheckDefinition]:
+        """Find all checks matching a category name or abbreviation (e.g. CoA, CoV, CoN, CoT, CoP, CoM, DAG)."""
+        norm = normalize_check_name(query)
+        abbr_map = {
+            "con": "Connascence of Name (CoN)",
+            "cot": "Connascence of Type (CoT)",
+            "cop": "Connascence of Position (CoP)",
+            "com": "Connascence of Meaning (CoM)",
+            "coa": "Connascence of Algorithm (CoA)",
+            "cov": "Connascence of Value (CoV)",
+            "dag": "Dynamic Coupling & DAG Structure",
+            "coupling": "Dynamic Coupling & DAG Structure",
+            "dynamiccoupling": "Dynamic Coupling & DAG Structure",
+            "quality": "Quality & Metadata (Non-Connascence)",
+            "metadata": "Quality & Metadata (Non-Connascence)",
+        }
+        target_cat = abbr_map.get(norm)
+        if target_cat:
+            return [c for c in self.all_checks() if c.category == target_cat]
+
+        results: list[CheckDefinition] = []
+        for check in self.all_checks():
+            cat_norm = normalize_check_name(check.category)
+            if norm and (norm == cat_norm or norm in cat_norm):
+                results.append(check)
+        return results
 
     def get_docs_url(self, name_or_alias: str) -> str | None:
         """Resolve documentation URL for a check or rule name/alias."""
@@ -553,6 +612,12 @@ def create_default_registry() -> CheckRegistry:
             rule_class_name="BanSelectStar",
             is_enabled_fn=lambda cfg, p: bool(cfg.rules.ban_select_star.enabled),
             docs_url=f"{docs_base}ban-select-ban_select_star",
+            description="Disallows wildcard SELECT * statements in model queries. Requires explicit column naming to reduce model coupling. Aggregate expressions (e.g. COUNT(*)) are permitted.",
+            why_it_matters="Using wildcard SELECT * creates implicit coupling (Connascence of Name) between models. Upstream schema changes or column additions propagate unexpectedly downstream, breaking contracts, invalidating views, or altering model schemas.",
+            how_to_fix="Explicitly list the required columns in the SELECT clause instead of using *.",
+            configuration_example="rules:\n  ban_select_star:\n    enabled: true\n    skip_layers: [sources]",
+            providers=("dbt", "sqlmesh", "dataform"),
+            is_fixable=False,
         )
     )
     reg.register(
@@ -567,6 +632,12 @@ def create_default_registry() -> CheckRegistry:
             rule_class_name="FilenameEqualsModelname",
             is_enabled_fn=lambda cfg, p: bool(cfg.rules.filename_equals_modelname.enabled),
             docs_url=f"{docs_base}filename-equals-model-name-filename_equals_modelname",
+            description="Validates that the model's catalog identifier matches the stem of its source SQL file on disk.",
+            why_it_matters="Discrepancies between the file name and model name make models hard to locate, break developer expectations, and create confusion when navigating repositories.",
+            how_to_fix="Rename the SQL file to match the model name or update the model configuration name to match the file stem.",
+            configuration_example="rules:\n  filename_equals_modelname:\n    enabled: true",
+            providers=("dbt", "sqlmesh", "dataform"),
+            is_fixable=False,
         )
     )
     reg.register(
@@ -581,6 +652,12 @@ def create_default_registry() -> CheckRegistry:
             rule_class_name="ColumnNames",
             is_enabled_fn=lambda cfg, p: bool(cfg.rules.column_names.enabled),
             docs_url=f"{docs_base}column-names-column_names",
+            description="Enforces naming standards on columns by checking for deprecated names, forbidden substrings, or inconsistent column patterns.",
+            why_it_matters="Inconsistent column naming causes Connascence of Name across transformation pipelines, forcing downstream models and consumers to memorize variations of the same business attribute.",
+            how_to_fix="Rename deprecated columns to the canonical replacement specified in the rule configuration.",
+            configuration_example="rules:\n  column_names:\n    enabled: true\n    replacements:\n      api_request: api_call\n      cust_id: customer_id",
+            providers=("dbt", "sqlmesh", "dataform"),
+            is_fixable=False,
         )
     )
     reg.register(
@@ -595,6 +672,12 @@ def create_default_registry() -> CheckRegistry:
             rule_class_name="MartModelNamingConvention",
             is_enabled_fn=lambda cfg, p: bool(cfg.rules.mart_naming.enabled),
             docs_url=f"{docs_base}mart-naming-mart_naming",
+            description="Enforces naming conventions for models residing inside subfolders of the marts layer directory (e.g. marts/marketing/ad_performance.sql should be named marketing_ad_performance.sql).",
+            why_it_matters="Ensures model names remain globally unique and immediately convey their domain ownership even when referenced without folder paths.",
+            how_to_fix="Prefix the model file name with the name of its enclosing subdirectory (e.g. rename ad_performance.sql to marketing_ad_performance.sql).",
+            configuration_example="rules:\n  mart_naming:\n    enabled: true\n    layer_name: marts\n    rule: prefix_with_subdirectory",
+            providers=("dbt", "sqlmesh", "dataform"),
+            is_fixable=False,
         )
     )
     reg.register(
@@ -607,6 +690,12 @@ def create_default_registry() -> CheckRegistry:
             finding_check_id="ambiguousorinvalidcolumn",
             is_enabled_fn=lambda cfg, p: p == "sqlmesh",
             docs_url="https://tff.readthedocs.io/en/latest/rules_and_checks/",
+            description="Flags ambiguous column references or invalid column resolutions in SQL queries using SQLMesh semantic analysis.",
+            why_it_matters="Ambiguous column references make queries brittle and can cause runtime syntax or semantic errors when schemas evolve.",
+            how_to_fix="Disambiguate column references by qualifying them with table or CTE aliases.",
+            configuration_example="checks:\n  ambiguous_or_invalid_column:\n    enabled: true",
+            providers=("sqlmesh",),
+            is_fixable=False,
         )
     )
     reg.register(
@@ -619,6 +708,12 @@ def create_default_registry() -> CheckRegistry:
             finding_check_id="invalidselectstarexpansion",
             is_enabled_fn=lambda cfg, p: p == "sqlmesh",
             docs_url="https://tff.readthedocs.io/en/latest/rules_and_checks/",
+            description="Flags invalid wildcard expansions or column projections that cannot be resolved against upstream model schemas.",
+            why_it_matters="Unresolvable SELECT * projections indicate missing upstream columns or broken lineage contracts.",
+            how_to_fix="Explicitly specify valid projected columns or resolve upstream schema definitions.",
+            configuration_example="checks:\n  invalid_select_star_expansion:\n    enabled: true",
+            providers=("sqlmesh",),
+            is_fixable=False,
         )
     )
 
@@ -635,6 +730,12 @@ def create_default_registry() -> CheckRegistry:
             rule_class_name="ColumnTypes",
             is_enabled_fn=lambda cfg, p: bool(cfg.rules.column_types.enabled),
             docs_url=f"{docs_base}column-types-column_types",
+            description="Ensures columns matching specific name patterns are defined with expected data types (e.g. columns ending in _id must be typed as text).",
+            why_it_matters="Type mismatches for the same conceptual attribute across models introduce Connascence of Type, risking join failures or expensive implicit type conversions.",
+            how_to_fix="Cast or define the column to match the expected data type family configured for that column pattern.",
+            configuration_example="rules:\n  column_types:\n    enabled: true\n    rules:\n      - name: id_is_text\n        pattern: '_id$'\n        data_type: text\n    equivalent_types:\n      text: [text, varchar]",
+            providers=("dbt", "sqlmesh", "dataform"),
+            is_fixable=False,
         )
     )
     reg.register(
@@ -650,6 +751,12 @@ def create_default_registry() -> CheckRegistry:
             ).collect_schema_contract_findings(models, cfg),
             is_enabled_fn=lambda cfg, p: bool(cfg.checks.schema_contracts.enabled),
             docs_url=f"{docs_base}schema-contracts-schema_contracts",
+            description="Enforces structural schema parity between related models (column parity groups and dimension parity groups).",
+            why_it_matters="Models representing parallel replicas or shared dimensions must stay strictly synchronized to prevent schema drift.",
+            how_to_fix="Align member model columns with the reference model schema, or declare explicit substitution mappings / exclusions.",
+            configuration_example="contract_groups:\n  column_parity_groups:\n    - reference: models/core/dim_customer_ref.sql\n      exclude_columns: [created_at, updated_at]\n      members:\n        - models/core/dim_customer_replica.sql\nchecks:\n  schema_contracts:\n    enabled: true",
+            providers=("dbt", "sqlmesh", "dataform"),
+            is_fixable=False,
         )
     )
     reg.register(
@@ -668,6 +775,12 @@ def create_default_registry() -> CheckRegistry:
             ).collect_join_type_parity_findings(models, cfg),
             is_enabled_fn=lambda cfg, p: bool(cfg.checks.join_type_parity.enabled),
             docs_url=f"{docs_base}join-type-parity-join_type_parity",
+            description="Validates data type parity for joined columns across SQL queries to eliminate Connascence of Type (CoT).",
+            why_it_matters="Joining columns with mismatching data types (e.g. VARCHAR joined to INT) causes dynamic casting overhead, disables index/partition pruning, or causes query failures.",
+            how_to_fix="Cast joined columns to a compatible type family in upstream staging models, or add an explicit CAST at the join condition.",
+            configuration_example="checks:\n  join_type_parity:\n    enabled: true\n    severity: error\n    skip_layers: [staging]",
+            providers=("dbt", "sqlmesh", "dataform"),
+            is_fixable=False,
         )
     )
 
@@ -686,6 +799,12 @@ def create_default_registry() -> CheckRegistry:
                 cfg.rules.no_positional_group_by_or_order_by.enabled
             ),
             docs_url=f"{docs_base}no-positional-group-byorder-by-no_positional_group_by_or_order_by-auto-fixable",
+            description="Prevents using ordinal integers (e.g. GROUP BY 1, 2 or ORDER BY 1 DESC) instead of explicit column name references.",
+            why_it_matters="Positional grouping introduces Connascence of Position (CoP). Modifying the SELECT list order unintentionally alters grouping and sorting semantics without syntax errors.",
+            how_to_fix="Replace positional integers with explicit column names or aliases, or run 'tff lint --fix' to rewrite them automatically.",
+            configuration_example="rules:\n  no_positional_group_by_or_order_by:\n    enabled: true\n    skip_layers: [sources]",
+            providers=("dbt", "sqlmesh", "dataform"),
+            is_fixable=True,
         )
     )
 
@@ -702,6 +821,12 @@ def create_default_registry() -> CheckRegistry:
             rule_class_name="ClassificationMacros",
             is_enabled_fn=lambda cfg, p: bool(cfg.rules.classification_macros.enabled),
             docs_url=f"{docs_base}classification-macros-classification_macros",
+            description="Enforces Connascence of Meaning (CoM) by requiring classification columns to use standard macros instead of inline CASE statements.",
+            why_it_matters="When business classification logic (such as customer status or tier) is repeated as inline CASE statements, logic updates across models become error-prone and drift apart.",
+            how_to_fix="Replace inline CASE statements with the designated project macro (e.g. {{ is_premium_tier('status') }}).",
+            configuration_example="rules:\n  classification_macros:\n    enabled: true\n    columns:\n      product_type: '@product_type\\b'",
+            providers=("dbt", "sqlmesh", "dataform"),
+            is_fixable=False,
         )
     )
 
@@ -712,10 +837,17 @@ def create_default_registry() -> CheckRegistry:
             label="Duplicate CTEs",
             category="Connascence of Algorithm (CoA)",
             scope="dag",
+            default_severity="warning",
             collector_module="tff.core.checks.duplicate_ctes",
             collector_func_name="collect_duplicate_cte_findings",
             is_enabled_fn=lambda cfg, p: bool(cfg.checks.duplicate_ctes.enabled),
             docs_url=f"{docs_base}duplicate-ctes-duplicate_ctes",
+            description="Detects duplicate or near-identical Common Table Expressions (CTEs) across different SQL models using normalized AST subtree hashing.",
+            why_it_matters="When transformation algorithms are duplicated across models, any future change to the business logic requires finding and updating every copy in sync. If one copy is missed, data warehouse divergence occurs silently.",
+            how_to_fix="1. Lift the duplicate CTE into a shared upstream model (e.g. models/intermediate/int_users_cleaned.sql).\n2. Reference the shared model downstream using ref('int_users_cleaned').",
+            configuration_example="checks:\n  duplicate_ctes:\n    enabled: true\n    min_lines: 4\n    severity: warning",
+            providers=("dbt", "sqlmesh", "dataform"),
+            is_fixable=False,
         )
     )
 
@@ -726,10 +858,17 @@ def create_default_registry() -> CheckRegistry:
             label="Connascence of Value",
             category="Connascence of Value (CoV)",
             scope="dag",
+            default_severity="warning",
             collector_module="tff.core.checks.connascence_of_value",
             collector_func_name="collect_connascence_of_value_findings",
             is_enabled_fn=lambda cfg, p: bool(cfg.checks.connascence_of_value.enabled),
             docs_url=f"{docs_base}connascence-of-value-connascence_of_value",
+            description="Identifies Connascence of Value (CoV) by flagging business literal values (strings, numbers) duplicated across multiple models.",
+            why_it_matters="When multiple models share hardcoded business constants, changing the value in one place requires synchronized updates across all models, leading to silent discrepancies if any are missed.",
+            how_to_fix="1. Evaluate the value in an upstream staging model and expose a boolean flag.\n2. Encapsulate into a macro or project variable.\n3. Create a seed mapping table for multi-attribute lookups.",
+            configuration_example="checks:\n  connascence_of_value:\n    enabled: true\n    min_occurrences: 2\n    ignored_values: ['0', '1', '']",
+            providers=("dbt", "sqlmesh", "dataform"),
+            is_fixable=False,
         )
     )
 
@@ -744,6 +883,12 @@ def create_default_registry() -> CheckRegistry:
             collector_func_name="collect_layer_integrity_findings",
             is_enabled_fn=lambda cfg, p: bool(cfg.checks.layer_integrity.enabled),
             docs_url=f"{docs_base}layer-integrity-layer_integrity",
+            description="Enforces unidirectional dependency flow between layers (upstream cannot depend on downstream) and mart domain isolation (marts domains cannot cross-depend).",
+            why_it_matters="Cyclic or reverse dependencies between architectural layers break DAG order, increase blast radius, and undermine pipeline modularity.",
+            how_to_fix="Move shared logic or models to an upstream intermediate or core layer, or reorganize models to respect layer hierarchy.",
+            configuration_example="layers:\n  order: [staging, core, marts]\nchecks:\n  layer_integrity:\n    enabled: true",
+            providers=("dbt", "sqlmesh", "dataform"),
+            is_fixable=False,
         )
     )
     reg.register(
@@ -756,6 +901,12 @@ def create_default_registry() -> CheckRegistry:
             collector_func_name="collect_custom_exclusion_findings",
             is_enabled_fn=lambda cfg, p: bool(cfg.checks.custom_exclusions.enabled),
             docs_url=f"{docs_base}custom-exclusions-custom_exclusions",
+            description="Enforces custom dependency boundaries between layers, domains, tags, or metadata selectors, and verifies allowed exceptions.",
+            why_it_matters="Prevents unauthorized cross-domain dependencies (e.g. public models depending on PII models or marketing depending on unapproved finance tables).",
+            how_to_fix="Remove the prohibited dependency, refactor to access an approved intermediate abstraction, or add a documented exception.",
+            configuration_example="exclusions:\n  - source_layer: core\n    target_layer: derived\nchecks:\n  custom_exclusions:\n    enabled: true",
+            providers=("dbt", "sqlmesh", "dataform"),
+            is_fixable=False,
         )
     )
     reg.register(
@@ -768,6 +919,12 @@ def create_default_registry() -> CheckRegistry:
             collector_func_name="collect_dependency_graph_findings",
             is_enabled_fn=lambda cfg, p: bool(cfg.checks.dependency_graph.enabled),
             docs_url=f"{docs_base}dependency-graph-dependency_graph",
+            description="Monitors the DAG shape for high coupling by checking inward coupling (fan_in) and outward blast radius (fan_out).",
+            why_it_matters="Hub models with high fan-out carry immense blast radius when modified, while high fan-in models are brittle and prone to cascading upstream failures.",
+            how_to_fix="Decompose monolithic models into smaller, focused transformation stages to balance fan-in and fan-out across the DAG.",
+            configuration_example="checks:\n  dependency_graph:\n    enabled: true\n    fan_out_warn: 15\n    fan_out_fail: 25\n    fan_in_warn: 10",
+            providers=("dbt", "sqlmesh", "dataform"),
+            is_fixable=False,
         )
     )
     reg.register(
@@ -780,6 +937,12 @@ def create_default_registry() -> CheckRegistry:
             collector_func_name="collect_materialization_depth_findings",
             is_enabled_fn=lambda cfg, p: bool(cfg.checks.materialization_depth.enabled),
             docs_url=f"{docs_base}materialization-depth-materialization_depth",
+            description="Calculates the nesting depth of models materialized as view. Views built on chains of views incur query planning and latency penalties.",
+            why_it_matters="Deeply nested view chains degrade query performance, increase warehouse compute costs, and complicate query debugging.",
+            how_to_fix="Materialize key intermediate or hub models as table or incremental to break the view chain.",
+            configuration_example="checks:\n  materialization_depth:\n    enabled: true\n    max_depth_warn: 3\n    max_depth_fail: 5",
+            providers=("dbt", "sqlmesh", "dataform"),
+            is_fixable=False,
         )
     )
     reg.register(
@@ -796,6 +959,12 @@ def create_default_registry() -> CheckRegistry:
                 cfg.rules.environment_agnostic_references.enabled
             ),
             docs_url=f"{docs_base}environment-agnostic-references-environment_agnostic_references",
+            description="Blocks hardcoded environment names or catalog prefixes (e.g. prod.raw.users or dev_db.schema.table).",
+            why_it_matters="Hardcoding environment names prevents running models in development, testing, or isolated staging environments without manual code edits.",
+            how_to_fix="Use relative model references (ref(...) or source(...)) so table locations resolve dynamically per environment.",
+            configuration_example="rules:\n  environment_agnostic_references:\n    enabled: true\n    banned_environments: [prod, dev, staging, uat, qa]",
+            providers=("dbt", "sqlmesh", "dataform"),
+            is_fixable=False,
         )
     )
 
@@ -814,6 +983,12 @@ def create_default_registry() -> CheckRegistry:
                 cfg.rules.metadata.enabled and cfg.rules.metadata.owner
             ),
             docs_url=f"{docs_base}metadata-metadata-partially-auto-fixable",
+            description="Validates that every model has an assigned owner in its configuration or metadata.",
+            why_it_matters="Unowned models lead to data pipeline abandonment, untracked bugs, and unclear escalation paths during data quality incidents.",
+            how_to_fix="Assign an owner to the model in schema.yml, model config, or run 'tff lint --fix' to scaffold owner metadata.",
+            configuration_example="rules:\n  metadata:\n    enabled: true\n    owner: true",
+            providers=("dbt", "sqlmesh", "dataform"),
+            is_fixable=True,
         )
     )
     reg.register(
@@ -830,6 +1005,12 @@ def create_default_registry() -> CheckRegistry:
                 cfg.rules.metadata.enabled and cfg.rules.metadata.description
             ),
             docs_url=f"{docs_base}metadata-metadata-partially-auto-fixable",
+            description="Validates that every model has a non-empty description documented in its metadata.",
+            why_it_matters="Undocumented models create knowledge silos, slow down team onboarding, and make data discovery difficult.",
+            how_to_fix="Add a clear description explaining the model's purpose and business context, or run 'tff lint --fix' to scaffold placeholder descriptions.",
+            configuration_example="rules:\n  metadata:\n    enabled: true\n    description: true",
+            providers=("dbt", "sqlmesh", "dataform"),
+            is_fixable=True,
         )
     )
     reg.register(
@@ -846,6 +1027,12 @@ def create_default_registry() -> CheckRegistry:
                 cfg.rules.metadata.enabled and cfg.rules.metadata.grain
             ),
             docs_url=f"{docs_base}metadata-metadata-partially-auto-fixable",
+            description="Validates that model primary keys / grains are explicitly documented in metadata.",
+            why_it_matters="Without documented grains, downstream users cannot verify uniqueness, leading to unexpected duplicates in fan-out joins.",
+            how_to_fix="Define the model grain column(s) in model metadata or configuration.",
+            configuration_example="rules:\n  metadata:\n    enabled: true\n    grain: true",
+            providers=("dbt", "sqlmesh", "dataform"),
+            is_fixable=False,
         )
     )
     reg.register(
@@ -862,6 +1049,12 @@ def create_default_registry() -> CheckRegistry:
                 cfg.rules.metadata.enabled and cfg.rules.metadata.not_null
             ),
             docs_url=f"{docs_base}metadata-metadata-partially-auto-fixable",
+            description="Validates that the model has not_null tests or audits defined on critical columns.",
+            why_it_matters="Unexpected NULL values in key columns cause silent row drops in inner joins or incorrect metric calculations.",
+            how_to_fix="Add a not_null test (dbt) or audit (SQLMesh) to the model primary keys.",
+            configuration_example="rules:\n  metadata:\n    enabled: true\n    not_null: true",
+            providers=("dbt", "sqlmesh", "dataform"),
+            is_fixable=False,
         )
     )
     reg.register(
@@ -878,6 +1071,12 @@ def create_default_registry() -> CheckRegistry:
                 cfg.rules.metadata.enabled and cfg.rules.metadata.unique_values
             ),
             docs_url=f"{docs_base}metadata-metadata-partially-auto-fixable",
+            description="Validates that the model has unique tests or unique_values audits defined on its primary key columns.",
+            why_it_matters="Duplicate records in dimension or mart tables cause fan-out errors when joined, inflating downstream aggregations.",
+            how_to_fix="Add a unique test (dbt) or unique_values audit (SQLMesh) on the primary key column(s).",
+            configuration_example="rules:\n  metadata:\n    enabled: true\n    unique_values: true",
+            providers=("dbt", "sqlmesh", "dataform"),
+            is_fixable=False,
         )
     )
     reg.register(
@@ -890,6 +1089,12 @@ def create_default_registry() -> CheckRegistry:
             finding_check_id="nomissingaudits",
             is_enabled_fn=lambda cfg, p: False,
             docs_url=f"{docs_base}metadata-metadata-partially-auto-fixable",
+            description="Validates that models have general data quality audits or tests configured.",
+            why_it_matters="Untested models risk deploying broken data to production dashboards without detection.",
+            how_to_fix="Configure appropriate audits or tests for the model.",
+            configuration_example="rules:\n  metadata:\n    enabled: true",
+            providers=("dbt", "sqlmesh", "dataform"),
+            is_fixable=False,
         )
     )
     reg.register(
@@ -904,6 +1109,12 @@ def create_default_registry() -> CheckRegistry:
             rule_class_name="SqlComplexity",
             is_enabled_fn=lambda cfg, p: bool(cfg.rules.sql_complexity.enabled),
             docs_url=f"{docs_base}sql-complexity-sql_complexity",
+            description="Evaluates SQL maintainability metrics: CTE count, JOIN count, line count, decision points (CASE/IF), and nested subqueries in the final SELECT.",
+            why_it_matters="Excessively complex SQL queries are difficult to test, review, and maintain, and frequently hide logical bugs and performance regressions.",
+            how_to_fix="1. Refactor large queries by splitting them into smaller modular staging or intermediate models.\n2. Run 'tff lint --fix' to lift nested subqueries in final SELECT statements to CTEs.",
+            configuration_example="rules:\n  sql_complexity:\n    enabled: true\n    thresholds:\n      decision_points: [15, 25]\n      cte_count: [8, 12]\n      join_count: [8, 12]\n      line_count: [250, 400]",
+            providers=("dbt", "sqlmesh", "dataform"),
+            is_fixable=True,
         )
     )
 

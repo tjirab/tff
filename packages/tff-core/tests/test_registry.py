@@ -9,6 +9,7 @@ from tff.core.model import ModelRepresentation
 from tff.core.registry import (
     CheckDefinition,
     CheckRegistry,
+    create_default_registry,
     normalize_check_name,
     registry,
     run_model_rule,
@@ -974,5 +975,71 @@ def test_run_model_rule_with_chunk_size_execution(tmp_path: Path) -> None:
     assert len(findings_check) == 13
 
 
+def test_check_definition_explanation_fields() -> None:
+    c = CheckDefinition(
+        id="sample_rule",
+        label="Sample",
+        category="Connascence of Name (CoN)",
+        scope="model",
+        description="Sample description.",
+        why_it_matters="Sample rationale.",
+        how_to_fix="Sample fix.",
+        configuration_example="rules:\n  sample: true",
+        providers=("dbt", "sqlmesh"),
+        is_fixable=True,
+    )
+    assert c.description == "Sample description."
+    assert c.what_it_checks == "Sample description."
+    assert c.why_it_matters == "Sample rationale."
+    assert c.how_to_fix == "Sample fix."
+    assert c.configuration_example == "rules:\n  sample: true"
+    assert c.providers == ("dbt", "sqlmesh")
+    assert c.is_fixable is True
 
 
+def test_register_rule_with_explanation_fields() -> None:
+    class MyCustomDocRule(Rule):
+        """Docstring summary for custom rule."""
+        why_it_matters = "Class why it matters."
+        how_to_fix = "Class how to fix."
+        is_fixable = True
+
+        def check_model(self, model: ModelRepresentation, config: FitnessFunctionsConfig) -> list[RuleViolation]:
+            return []
+
+    reg = CheckRegistry()
+    cdef = reg.register_rule(MyCustomDocRule)
+    assert cdef.description == "Docstring summary for custom rule."
+    assert cdef.why_it_matters == "Class why it matters."
+    assert cdef.how_to_fix == "Class how to fix."
+    assert cdef.is_fixable is True
+    assert MyCustomDocRule().check_model(MagicMock(), MagicMock()) == []
+
+
+def test_registry_get_by_category() -> None:
+    reg = CheckRegistry()
+    c1 = CheckDefinition(id="rule_coa", label="CoA Rule", category="Connascence of Algorithm (CoA)", scope="dag")
+    c2 = CheckDefinition(id="rule_con1", label="CoN Rule 1", category="Connascence of Name (CoN)", scope="model")
+    c3 = CheckDefinition(id="rule_con2", label="CoN Rule 2", category="Connascence of Name (CoN)", scope="model")
+    reg.register(c1)
+    reg.register(c2)
+    reg.register(c3)
+
+    assert reg.get_by_category("coa") == [c1]
+    assert reg.get_by_category("CoA") == [c1]
+    assert reg.get_by_category("algorithm") == [c1]
+    assert reg.get_by_category("con") == [c2, c3]
+    assert reg.get_by_category("CoN") == [c2, c3]
+    assert reg.get_by_category("name") == [c2, c3]
+    assert reg.get_by_category("nonexistent") == []
+
+
+def test_all_builtin_checks_have_rich_metadata() -> None:
+    fresh_reg = create_default_registry()
+    for check in fresh_reg.all_checks():
+        assert check.description, f"{check.id} is missing description"
+        assert check.what_it_checks, f"{check.id} what_it_checks property failed"
+        assert check.why_it_matters, f"{check.id} is missing why_it_matters"
+        assert check.how_to_fix, f"{check.id} is missing how_to_fix"
+        assert check.configuration_example, f"{check.id} is missing configuration_example"
+        assert len(check.providers) > 0, f"{check.id} has no providers"

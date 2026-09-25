@@ -6,7 +6,15 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from tff.core.cli import _detect_provider, _get_runner, main, mask_sensitive_args
+from tff.core.cli import (
+    _detect_provider,
+    _explain_single_check,
+    _get_runner,
+    _render_rules_table,
+    main,
+    mask_sensitive_args,
+)
+from tff.core.registry import CheckDefinition
 
 
 def test_detect_provider_dbt(tmp_path: Path):
@@ -343,6 +351,16 @@ def test_help_subcommand(capsys):
     assert main(["help", "init"]) == 0
     captured = capsys.readouterr()
     assert "--force" in captured.out
+
+    # Test tff help explain
+    assert main(["help", "explain"]) == 0
+    captured = capsys.readouterr()
+    assert "Explain a fitness check" in captured.out
+
+    # Test tff help rules
+    assert main(["help", "rules"]) == 0
+    captured = capsys.readouterr()
+    assert "List all available fitness checks" in captured.out
 
 
 def test_invalid_command_error_hint(capsys):
@@ -1980,6 +1998,197 @@ def test_fuzzy_typo_no_suggestion_for_unrelated(capsys):
     assert excinfo.value.code == 2
     captured = capsys.readouterr()
     assert "Did you mean" not in captured.err
+
+
+def test_cli_explain_single_check(capsys):
+    assert main(["explain", "duplicate_ctes"]) == 0
+    captured = capsys.readouterr()
+    assert "duplicate_ctes (Connascence of Algorithm (CoA))" in captured.out
+    assert "Severity:   Warning (Default)" in captured.out
+    assert "Provider:   dbt, SQLMesh, Dataform" in captured.out
+    assert "What it checks:" in captured.out
+    assert "Why it matters:" in captured.out
+    assert "How to fix:" in captured.out
+    assert "Configuration (fitness_functions.yaml):" in captured.out
+    assert "https://tff.readthedocs.io" in captured.out
+
+
+def test_cli_explain_fixable_check(capsys):
+    assert main(["explain", "no_positional_group_by_or_order_by"]) == 0
+    captured = capsys.readouterr()
+    assert "Auto-fix:   Yes (run 'tff lint --fix')" in captured.out
+    assert "Severity:   Error (Default)" in captured.out
+
+
+def test_cli_explain_category_abbreviation_single(capsys):
+    # CoA contains only duplicate_ctes -> explains it directly
+    assert main(["explain", "CoA"]) == 0
+    captured = capsys.readouterr()
+    assert "duplicate_ctes (Connascence of Algorithm (CoA))" in captured.out
+
+
+def test_cli_explain_category_abbreviation_cov(capsys):
+    # CoV contains only connascence_of_value -> explains it directly
+    assert main(["explain", "CoV"]) == 0
+    captured = capsys.readouterr()
+    assert "connascence_of_value (Connascence of Value (CoV))" in captured.out
+
+
+def test_cli_explain_category_abbreviation_multi(capsys):
+    # CoN contains multiple rules -> renders table of CoN rules
+    assert main(["explain", "CoN"]) == 0
+    captured = capsys.readouterr()
+    assert "Connascence of Name (CoN)" in captured.out
+    assert "ban_select_star" in captured.out
+    assert "filename_equals_modelname" in captured.out
+
+
+def test_cli_explain_partial_substring_single(capsys):
+    # Partial substring 'duplicate_cte' uniquely matches duplicate_ctes
+    assert main(["explain", "duplicate_cte"]) == 0
+    captured = capsys.readouterr()
+    assert "duplicate_ctes (Connascence of Algorithm (CoA))" in captured.out
+
+
+def test_cli_explain_partial_substring_multi(capsys):
+    # Partial substring 'select_star' matches ban_select_star and invalid_select_star_expansion
+    assert main(["explain", "select_star"]) == 0
+    captured = capsys.readouterr()
+    assert "Matches for 'select_star'" in captured.out
+    assert "ban_select_star" in captured.out
+    assert "invalid_select_star_expansion" in captured.out
+
+
+def test_cli_explain_all_and_no_args(capsys):
+    # tff explain without args
+    assert main(["explain"]) == 0
+    captured = capsys.readouterr()
+    assert "Available Fitness Checks & Rules" in captured.out
+    assert "duplicate_ctes" in captured.out
+    assert "ban_select_star" in captured.out
+
+    # tff explain --all
+    assert main(["explain", "--all"]) == 0
+    captured2 = capsys.readouterr()
+    assert "Available Fitness Checks & Rules" in captured2.out
+
+
+def test_cli_rules_subcommand(capsys):
+    # tff rules without args lists all checks
+    assert main(["rules"]) == 0
+    captured = capsys.readouterr()
+    assert "Available Fitness Checks & Rules" in captured.out
+    assert "duplicate_ctes" in captured.out
+
+    # tff rules with check arg explains that check
+    assert main(["rules", "duplicate_ctes"]) == 0
+    captured2 = capsys.readouterr()
+    assert "duplicate_ctes (Connascence of Algorithm (CoA))" in captured2.out
+
+
+def test_cli_explain_json_single(capsys):
+    import json
+
+    assert main(["explain", "duplicate_ctes", "--json"]) == 0
+    captured = capsys.readouterr()
+    data = json.loads(captured.out)
+    assert data["id"] == "duplicate_ctes"
+    assert data["category"] == "Connascence of Algorithm (CoA)"
+    assert data["default_severity"] == "warning"
+    assert "dbt" in data["providers"]
+    assert len(data["what_it_checks"]) > 0
+
+
+def test_cli_explain_json_all(capsys):
+    import json
+
+    assert main(["explain", "--all", "--json"]) == 0
+    captured = capsys.readouterr()
+    data = json.loads(captured.out)
+    assert "checks" in data
+    assert len(data["checks"]) >= 25
+
+
+def test_cli_explain_json_category_multi(capsys):
+    import json
+
+    assert main(["explain", "CoN", "--json"]) == 0
+    captured = capsys.readouterr()
+    data = json.loads(captured.out)
+    assert data["category"] == "Connascence of Name (CoN)"
+    assert len(data["checks"]) >= 4
+
+
+def test_cli_explain_json_substring_multi(capsys):
+    import json
+
+    assert main(["explain", "select_star", "--json"]) == 0
+    captured = capsys.readouterr()
+    data = json.loads(captured.out)
+    assert data["query"] == "select_star"
+    assert len(data["checks"]) == 2
+
+
+def test_cli_explain_typo_suggestion(capsys):
+    # Typo duplcate_ctes should suggest duplicate_ctes
+    assert main(["explain", "duplcate_ctes"]) == 1
+    captured = capsys.readouterr()
+    assert "Unknown check or category 'duplcate_ctes'" in captured.err
+    assert "Did you mean 'duplicate_ctes'?" in captured.err
+
+
+def test_cli_explain_typo_json(capsys):
+    import json
+
+    assert main(["explain", "duplcate_ctes", "--json"]) == 1
+    captured = capsys.readouterr()
+    data = json.loads(captured.out)
+    assert "Unknown check or category 'duplcate_ctes'" in data["error"]
+    assert data["suggestion"] == "duplicate_ctes"
+
+
+def test_cli_explain_unknown_unrelated(capsys):
+    assert main(["explain", "xyzzy"]) == 1
+    captured = capsys.readouterr()
+    assert "Unknown check or category 'xyzzy'" in captured.err
+    assert "Did you mean" not in captured.err
+
+
+def test_explain_single_check_direct_call():
+    c = CheckDefinition(
+        id="custom_rule",
+        label="Custom",
+        category="Custom",
+        scope="model",
+        providers=("custom_engine",),
+    )
+    _explain_single_check(c)
+
+
+def test_render_rules_table_direct_call():
+    c = CheckDefinition(
+        id="custom_rule",
+        label="Custom",
+        category="Custom",
+        scope="model",
+    )
+    _render_rules_table([c])
+
+
+def test_cli_explain_json_category_single(capsys):
+    assert main(["explain", "CoA", "--json"]) == 0
+    captured = capsys.readouterr()
+    data = json.loads(captured.out)
+    assert data["id"] == "duplicate_ctes"
+
+
+def test_cli_explain_json_substring_single(capsys):
+    assert main(["explain", "duplicate_cte", "--json"]) == 0
+    captured = capsys.readouterr()
+    data = json.loads(captured.out)
+    assert data["id"] == "duplicate_ctes"
+
+
 
 
 
