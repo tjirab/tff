@@ -88,6 +88,11 @@ runs:
         python-version: ${{ inputs.python-version }}
         check-latest: false
 
+    - name: Set up uv
+      uses: astral-sh/setup-uv@v5
+      with:
+        enable-cache: true
+
     - name: Install tff
       shell: bash
       run: |
@@ -111,7 +116,11 @@ runs:
         fi
 
         echo "Installing ${PKG}..."
-        pip install --upgrade "${PKG}"
+        if command -v uv >/dev/null 2>&1; then
+          uv pip install --system "${PKG}"
+        else
+          pip install --upgrade "${PKG}"
+        fi
 
     - name: Run tff Action
       id: run-tff
