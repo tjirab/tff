@@ -18,27 +18,31 @@ Install VHS and its recording dependencies:
 brew install vhs ffmpeg ttyd
 ```
 
-## Generating Demos Locally
+## Generating Demos (Ad-hoc)
+
+Demo generation is maintained as an ad-hoc script rather than automated in CI/CD pipelines to keep CI/CD runs fast, lightweight, and deterministic.
 
 To re-record and compile all demo GIFs locally:
 
 ```bash
 make demos
+# or via scripts:
+./scripts/generate-demos.sh
 # or directly:
 ./demos/generate_demos.sh
 ```
 
-Or run an individual tape file:
+To run a specific demo target:
+
+```bash
+./scripts/generate-demos.sh dbt
+./scripts/generate-demos.sh sqlmesh
+./scripts/generate-demos.sh health
+```
+
+Or run an individual tape file directly with VHS:
 
 ```bash
 vhs demos/demo-check-dbt.tape
 ```
-
-## CI / Automated Regeneration
-
-Demo GIFs are automatically kept up to date via GitHub Actions ([`.github/workflows/generate-demos.yml`](../.github/workflows/generate-demos.yml)):
-
-- **Automatic Trigger:** Runs on every push to `main` whenever files in `packages/tff-core/src/**`, `demos/**`, or `examples/**` change.
-- **Manual Trigger:** Can be dispatched manually at any time via the GitHub Actions UI (`workflow_dispatch`).
-- **Auto-Commit:** Any changed `.gif` assets are automatically rendered using `charmbracelet/vhs-action` and committed back to the repository.
 
