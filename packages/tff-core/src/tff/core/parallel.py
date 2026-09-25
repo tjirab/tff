@@ -187,6 +187,11 @@ def _extract_model_findings(
         or rule_cls.__name__ == "SqlComplexity"
     )
 
+    v_line = getattr(violation, "line", None)
+    v_col = getattr(violation, "col", None)
+    v_end_line = getattr(violation, "end_line", None)
+    v_end_col = getattr(violation, "end_col", None)
+
     for msg in msgs:
         model_label = f"{model.name}: "
         clean_msg = msg.removeprefix(model_label)
@@ -205,6 +210,10 @@ def _extract_model_findings(
                         model=model.name,
                         path=model_path_relative(model),
                         message=part,
+                        line=v_line,
+                        col=v_col,
+                        end_line=v_end_line,
+                        end_col=v_end_col,
                     )
                 )
         else:
@@ -215,6 +224,10 @@ def _extract_model_findings(
                     model=model.name,
                     path=model_path_relative(model),
                     message=clean_msg,
+                    line=v_line,
+                    col=v_col,
+                    end_line=v_end_line,
+                    end_col=v_end_col,
                 )
             )
     return findings

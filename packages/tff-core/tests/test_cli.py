@@ -1189,7 +1189,10 @@ def test_cli_lint_github_annotations_flag(tmp_path: Path, capsys):
         exit_code = main(["lint", "--project", str(tmp_path), "--github-annotations"])
         assert exit_code == 0
         captured = capsys.readouterr()
-        assert "::warning file=models/staging/stg_users.sql,line=1::Missing model owner" in captured.out
+        assert (
+            "::warning file=models/staging/stg_users.sql,line=1,title=Missing owner (Quality & Metadata)::Missing model owner (https://tff.readthedocs.io/en/latest/rules_and_checks/#metadata-metadata-partially-auto-fixable)"
+            in captured.out
+        )
 
 
 def test_cli_lint_github_actions_env(tmp_path: Path, capsys, monkeypatch):
@@ -1213,7 +1216,7 @@ def test_cli_lint_github_actions_env(tmp_path: Path, capsys, monkeypatch):
         exit_code = main(["lint", "--project", str(tmp_path)])
         assert exit_code == 1
         captured = capsys.readouterr()
-        assert "::error file=models/marts/fct_orders.sql,line=25::SELECT * forbidden" in captured.out
+        assert "::error file=models/marts/fct_orders.sql,line=25,title=No SELECT * (Connascence of Name)::SELECT * forbidden" in captured.out
 
 
 def test_cli_lint_github_actions_env_sarif_no_annotations(tmp_path: Path, capsys, monkeypatch):
@@ -1227,6 +1230,7 @@ def test_cli_lint_github_actions_env_sarif_no_annotations(tmp_path: Path, capsys
         message="SELECT * forbidden",
         model="fct_orders",
         path="models/marts/fct_orders.sql",
+        line=25,
     )
     mock_runner = MagicMock()
     mock_runner.run_all_checks.return_value = ([finding], 1, ["banselectstar"])
@@ -1277,7 +1281,10 @@ def test_cli_lint_format_github_with_findings(tmp_path: Path, capsys):
         assert exit_code == 1
         captured = capsys.readouterr()
         # Only pure workflow command annotations in stdout, no rich summary table
-        assert captured.out.strip() == "::error file=models/marts/fct_orders.sql,line=12::SELECT * not permitted in marts"
+        assert (
+            captured.out.strip()
+            == "::error file=models/marts/fct_orders.sql,line=12,title=No SELECT * (Connascence of Name)::SELECT * not permitted in marts (https://tff.readthedocs.io/en/latest/rules_and_checks/#ban-select-ban_select_star)"
+        )
         assert "LINT FAILED" not in captured.out
 
 
@@ -1317,7 +1324,10 @@ def test_cli_lint_structured_with_github_annotations(tmp_path: Path, capsys):
         data = json.loads(captured.out)
         assert data["version"] == "2.1.0"
         # annotations routed to stderr to prevent corrupting stdout
-        assert "::warning file=models/staging/stg_customers.sql,line=1::Missing owner attribute" in captured.err
+        assert (
+            "::warning file=models/staging/stg_customers.sql,line=1,title=Missing owner (Quality & Metadata)::Missing owner attribute (https://tff.readthedocs.io/en/latest/rules_and_checks/#metadata-metadata-partially-auto-fixable)"
+            in captured.err
+        )
 
         # 2. JSON with --github-annotations
         exit_code_json = main(["lint", "--project", str(tmp_path), "--format", "json", "--github-annotations"])
@@ -1326,7 +1336,10 @@ def test_cli_lint_structured_with_github_annotations(tmp_path: Path, capsys):
         # stdout is pure, parseable JSON
         data_json = json.loads(captured_json.out)
         assert data_json["command"] == "lint"
-        assert "::warning file=models/staging/stg_customers.sql,line=1::Missing owner attribute" in captured_json.err
+        assert (
+            "::warning file=models/staging/stg_customers.sql,line=1,title=Missing owner (Quality & Metadata)::Missing owner attribute (https://tff.readthedocs.io/en/latest/rules_and_checks/#metadata-metadata-partially-auto-fixable)"
+            in captured_json.err
+        )
 
 
 def test_cli_info_and_lint_with_plugins_and_custom_adapter(tmp_path: Path, capsys):
