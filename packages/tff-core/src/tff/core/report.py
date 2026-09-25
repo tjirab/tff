@@ -70,6 +70,23 @@ def _format_check_cell(check: str) -> Text:
     )
 
 
+def _format_file_reference(path: str, line: int | None = None) -> Text:
+    """Format a file path with optional line number as a clickable terminal hyperlink.
+
+    Produces ``path:line`` text wrapped in an OSC 8 ``file://`` hyperlink so that
+    modern terminals (iTerm2, Ghostty, WezTerm, VS Code integrated terminal) allow
+    ``Cmd+Click`` navigation directly to the source location.
+    """
+    display = path
+    if line is not None:
+        display = f"{path}:{line}"
+
+    abs_path = str(Path(path).resolve())
+    link_url = f"file://{abs_path}"
+
+    return Text(display, style=f"dim link {link_url}")
+
+
 def _append_check_tag(text: Text, check: str) -> None:
     docs_url = registry.get_docs_url(check)
     tag_style = f"dim link {docs_url}" if docs_url else "dim"
@@ -271,9 +288,12 @@ def render_lint_report(
         for group in sorted_groups:
             model_name = group["name"]
             path = group["path"]
-            header = f"[bold cyan]● {model_name}[/bold cyan]"
+            header = Text()
+            header.append(f"● {model_name}", style="bold cyan")
             if path:
-                header += f" [dim]({path})[/dim]"
+                header.append(" (")
+                header.append_text(_format_file_reference(path))
+                header.append(")")
             console.print(header)
 
             table = Table(box=None, show_header=False, padding=0)
@@ -285,6 +305,9 @@ def render_lint_report(
                 style = "red" if finding.severity == "error" else "yellow"
                 
                 msg_text = Text()
+                if finding.line is not None and finding.path:
+                    msg_text.append_text(_format_file_reference(finding.path, finding.line))
+                    msg_text.append(" ")
                 msg_lines = finding.message.split("\n")
                 msg_text.append(msg_lines[0])
                 msg_text.append(" ")
@@ -367,7 +390,9 @@ def render_lint_report(
                     model_part = Text()
                     model_part.append(model_name, style="bold")
                     if finding.path:
-                        model_part.append(f" ({finding.path})", style="dim")
+                        model_part.append(" (")
+                        model_part.append_text(_format_file_reference(finding.path))
+                        model_part.append(")")
                 else:
                     model_part = Text("Repository-level", style="bold")
 
@@ -376,6 +401,9 @@ def render_lint_report(
                 cell_content.append("\n")
                 
                 msg_text = Text()
+                if finding.line is not None and finding.path:
+                    msg_text.append_text(_format_file_reference(finding.path, finding.line))
+                    msg_text.append(" ")
                 msg_lines = finding.message.split("\n")
                 msg_text.append(msg_lines[0])
                 msg_text.append(" ")

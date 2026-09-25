@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import difflib
 import importlib
 import importlib.metadata
 import logging
@@ -307,21 +308,37 @@ def _parse_checks(value: str | None) -> list[str] | None:
 
 class TffArgumentParser(argparse.ArgumentParser):
     _current_argv: list[str] | None = None
+    _KNOWN_SUBCOMMANDS: tuple[str, ...] = (
+        "lint", "check", "health", "info", "help", "stats", "docs", "init", "action",
+    )
 
     def error(self, message: str) -> None:
         self.print_usage(sys.stderr)
         sys.stderr.write(f"{self.prog}: error: {message}\n")
 
+        # Suggest closest valid subcommand for typos like 'tff lin' → 'Did you mean "lint"?'
+        if "invalid choice:" in message:
+            import re
+
+            match = re.search(r"invalid choice:\s*'([^']+)'", message)
+            if match:
+                typo = match.group(1)
+                close = difflib.get_close_matches(
+                    typo, self._KNOWN_SUBCOMMANDS, n=1, cutoff=0.6,
+                )
+                if close:
+                    sys.stderr.write(f"\n  Did you mean '{close[0]}'?\n\n")
+
         hint_cmd = self.prog
         # If the prog is already subcommand-specific (e.g. 'tff lint'), use it.
         # Otherwise, check the arguments to see if a subcommand was targetted.
         if hint_cmd == "tff" and TffArgumentParser._current_argv is not None:
-            for sub in ("lint", "check", "health", "info", "help", "stats", "docs", "init", "action"):
+            for sub in self._KNOWN_SUBCOMMANDS:
                 if sub in TffArgumentParser._current_argv:
                     hint_cmd = f"tff {sub}"
                     break
         elif hint_cmd == "tff":
-            for sub in ("lint", "check", "health", "info", "help", "stats", "docs", "init", "action"):
+            for sub in self._KNOWN_SUBCOMMANDS:
                 if sub in sys.argv:
                     hint_cmd = f"tff {sub}"
                     break

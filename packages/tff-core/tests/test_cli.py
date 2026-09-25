@@ -1946,7 +1946,40 @@ def test_cli_lint_autofix_interactive_spinner(tmp_path: Path):
         assert mock_render.call_args[1]["duration"] is not None
 
 
+def test_fuzzy_typo_suggestion_lint(capsys):
+    """Typo 'lin' should suggest 'lint'."""
+    with pytest.raises(SystemExit) as excinfo:
+        main(["lin"])
+    assert excinfo.value.code == 2
+    captured = capsys.readouterr()
+    assert "Did you mean 'lint'?" in captured.err
 
+
+def test_fuzzy_typo_suggestion_check(capsys):
+    """Typo 'chek' should suggest 'check'."""
+    with pytest.raises(SystemExit) as excinfo:
+        main(["chek"])
+    assert excinfo.value.code == 2
+    captured = capsys.readouterr()
+    assert "Did you mean 'check'?" in captured.err
+
+
+def test_fuzzy_typo_suggestion_health(capsys):
+    """Typo 'healt' should suggest 'health'."""
+    with pytest.raises(SystemExit) as excinfo:
+        main(["healt"])
+    assert excinfo.value.code == 2
+    captured = capsys.readouterr()
+    assert "Did you mean 'health'?" in captured.err
+
+
+def test_fuzzy_typo_no_suggestion_for_unrelated(capsys):
+    """Completely unrelated command should not trigger a 'Did you mean' hint."""
+    with pytest.raises(SystemExit) as excinfo:
+        main(["xyzzy"])
+    assert excinfo.value.code == 2
+    captured = capsys.readouterr()
+    assert "Did you mean" not in captured.err
 
 
 

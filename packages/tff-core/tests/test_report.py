@@ -572,6 +572,135 @@ def test_render_lint_report_with_duration() -> None:
     assert "0.42s" in output
 
 
+def test_format_file_reference_without_line() -> None:
+    from tff.core.report import _format_file_reference
+
+    ref = _format_file_reference("models/core/dim_users.sql")
+    assert ref.plain == "models/core/dim_users.sql"
+    assert "link file://" in str(ref.style)
+    assert "dim" in str(ref.style)
+
+
+def test_format_file_reference_with_line() -> None:
+    from tff.core.report import _format_file_reference
+
+    ref = _format_file_reference("models/core/dim_users.sql", line=42)
+    assert ref.plain == "models/core/dim_users.sql:42"
+    assert "link file://" in str(ref.style)
+
+
+def test_render_lint_report_model_view_shows_line_coordinates() -> None:
+    """Findings with line info show 'path:line' prefix in model-grouped view."""
+    from rich.console import Console
+
+    from tff.core.report import LintFinding, render_lint_report
+
+    console = Console(record=True, width=120)
+    findings = [
+        LintFinding(
+            check="banselectstar",
+            severity="error",
+            message="SELECT * is prohibited.",
+            model="dim_users",
+            path="models/core/dim_users.sql",
+            line=42,
+        ),
+        LintFinding(
+            check="sqlcomplexity",
+            severity="warning",
+            message="High complexity score.",
+            model="dim_users",
+            path="models/core/dim_users.sql",
+            line=None,
+        ),
+    ]
+
+    render_lint_report(
+        findings,
+        models_checked=1,
+        executed_checks=["sqlmesh"],
+        console=console,
+        group_by="model",
+    )
+
+    output = console.export_text(clear=False)
+    # Finding with line=42 should show path:line prefix
+    assert "models/core/dim_users.sql:42" in output
+    # Finding without line should NOT show a path prefix in the finding row
+    assert output.count("models/core/dim_users.sql:") == 1
+
+    # Header path should be a clickable file:// hyperlink (verify via HTML export)
+    html_output = console.export_html(clear=False)
+    assert "file://" in html_output
+
+
+def test_render_lint_report_connascence_view_shows_line_coordinates() -> None:
+    """Findings with line info show 'path:line' prefix in connascence-grouped view."""
+    from rich.console import Console
+
+    from tff.core.report import LintFinding, render_lint_report
+
+    console = Console(record=True, width=120)
+    findings = [
+        LintFinding(
+            check="banselectstar",
+            severity="error",
+            message="SELECT * is prohibited.",
+            model="marts.users",
+            path="models/marts/users.sql",
+            line=10,
+        ),
+    ]
+
+    render_lint_report(
+        findings,
+        models_checked=1,
+        executed_checks=["sqlmesh"],
+        console=console,
+        group_by="connascence",
+    )
+
+    output = console.export_text(clear=False)
+    assert "models/marts/users.sql:10" in output
+
+    # Path in model part should be a clickable link
+    html_output = console.export_html(clear=False)
+    assert "file://" in html_output
+
+
+def test_render_lint_report_model_header_has_clickable_file_link() -> None:
+    """Model header path is wrapped in an OSC 8 file:// hyperlink."""
+    from rich.console import Console
+
+    from tff.core.report import LintFinding, render_lint_report
+
+    console = Console(record=True, width=120)
+    findings = [
+        LintFinding(
+            check="banselectstar",
+            severity="error",
+            message="SELECT * is prohibited.",
+            model="dim_users",
+            path="models/core/dim_users.sql",
+        ),
+    ]
+
+    render_lint_report(
+        findings,
+        models_checked=1,
+        executed_checks=["sqlmesh"],
+        console=console,
+        group_by="model",
+    )
+
+    # Plain text should still show the path naturally
+    output = console.export_text(clear=False)
+    assert "dim_users" in output
+    assert "models/core/dim_users.sql" in output
+
+    # HTML export should contain file:// hyperlinks
+    html_output = console.export_html(clear=False)
+    assert "file://" in html_output
 
 
 
