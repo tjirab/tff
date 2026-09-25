@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections import defaultdict
 from dataclasses import dataclass
-from typing import Any, Literal
+from typing import Any, Literal, Sequence
 
 from rich import box
 from rich.console import Console
@@ -125,6 +125,112 @@ def _summary_check_names(
     return sorted(set(names), key=lambda name: CHECK_LABELS.get(name, name).lower())
 
 
+def group_findings_by_model(
+    findings: Sequence[LintFinding],
+) -> tuple[list[dict[str, Any]], list[LintFinding]]:
+    """Group lint findings by model identity (name and/or path).
+
+    Returns a tuple of (sorted_model_groups, repo_level_findings).
+    """
+    model_groups: dict[str, dict[str, Any]] = {}
+    path_to_key: dict[str, str] = {}
+    name_to_key: dict[str, str] = {}
+    repo_level: list[LintFinding] = []
+
+    for finding in findings:
+        if not finding.model and not finding.path:
+            repo_level.append(finding)
+            continue
+
+        raw_model = finding.model or ""
+        norm_name = normalize_model_name(raw_model) if raw_model else ""
+        raw_path = finding.path or ""
+        norm_path = raw_path.replace("\\", "/").strip() if raw_path else ""
+
+        target_key: str | None = None
+        if norm_path and norm_path in path_to_key:
+            target_key = path_to_key[norm_path]
+        elif norm_name and norm_name in name_to_key:
+            target_key = name_to_key[norm_name]
+        elif norm_path:
+            stem = Path(norm_path).stem
+            if stem in name_to_key:
+                cand = name_to_key[stem]
+                if not model_groups[cand]["path"] or model_groups[cand]["path"] == norm_path:
+                    target_key = cand
+        elif norm_name:
+            stem = norm_name.split(".")[-1]
+            if stem in name_to_key:
+                cand = name_to_key[stem]
+                if not norm_path or model_groups[cand]["path"] == norm_path:
+                    target_key = cand
+
+        # If this finding bridges two previously distinct groups, merge other_group into target_group
+        if (
+            target_key
+            and norm_name
+            and norm_name in name_to_key
+            and name_to_key[norm_name] != target_key
+        ):
+            other_key = name_to_key[norm_name]
+            other_group = model_groups.pop(other_key)
+            target_group = model_groups[target_key]
+            target_group["findings"].extend(other_group["findings"])
+            target_group["names"].update(other_group["names"])
+            if not target_group["name"] and other_group.get("name"):
+                target_group["name"] = other_group["name"]
+            if other_group.get("path"):
+                target_group["path"] = other_group["path"]
+
+            # Re-point all name and path lookups from other_key to target_key
+            for n, k in list(name_to_key.items()):
+                if k == other_key:
+                    name_to_key[n] = target_key
+            for p, k in list(path_to_key.items()):
+                if k == other_key:
+                    path_to_key[p] = target_key
+
+        if target_key is None:
+            target_key = norm_path if norm_path else norm_name
+            model_groups[target_key] = {
+                "name": norm_name,
+                "path": norm_path or None,
+                "names": {norm_name} if norm_name else set(),
+                "findings": [],
+            }
+
+        group = model_groups[target_key]
+        group["findings"].append(finding)
+        if norm_path:
+            if not group["path"]:
+                group["path"] = norm_path
+            path_to_key[norm_path] = target_key
+            stem = Path(norm_path).stem
+            if stem not in name_to_key:
+                name_to_key[stem] = target_key
+        if norm_name:
+            group["names"].add(norm_name)
+            name_to_key[norm_name] = target_key
+            if not group["name"]:
+                group["name"] = norm_name
+            stem = norm_name.split(".")[-1]
+            if stem not in name_to_key:
+                name_to_key[stem] = target_key
+
+    # Determine canonical display name and sort
+    for group in model_groups.values():
+        if group["path"]:
+            stem = Path(group["path"]).stem
+            if stem in group["names"] or not group["name"]:
+                group["name"] = stem
+
+    sorted_groups = sorted(
+        model_groups.values(),
+        key=lambda g: (g["name"] or "", g["path"] or ""),
+    )
+    return sorted_groups, repo_level
+
+
 def render_lint_report(
     findings: list[LintFinding],
     *,
@@ -224,66 +330,9 @@ def render_lint_report(
         return True
 
     if group_by == "model":
-        model_groups: dict[str, dict[str, Any]] = {}
-        path_to_key: dict[str, str] = {}
-        name_to_key: dict[str, str] = {}
-        repo_level: list[LintFinding] = []
-
-        for finding in findings:
-            if not finding.model and not finding.path:
-                repo_level.append(finding)
-                continue
-
-            raw_model = finding.model or ""
-            norm_name = normalize_model_name(raw_model) if raw_model else ""
-            raw_path = finding.path or ""
-            norm_path = raw_path.replace("\\", "/").strip() if raw_path else ""
-
-            target_key: str | None = None
-            if norm_path and norm_path in path_to_key:
-                target_key = path_to_key[norm_path]
-            elif norm_name and norm_name in name_to_key:
-                target_key = name_to_key[norm_name]
-            elif norm_path:
-                stem = Path(norm_path).stem
-                if stem in name_to_key:
-                    target_key = name_to_key[stem]
-
-            if target_key is None:
-                target_key = norm_path if norm_path else norm_name
-                model_groups[target_key] = {
-                    "name": norm_name,
-                    "path": norm_path or None,
-                    "names": {norm_name} if norm_name else set(),
-                    "findings": [],
-                }
-                if norm_path:
-                    path_to_key[norm_path] = target_key
-                if norm_name:
-                    name_to_key[norm_name] = target_key
-
-            group = model_groups[target_key]
-            group["findings"].append(finding)
-            if norm_path and not group["path"]:
-                group["path"] = norm_path
-                path_to_key[norm_path] = target_key
-            if norm_name:
-                group["names"].add(norm_name)
-                name_to_key[norm_name] = target_key
+        sorted_groups, repo_level = group_findings_by_model(findings)
 
         console.print("\n[bold cyan]Issues by Model[/bold cyan]")
-
-        # Determine canonical display name and sort
-        for group in model_groups.values():
-            if group["path"]:
-                stem = Path(group["path"]).stem
-                if stem in group["names"] or not group["name"]:
-                    group["name"] = stem
-
-        sorted_groups = sorted(
-            model_groups.values(),
-            key=lambda g: (g["name"] or "", g["path"] or ""),
-        )
 
         for group in sorted_groups:
             model_name = group["name"]
