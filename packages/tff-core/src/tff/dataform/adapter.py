@@ -48,18 +48,23 @@ class DataformAdapter(PipelineAdapter):
         dialect: str | None = None,
         manifest_path: str | Path | None = None,
         models: dict[str, ModelRepresentation] | None = None,
+        scoped_models: set[str] | None = None,
     ) -> tuple[list[LintFinding], int, list[str]]:
+        from typing import Any
         from tff.dataform.runner import run_all_checks
 
         roots = normalize_project_roots(project_root)
-        return run_all_checks(
-            project_root=roots[0],
-            config=config,
-            checks=checks,
-            dialect=dialect,
-            manifest_path=manifest_path,
-            models=models,
-        )
+        kwargs: dict[str, Any] = {
+            "project_root": roots[0],
+            "config": config,
+            "checks": checks,
+            "dialect": dialect,
+            "manifest_path": manifest_path,
+            "models": models,
+        }
+        if scoped_models is not None:
+            kwargs["scoped_models"] = scoped_models
+        return run_all_checks(**kwargs)
 
     def apply_metadata_fix(
         self,

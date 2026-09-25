@@ -54,6 +54,7 @@ class PipelineAdapter(ABC):
         dialect: str | None = None,
         manifest_path: str | Path | None = None,
         models: dict[str, ModelRepresentation] | None = None,
+        scoped_models: set[str] | None = None,
     ) -> tuple[list[LintFinding], int, list[str]]:
         """Run all enabled fitness functions and linter checks."""
         raise NotImplementedError

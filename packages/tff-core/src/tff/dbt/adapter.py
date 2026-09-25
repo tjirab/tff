@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import TYPE_CHECKING, Sequence
+from typing import TYPE_CHECKING, Any, Sequence
 
 from tff.core.adapter import PipelineAdapter, normalize_project_roots
 
@@ -42,17 +42,21 @@ class DBTAdapter(PipelineAdapter):
         dialect: str | None = None,
         manifest_path: str | Path | None = None,
         models: dict[str, ModelRepresentation] | None = None,
+        scoped_models: set[str] | None = None,
     ) -> tuple[list[LintFinding], int, list[str]]:
         from tff.dbt.runner import run_all_checks
 
         roots = normalize_project_roots(project_root)
-        return run_all_checks(
-            project_root=roots[0],
-            config=config,
-            checks=checks,
-            dialect=dialect,
-            models=models,
-        )
+        kwargs: dict[str, Any] = {
+            "project_root": roots[0],
+            "config": config,
+            "checks": checks,
+            "dialect": dialect,
+            "models": models,
+        }
+        if scoped_models is not None:
+            kwargs["scoped_models"] = scoped_models
+        return run_all_checks(**kwargs)
 
     def apply_metadata_fix(
         self,

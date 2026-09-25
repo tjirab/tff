@@ -170,6 +170,11 @@ class TffManifestNotFoundError(TffManifestError, FileNotFoundError):
     pass
 
 
+class TffGitError(TffError):
+    """Exception raised for git operations and repository detection issues."""
+    pass
+
+
 def normalize_os_error(
     exc: Exception,
     *,
@@ -323,6 +328,7 @@ __all__ = [
     "TffConfigError",
     "TffManifestError",
     "TffManifestNotFoundError",
+    "TffGitError",
     "normalize_os_error",
     "translate_os_error",
     "handle_os_errors",
