@@ -6,10 +6,8 @@ from collections import defaultdict
 from dataclasses import dataclass
 from typing import Any, Literal, Sequence
 
-from rich import box
 from rich.console import Console
 from rich.panel import Panel
-from rich.table import Table
 from rich.text import Text
 
 from pathlib import Path
@@ -73,21 +71,55 @@ def _format_check_cell(check: str) -> Text:
     )
 
 
-def _format_file_reference(path: str, line: int | None = None) -> Text:
+def _format_file_reference(
+    path: str,
+    line: int | None = None,
+    display_text: str | None = None,
+) -> Text:
     """Format a file path with optional line number as a clickable terminal hyperlink.
 
-    Produces ``path:line`` text wrapped in an OSC 8 ``file://`` hyperlink so that
-    modern terminals (iTerm2, Ghostty, WezTerm, VS Code integrated terminal) allow
-    ``Cmd+Click`` navigation directly to the source location.
+    Produces ``path:line`` text (or custom ``display_text``) wrapped in an OSC 8
+    ``file://`` hyperlink so that modern terminals allow ``Cmd+Click`` navigation.
     """
-    display = path
-    if line is not None:
-        display = f"{path}:{line}"
+    display = display_text if display_text is not None else (f"{path}:{line}" if line is not None else path)
+    abs_path = str(Path(path).resolve()) if path else ""
+    link_url = f"file://{abs_path}" if abs_path else ""
 
-    abs_path = str(Path(path).resolve())
-    link_url = f"file://{abs_path}"
+    return Text(display, style=f"dim link {link_url}" if link_url else "dim")
 
-    return Text(display, style=f"dim link {link_url}")
+
+def _format_connascence_tag(category_str: str) -> str:
+    cat_lower = category_str.lower()
+    if "name" in cat_lower:
+        return "name"
+    if "meaning" in cat_lower:
+        return "meaning"
+    if "algorithm" in cat_lower:
+        return "algorithm"
+    if "position" in cat_lower:
+        return "position"
+    if "value" in cat_lower:
+        return "value"
+    if "type" in cat_lower:
+        return "type"
+    if "coupling" in cat_lower or "dag" in cat_lower:
+        return "dynamic coupling"
+    if "quality" in cat_lower or "metadata" in cat_lower:
+        return "quality"
+    return category_str
+
+
+def _is_fixable_finding(f: LintFinding) -> bool:
+    if f.check in (
+        "nopositionalgroupbyororderby",
+        "nomissingdescription",
+        "nomissingowner",
+        "nomissingcolumns",
+    ):
+        return True
+    if f.check == "sqlcomplexity" and "nested subquery in final SELECT" in f.message:
+        return True
+    return False
 
 
 def _append_check_tag(text: Text, check: str) -> None:
@@ -243,43 +275,38 @@ def render_lint_report(
     fail_level: Severity = "error",
     group_by: Literal["connascence", "model"] = "model",
     duration: float | None = None,
+    provider: str | None = None,
+    dialect: str | None = None,
 ) -> bool:
-    """Render lint report. Returns True when findings are below fail_level."""
+    """Render lint report with tree-structured findings hierarchy."""
     console = console or Console()
     errors = [f for f in findings if f.severity == "error"]
     warnings = [f for f in findings if f.severity == "warning"]
     has_errors = bool(errors)
 
-    status = Text()
     if has_errors:
-        status.append(f"{len(errors)} error{'s' if len(errors) != 1 else ''}", style="bold red")
-    else:
-        status.append("0 errors", style="bold green")
-    status.append("  ·  ", style="dim")
-    if warnings:
-        status.append(
-            f"{len(warnings)} warning{'s' if len(warnings) != 1 else ''}",
-            style="bold yellow",
-        )
-    else:
-        status.append("0 warnings", style="bold green")
-
-    if has_errors:
-        title = "[bold red]LINT FAILED[/bold red]"
+        title = "[bold red]Findings Summary · LINT FAILED[/bold red]"
         border_style = "red"
     elif warnings:
-        title = "[bold yellow]LINT WARNINGS[/bold yellow]"
+        title = "[bold yellow]Findings Summary · LINT WARNINGS[/bold yellow]"
         border_style = "yellow"
     else:
-        title = "[bold green]LINT PASSED[/bold green]"
+        title = "[bold green]Findings Summary · LINT PASSED[/bold green]"
         border_style = "green"
 
     summary_text = Text()
     summary_text.append(f"{models_checked} models checked", style="bold")
+    summary_text.append("  ·  ", style="dim")
+    if findings:
+        summary_text.append(
+            f"{len(findings)} issue{'s' if len(findings) != 1 else ''} ({len(errors)} error{'s' if len(errors) != 1 else ''}, {len(warnings)} warning{'s' if len(warnings) != 1 else ''})"
+        )
+    else:
+        summary_text.append("0 issues (0 errors, 0 warnings)", style="bold green")
+
     if duration is not None:
-        summary_text.append(f"  ·  {duration:.2f}s", style="dim")
-    summary_text.append("\n")
-    summary_text.append_text(status)
+        summary_text.append("  ·  ", style="dim")
+        summary_text.append(f"{duration:.2f}s", style="dim")
 
     console.print(
         Panel(
@@ -289,44 +316,6 @@ def render_lint_report(
             padding=(1, 2),
         )
     )
-
-    by_check: dict[str, dict[Severity, int]] = defaultdict(
-        lambda: {"error": 0, "warning": 0}
-    )
-    for finding in findings:
-        by_check[finding.check][finding.severity] += 1
-
-    console.print("\n[bold cyan]Issues by Check[/bold cyan]")
-    summary = Table(
-        box=box.SIMPLE,
-        show_header=True,
-        header_style="bold cyan",
-        padding=(0, 2, 0, 0),
-    )
-    summary.add_column("Check", style="bold", no_wrap=True)
-    summary.add_column("Errors", justify="right")
-    summary.add_column("Warnings", justify="right")
-
-    check_names = _summary_check_names(executed_checks, by_check)
-    for check in check_names:
-        counts = by_check.get(check, {"error": 0, "warning": 0})
-        error_cell = (
-            Text(str(counts["error"]), style="bold red")
-            if counts["error"]
-            else Text("·", style="dim")
-        )
-        warn_cell = (
-            Text(str(counts["warning"]), style="bold yellow")
-            if counts["warning"]
-            else Text("·", style="dim")
-        )
-        summary.add_row(
-            _format_check_cell(check),
-            error_cell,
-            warn_cell,
-        )
-
-    console.print(summary)
 
     if not findings:
         console.print("\n[bold green]All checks passed.[/bold green]")
@@ -347,51 +336,139 @@ def render_lint_report(
                 header.append_text(_format_file_reference(path))
                 header.append(")")
             console.print(header)
+            console.print("  │", style="dim")
 
-            table = Table(box=None, show_header=False, padding=0)
-            table.add_column(width=4, no_wrap=True)
-            table.add_column()
+            sorted_group_findings = sorted(
+                group["findings"], key=lambda f: (f.severity, f.check)
+            )
+            total_in_group = len(sorted_group_findings)
 
-            for finding in sorted(group["findings"], key=lambda f: (f.severity, f.check)):
-                icon = "✘" if finding.severity == "error" else "⚠"
-                style = "red" if finding.severity == "error" else "yellow"
-                
-                msg_text = Text()
-                if finding.line is not None and finding.path:
-                    msg_text.append_text(_format_file_reference(finding.path, finding.line))
-                    msg_text.append(" ")
+            for idx, finding in enumerate(sorted_group_findings):
+                is_last = idx == total_in_group - 1
+                branch = "  └─ " if is_last else "  ├─ "
+                continuation = "     " if is_last else "  │  "
+
+                # Coordinate
+                if finding.line is not None:
+                    if finding.col is not None:
+                        coord_str = f"{finding.line}:{finding.col}"
+                    else:
+                        coord_str = f"{finding.line}:1"
+                    coord_text = _format_file_reference(
+                        finding.path or "", finding.line, display_text=coord_str
+                    )
+                else:
+                    coord_text = Text("──", style="dim")
+
+                padded_coord = Text()
+                padded_coord.append_text(coord_text)
+                pad_len = max(0, 6 - len(coord_text.plain))
+                padded_coord.append(" " * pad_len)
+
+                if finding.severity == "error":
+                    sev_tag = Text("error   ", style="bold red")
+                else:
+                    sev_tag = Text("warning ", style="bold yellow")
+
                 msg_lines = finding.message.split("\n")
-                msg_text.append(msg_lines[0])
-                msg_text.append(" ")
-                _append_check_tag(msg_text, finding.check)
-                for line in msg_lines[1:]:
-                    msg_text.append("\n")
-                    msg_text.append(line)
-                
-                table.add_row(f"  [{style}]{icon}[/{style}] ", msg_text)
-            console.print(table)
+                first_line = msg_lines[0]
+
+                row = Text()
+                row.append(branch, style="dim")
+                row.append_text(padded_coord)
+                row.append(" ")
+                row.append_text(sev_tag)
+                row.append(first_line)
+                console.print(row)
+
+                for extra_line in msg_lines[1:]:
+                    extra_text = Text()
+                    extra_text.append(continuation + " " * 16, style="dim")
+                    extra_text.append(extra_line)
+                    console.print(extra_text)
+
+                meta = Text()
+                meta.append(continuation + " " * 16, style="dim")
+                meta.append("rule: ", style="dim")
+                rule_label = CHECK_LABELS.get(finding.check, finding.check)
+                docs_url = registry.get_docs_url(finding.check)
+                if docs_url:
+                    meta.append(rule_label, style=f"dim link {docs_url}")
+                else:
+                    meta.append(rule_label, style="dim")
+                meta.append(
+                    f" ({finding.check})",
+                    style=f"dim link {docs_url}" if docs_url else "dim",
+                )
+
+                category = CONNASCENCE_CATEGORIES.get(finding.check)
+                if category:
+                    meta.append("  ·  ", style="dim")
+                    meta.append(
+                        f"connascence: {_format_connascence_tag(category)}", style="dim"
+                    )
+                console.print(meta)
+
+                if not is_last:
+                    console.print("  │", style="dim")
+
             console.print()
 
         if repo_level:
             console.print("[bold cyan]Repository-level issues[/bold cyan]")
-            table = Table(box=None, show_header=False, padding=0)
-            table.add_column(width=4, no_wrap=True)
-            table.add_column()
-            for finding in repo_level:
-                icon = "✘" if finding.severity == "error" else "⚠"
-                style = "red" if finding.severity == "error" else "yellow"
-                
-                msg_text = Text()
+            console.print("  │", style="dim")
+            for idx, finding in enumerate(repo_level):
+                is_last = idx == len(repo_level) - 1
+                branch = "  └─ " if is_last else "  ├─ "
+                continuation = "     " if is_last else "  │  "
+
+                coord_text = Text("──    ", style="dim")
+                if finding.severity == "error":
+                    sev_tag = Text("error   ", style="bold red")
+                else:
+                    sev_tag = Text("warning ", style="bold yellow")
+
                 msg_lines = finding.message.split("\n")
-                msg_text.append(msg_lines[0])
-                msg_text.append(" ")
-                _append_check_tag(msg_text, finding.check)
-                for line in msg_lines[1:]:
-                    msg_text.append("\n")
-                    msg_text.append(line)
-                
-                table.add_row(f"  [{style}]{icon}[/{style}] ", msg_text)
-            console.print(table)
+                row = Text()
+                row.append(branch, style="dim")
+                row.append_text(coord_text)
+                row.append(" ")
+                row.append_text(sev_tag)
+                row.append(msg_lines[0])
+                row.append(" ")
+                _append_check_tag(row, finding.check)
+                console.print(row)
+
+                for extra_line in msg_lines[1:]:
+                    extra_text = Text()
+                    extra_text.append(continuation + " " * 16, style="dim")
+                    extra_text.append(extra_line)
+                    console.print(extra_text)
+
+                meta = Text()
+                meta.append(continuation + " " * 16, style="dim")
+                meta.append("rule: ", style="dim")
+                rule_label = CHECK_LABELS.get(finding.check, finding.check)
+                docs_url = registry.get_docs_url(finding.check)
+                if docs_url:
+                    meta.append(rule_label, style=f"dim link {docs_url}")
+                else:
+                    meta.append(rule_label, style="dim")
+                meta.append(
+                    f" ({finding.check})",
+                    style=f"dim link {docs_url}" if docs_url else "dim",
+                )
+
+                category = CONNASCENCE_CATEGORIES.get(finding.check)
+                if category:
+                    meta.append("  ·  ", style="dim")
+                    meta.append(
+                        f"connascence: {_format_connascence_tag(category)}", style="dim"
+                    )
+                console.print(meta)
+
+                if not is_last:
+                    console.print("  │", style="dim")
             console.print()
     else:
         by_category: dict[str, list[LintFinding]] = defaultdict(list)
@@ -419,6 +496,7 @@ def render_lint_report(
                 continue
 
             console.print(f"[bold cyan]● {category}[/bold cyan]")
+            console.print("  │", style="dim")
 
             sorted_findings = sorted(
                 cat_findings,
@@ -429,50 +507,113 @@ def render_lint_report(
                 ),
             )
 
-            table = Table(box=None, show_header=False, padding=0)
-            table.add_column(width=4, no_wrap=True)
-            table.add_column()
+            total_cat = len(sorted_findings)
+            for idx, finding in enumerate(sorted_findings):
+                is_last = idx == total_cat - 1
+                branch = "  └─ " if is_last else "  ├─ "
+                continuation = "     " if is_last else "  │  "
 
-            for finding in sorted_findings:
-                icon = "✘" if finding.severity == "error" else "⚠"
-                style = "red" if finding.severity == "error" else "yellow"
-
-                if finding.model:
-                    model_name = normalize_model_name(finding.model)
-                    model_part = Text()
-                    model_part.append(model_name, style="bold")
-                    if finding.path:
-                        model_part.append(" (")
-                        model_part.append_text(_format_file_reference(finding.path))
-                        model_part.append(")")
+                if finding.path:
+                    coord_str = (
+                        f"{finding.path}:{finding.line}"
+                        if finding.line is not None
+                        else finding.path
+                    )
+                    coord_text = _format_file_reference(
+                        finding.path, finding.line, display_text=coord_str
+                    )
+                elif finding.model:
+                    coord_text = Text(normalize_model_name(finding.model), style="bold")
                 else:
-                    model_part = Text("Repository-level", style="bold")
+                    coord_text = Text("Repository-level", style="bold")
 
-                cell_content = Text()
-                cell_content.append(model_part)
-                cell_content.append("\n")
-                
-                msg_text = Text()
-                if finding.line is not None and finding.path:
-                    msg_text.append_text(_format_file_reference(finding.path, finding.line))
-                    msg_text.append(" ")
+                if finding.severity == "error":
+                    sev_tag = Text("error   ", style="bold red")
+                else:
+                    sev_tag = Text("warning ", style="bold yellow")
+
                 msg_lines = finding.message.split("\n")
-                msg_text.append(msg_lines[0])
-                msg_text.append(" ")
-                _append_check_tag(msg_text, finding.check)
-                for line in msg_lines[1:]:
-                    msg_text.append("\n")
-                    msg_text.append(line)
-                
-                cell_content.append(msg_text)
+                row = Text()
+                row.append(branch, style="dim")
+                row.append_text(coord_text)
+                row.append("  ")
+                row.append_text(sev_tag)
+                row.append(msg_lines[0])
+                row.append(" ")
+                _append_check_tag(row, finding.check)
+                console.print(row)
 
-                table.add_row(f"  [{style}]{icon}[/{style}] ", cell_content)
-            console.print(table)
+                for extra_line in msg_lines[1:]:
+                    extra_text = Text()
+                    extra_text.append(continuation + " " * 8, style="dim")
+                    extra_text.append(extra_line)
+                    console.print(extra_text)
+
+                meta = Text()
+                meta.append(continuation + " " * 8, style="dim")
+                meta.append("rule: ", style="dim")
+                rule_label = CHECK_LABELS.get(finding.check, finding.check)
+                docs_url = registry.get_docs_url(finding.check)
+                if docs_url:
+                    meta.append(rule_label, style=f"dim link {docs_url}")
+                else:
+                    meta.append(rule_label, style="dim")
+                meta.append(
+                    f" ({finding.check})",
+                    style=f"dim link {docs_url}" if docs_url else "dim",
+                )
+                if finding.model:
+                    meta.append("  ·  ", style="dim")
+                    meta.append(
+                        f"model: {normalize_model_name(finding.model)}", style="dim"
+                    )
+                console.print(meta)
+
+                if not is_last:
+                    console.print("  │", style="dim")
             console.print()
+
+    files_with_findings = {f.path for f in findings if f.path}
+    file_count = len(files_with_findings)
+    fixable_count = sum(1 for f in findings if _is_fixable_finding(f))
+
+    width = min(console.width - 2, 78) if console.width else 78
+    console.print("  " + "─" * width, style="dim")
+
+    summary_footer = Text("  ")
+    if errors:
+        summary_footer.append("✖ ", style="bold red")
+        summary_footer.append(
+            f"{len(errors)} error{'s' if len(errors) != 1 else ''}", style="bold red"
+        )
+    else:
+        summary_footer.append("✔ 0 errors", style="bold green")
+
+    if warnings:
+        summary_footer.append(
+            f", {len(warnings)} warning{'s' if len(warnings) != 1 else ''}",
+            style="bold yellow",
+        )
+
+    if file_count > 0:
+        summary_footer.append(f" in {file_count} file{'s' if file_count != 1 else ''}")
+    console.print(summary_footer)
+
+    if fixable_count > 0:
+        fix_hint = Text("  ")
+        fix_hint.append("ℹ ", style="bold cyan")
+        fix_hint.append(
+            f"{fixable_count} issue{'s' if fixable_count != 1 else ''} fixable automatically with ",
+            style="dim",
+        )
+        fix_hint.append("`tff check --fix`", style="bold")
+        console.print(fix_hint)
 
     failed = any(f.severity == fail_level for f in findings)
     if fail_level == "error" and has_errors:
-        console.print("[bold red]Lint failed — fix errors above before merging.[/bold red]")
+        console.print(
+            "[bold red]Lint failed — fix errors above before merging.[/bold red]"
+        )
     elif failed:
         console.print(
             "[bold red]Lint failed — fix findings above before merging.[/bold red]"

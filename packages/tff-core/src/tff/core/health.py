@@ -6,7 +6,6 @@ from collections import defaultdict
 from pathlib import Path
 from typing import Any
 
-from rich import box
 from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
@@ -303,6 +302,8 @@ def render_health_report(
     *,
     group_by: str = "connascence",
     duration: float | None = None,
+    fail_under: float | None = None,
+    verbose: bool = False,
 ) -> None:
     """Render a beautiful CLI health report using rich.
 
@@ -315,6 +316,11 @@ def render_health_report(
         ``models/sources``, ``models/marts/marketing``.
     duration:
         Execution duration in seconds (optional).
+    fail_under:
+        Health score threshold for pass/fail status indicator (optional).
+    verbose:
+        If True, expand all individual checks (including 100% passing and
+        disabled checks) in the detailed breakdown.
     """
     console = console or Console()
     
@@ -323,20 +329,28 @@ def render_health_report(
     category_scores = scores["category_scores"]
     check_scores = scores["check_scores"]
     check_findings = scores["check_findings"]
+    check_weights = scores.get("check_weights", {})
     
     score_color = "green" if overall_score >= 90 else "yellow" if overall_score >= 70 else "red"
     
+    panel_text = Text()
+    panel_text.append("Overall Project Health Score: ", style="bold white")
+    panel_text.append(f"{overall_score:.1f}%", style=f"bold {score_color}")
+
+    if fail_under is not None and fail_under > 0:
+        if overall_score < fail_under:
+            panel_text.append(f"  [FAIL: below threshold {fail_under:.1f}%]", style="bold red")
+        else:
+            panel_text.append(f"  [PASS: meets threshold {fail_under:.1f}%]", style="bold green")
+
+    panel_text.append("\n")
     panel_info = f"Active checks: {len(enabled_checks)}  ·  Categories: {sum(1 for v in category_scores.values() if v is not None)}"
     if duration is not None:
         panel_info += f"  ·  Duration: {duration:.2f}s"
+    panel_text.append(panel_info, style="dim")
 
     score_panel = Panel(
-        Text.assemble(
-            ("Overall Project Health Score: ", "bold white"),
-            (f"{overall_score:.1f}%", f"bold {score_color}"),
-            ("\n", ""),
-            (panel_info, "dim")
-        ),
+        panel_text,
         title=f"[bold {score_color}]tff PROJECT HEALTH REPORT[/bold {score_color}]",
         border_style=score_color,
         padding=(1, 2),
@@ -344,19 +358,21 @@ def render_health_report(
     console.print(score_panel)
     console.print()
     
-    # 1. Summary Table
+    # 1. Summary Table with meter bars
     console.print("[bold cyan]Health Score by Category[/bold cyan]")
+    width = min(console.width - 2, 78) if console.width else 78
+    console.print("─" * width, style="dim")
+
     summary_table = Table(
-        box=box.SIMPLE,
-        show_header=True,
-        header_style="bold cyan",
+        box=None,
+        show_header=False,
         padding=(0, 2, 0, 0),
     )
-    summary_table.add_column("Category", style="bold", no_wrap=True)
-    summary_table.add_column("Checks", justify="center", no_wrap=True)
-    summary_table.add_column("Errors", justify="right", no_wrap=True)
-    summary_table.add_column("Warnings", justify="right", no_wrap=True)
-    summary_table.add_column("Score", justify="right", no_wrap=True)
+    summary_table.add_column("Category", style="bold", min_width=34, no_wrap=True)
+    summary_table.add_column("Progress", width=12, justify="left", no_wrap=True)
+    summary_table.add_column("Score", justify="right", width=7, no_wrap=True)
+    summary_table.add_column("Checks", justify="left", width=12, no_wrap=True)
+    summary_table.add_column("Violations", justify="left", no_wrap=True)
     
     for cat_name, cat_score in category_scores.items():
         if cat_score is None:
@@ -375,31 +391,89 @@ def render_health_report(
                 else:
                     warnings += 1
                     
-        total_in_cat = len(cat_checks) if cat_name in CATEGORIES else len(enabled_cat_checks)
-        checks_ratio = f"{len(enabled_cat_checks)}/{total_in_cat}"
+        checks_label = f"{len(enabled_cat_checks)} check{'s' if len(enabled_cat_checks) != 1 else ''}"
         
-        error_cell = Text(str(errors) if errors else "·", style="bold red" if errors else "dim")
-        warn_cell = Text(str(warnings) if warnings else "·", style="bold yellow" if warnings else "dim")
+        bar_str = make_progress_bar(cat_score, width=10)
+        c_color = "green" if cat_score >= 90 else "yellow" if cat_score >= 70 else "red"
+        bar_cell = Text.from_markup(f"[{c_color}]{bar_str}[/{c_color}]")
+        score_cell = Text(f"{cat_score:.1f}%", style=f"bold {c_color}")
         
-        score_color = "green" if cat_score >= 90 else "yellow" if cat_score >= 70 else "red"
-        score_cell = Text(f"{cat_score:.1f}%", style=f"bold {score_color}")
+        parts = []
+        if errors:
+            parts.append(f"{errors} error{'s' if errors != 1 else ''}")
+        if warnings:
+            parts.append(f"{warnings} warning{'s' if warnings != 1 else ''}")
+        violation_cell = (
+            Text(", ".join(parts), style="bold red" if errors else "bold yellow")
+            if parts
+            else Text("·", style="dim")
+        )
         
         summary_table.add_row(
             cat_name,
-            checks_ratio,
-            error_cell,
-            warn_cell,
+            bar_cell,
             score_cell,
+            checks_label,
+            violation_cell,
         )
         
     console.print(summary_table)
     console.print()
-    
-    # 2. Detailed Breakdown
-    if group_by == "domain":
-        _render_health_by_domain(scores, console, config=config)
+
+    # 2. Top Penalty Drivers
+    overall_total_weight = sum(check_weights.get(c, 1.0) for c in enabled_checks)
+
+    console.print("[bold cyan]TOP PENALTY DRIVERS[/bold cyan]")
+    console.print("─" * width, style="dim")
+
+    penalties_list: list[tuple[float, str, str]] = []
+    if overall_total_weight > 0:
+        for check in enabled_checks:
+            score = check_scores.get(check, 100.0)
+            if score < 100.0:
+                weight = check_weights.get(check, 1.0)
+                pts_lost = ((100.0 - score) * weight) / overall_total_weight
+                label = CHECK_LABELS.get(check, check)
+                penalties_list.append((pts_lost, label, check))
+
+    penalties_list.sort(key=lambda x: x[0], reverse=True)
+
+    if penalties_list:
+        penalties_table = Table(
+            box=None,
+            show_header=False,
+            padding=(0, 2, 0, 2),
+        )
+        penalties_table.add_column("Points", justify="right", style="bold red", no_wrap=True)
+        penalties_table.add_column("Label", justify="left", style="bold")
+        penalties_table.add_column("Check", justify="left", no_wrap=True)
+
+        for pts_lost, label, check in penalties_list[:5]:
+            docs_url = registry.get_docs_url(check)
+            check_cell = (
+                Text(f"({check})", style=f"dim link {docs_url}")
+                if docs_url
+                else Text(f"({check})", style="dim")
+            )
+            penalties_table.add_row(
+                f"-{pts_lost:.1f} pts",
+                label,
+                check_cell,
+            )
+        console.print(penalties_table)
     else:
-        _render_health_by_connascence(scores, enabled_checks, check_scores, check_findings, console)
+        console.print("  [green]✔ No penalty drivers — all active fitness functions scored 100.0%[/green]")
+
+    console.print("\n[dim]Run [bold]tff explain <rule>[/bold] for remediation guides.[/dim]")
+    console.print()
+    
+    # 3. Detailed Breakdown
+    if group_by == "domain":
+        _render_health_by_domain(scores, console, config=config, verbose=verbose)
+    else:
+        _render_health_by_connascence(
+            scores, enabled_checks, check_scores, check_findings, console, verbose=verbose
+        )
 
 
 def _format_health_check_desc(
@@ -415,20 +489,17 @@ def _format_health_check_desc(
     if disabled:
         desc.append("  - ", style="dim")
         desc.append(label, style=f"dim link {docs_url}" if docs_url else "dim")
-        desc.append("\n    (", style="dim")
-        desc.append(check, style=f"dim link {docs_url}" if docs_url else "dim")
-        desc.append(")", style="dim")
+        desc.append(" ")
+        desc.append(f"({check})", style=f"dim link {docs_url}" if docs_url else "dim")
         return desc
 
     desc.append("  ")
     desc.append_text(Text.from_markup(icon_markup))
     desc.append(" ")
     desc.append(label, style=f"link {docs_url}" if docs_url else None)
-    desc.append("\n    (", style="dim")
-    desc.append(check, style=f"dim link {docs_url}" if docs_url else "dim")
-    if weight_str:
-        desc.append(weight_str, style="dim")
-    desc.append(")", style="dim")
+    desc.append(" ")
+    check_inner = f"({check}{weight_str})"
+    desc.append(check_inner, style=f"dim link {docs_url}" if docs_url else "dim")
     return desc
 
 
@@ -438,12 +509,14 @@ def _render_health_by_connascence(
     check_scores: dict[str, float],
     check_findings: Any,
     console: Console,
+    verbose: bool = False,
 ) -> None:
     """Render detailed breakdown grouped by connascence category."""
     console.print("[bold cyan]Detailed Breakdown by Check[/bold cyan]")
 
     check_weights = scores.get("check_weights", {})
     first_cat = True
+    collapsed_count = 0
     for cat_name, cat_checks in CATEGORIES.items():
         # Only print category if it contains enabled checks
         enabled_cat_checks = [c for c in cat_checks if c in enabled_checks]
@@ -461,32 +534,68 @@ def _render_health_by_connascence(
         table.add_column(width=22, no_wrap=True)
         table.add_column(no_wrap=True)
 
-        for check in cat_checks:
-            label = CHECK_LABELS.get(check, check)
+        if verbose:
+            for check in cat_checks:
+                label = CHECK_LABELS.get(check, check)
 
-            if check in enabled_checks:
+                if check in enabled_checks:
+                    score = check_scores[check]
+                    cf = check_findings[check]
+
+                    # Determine status icon and color
+                    if score == 100.0:
+                        icon = "[green]✔[/green]"
+                        score_text = "[green]100.0%[/green]"
+                        violation_text = ""
+                    else:
+                        icon_char = "✘" if score < 70 else "⚠"
+                        color = "red" if score < 70 else "yellow"
+                        icon = f"[{color}]{icon_char}[/{color}]"
+                        score_text = f"[{color}]{score:.1f}%[/{color}]"
+
+                        errors = sum(1 for f in cf if f.severity == "error")
+                        warnings = sum(1 for f in cf if f.severity == "warning")
+                        parts = []
+                        if errors:
+                            parts.append(f"{errors} error{'s' if errors != 1 else ''}")
+                        if warnings:
+                            parts.append(f"{warnings} warning{'s' if warnings != 1 else ''}")
+                        violation_text = f"[dim]({', '.join(parts)})[/dim]"
+
+                    weight = check_weights.get(check, 1.0)
+                    weight_str = f" · weight: {weight:g}" if weight != 1.0 else ""
+                    check_desc = _format_health_check_desc(icon, check, label, weight_str=weight_str)
+                    bar = make_progress_bar(score, width=10)
+                    score_cell = Text.from_markup(f"{bar} {score_text}")
+
+                    table.add_row(check_desc, score_cell, Text.from_markup(violation_text))
+                else:
+                    check_desc = _format_health_check_desc("-", check, label, disabled=True)
+                    table.add_row(check_desc, Text("Disabled", style="dim"), "")
+        else:
+            failing = [c for c in enabled_cat_checks if check_scores.get(c, 100.0) < 100.0]
+            passing = [c for c in enabled_cat_checks if check_scores.get(c, 100.0) >= 100.0]
+            disabled = [c for c in cat_checks if c not in enabled_checks]
+
+            # 1. Failing / warning checks
+            for check in failing:
+                label = CHECK_LABELS.get(check, check)
                 score = check_scores[check]
                 cf = check_findings[check]
 
-                # Determine status icon and color
-                if score == 100.0:
-                    icon = "[green]✔[/green]"
-                    score_text = "[green]100.0%[/green]"
-                    violation_text = ""
-                else:
-                    icon_char = "✘" if score < 70 else "⚠"
-                    color = "red" if score < 70 else "yellow"
-                    icon = f"[{color}]{icon_char}[/{color}]"
-                    score_text = f"[{color}]{score:.1f}%[/{color}]"
+                icon_char = "✘" if score < 70 else "⚠"
+                color = "red" if score < 70 else "yellow"
+                icon = f"[{color}]{icon_char}[/{color}]"
+                score_text = f"[{color}]{score:.1f}%[/{color}]"
 
-                    errors = sum(1 for f in cf if f.severity == "error")
-                    warnings = sum(1 for f in cf if f.severity == "warning")
-                    parts = []
-                    if errors:
-                        parts.append(f"{errors} error{'s' if errors != 1 else ''}")
-                    if warnings:
-                        parts.append(f"{warnings} warning{'s' if warnings != 1 else ''}")
-                    violation_text = f"[dim]({', '.join(parts)})[/dim]"
+                errors = sum(1 for f in cf if f.severity == "error")
+                warnings = sum(1 for f in cf if f.severity == "warning")
+                parts = []
+                if errors:
+                    parts.append(f"{errors} error{'s' if errors != 1 else ''}")
+                if warnings:
+                    parts.append(f"{warnings} warning{'s' if warnings != 1 else ''}")
+                violation_text = f"[dim]({', '.join(parts)})[/dim]"
 
                 weight = check_weights.get(check, 1.0)
                 weight_str = f" · weight: {weight:g}" if weight != 1.0 else ""
@@ -495,9 +604,43 @@ def _render_health_by_connascence(
                 score_cell = Text.from_markup(f"{bar} {score_text}")
 
                 table.add_row(check_desc, score_cell, Text.from_markup(violation_text))
-            else:
-                check_desc = _format_health_check_desc("-", check, label, disabled=True)
-                table.add_row(check_desc, Text("Disabled", style="dim"), "")
+
+            # 2. Passing checks
+            if passing:
+                if len(passing) == 1 and not failing:
+                    c = passing[0]
+                    label = CHECK_LABELS.get(c, c)
+                    weight = check_weights.get(c, 1.0)
+                    weight_str = f" · weight: {weight:g}" if weight != 1.0 else ""
+                    check_desc = _format_health_check_desc("[green]✔[/green]", c, label, weight_str=weight_str)
+                    bar = make_progress_bar(100.0, width=10)
+                    score_cell = Text.from_markup(f"{bar} [green]100.0%[/green]")
+                    table.add_row(check_desc, score_cell, "")
+                else:
+                    collapsed_count += len(passing)
+                    if not failing:
+                        desc_text = f"  [green]✔[/green] All {len(passing)} checks scored [green]100.0%[/green]"
+                    else:
+                        desc_text = f"  [green]✔[/green] {len(passing)} check{'s' if len(passing) != 1 else ''} passing"
+                    bar = make_progress_bar(100.0, width=10)
+                    score_cell = Text.from_markup(f"{bar} [green]100.0%[/green]")
+                    table.add_row(Text.from_markup(desc_text), score_cell, "")
+
+            # 3. Disabled checks
+            if disabled:
+                collapsed_count += len(disabled)
+                desc = Text("  - ", style="dim")
+                desc.append(
+                    f"{len(disabled)} check{'s' if len(disabled) != 1 else ''} disabled (",
+                    style="dim",
+                )
+                for i, c in enumerate(disabled):
+                    if i > 0:
+                        desc.append(", ", style="dim")
+                    url = registry.get_docs_url(c)
+                    desc.append(c, style=f"dim link {url}" if url else "dim")
+                desc.append(")", style="dim")
+                table.add_row(desc, Text("Disabled", style="dim"), "")
 
         console.print(table)
 
@@ -550,6 +693,10 @@ def _render_health_by_connascence(
 
         console.print(table)
 
+    if not verbose and collapsed_count > 0:
+        console.print()
+        console.print("[dim]Use [bold]--verbose[/bold] to expand all passing and disabled checks.[/dim]")
+
     console.print()
 
 
@@ -589,6 +736,7 @@ def _render_health_by_domain(
     scores: dict[str, Any],
     console: Console,
     config: FitnessFunctionsConfig | None = None,
+    verbose: bool = False,
 ) -> None:
     """Render detailed breakdown grouped by domain (path segment after models/)."""
     penalties = (

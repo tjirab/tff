@@ -1087,7 +1087,7 @@ def test_format_health_check_desc_enabled_known_check() -> None:
     from tff.core.registry import registry
 
     desc = _format_health_check_desc("[green]✔[/green]", "banselectstar", "No SELECT *", weight_str=" · weight: 2")
-    assert desc.plain == "  ✔ No SELECT *\n    (banselectstar · weight: 2)"
+    assert desc.plain == "  ✔ No SELECT * (banselectstar · weight: 2)"
 
     docs_url = registry.get_docs_url("banselectstar")
     assert docs_url is not None
@@ -1103,7 +1103,7 @@ def test_format_health_check_desc_enabled_unknown_check() -> None:
     from tff.core.health import _format_health_check_desc
 
     desc = _format_health_check_desc("[red]✘[/red]", "custom_check", "Custom Check")
-    assert desc.plain == "  ✘ Custom Check\n    (custom_check)"
+    assert desc.plain == "  ✘ Custom Check (custom_check)"
     styles = [str(span.style) for span in desc.spans]
     assert not any("link" in s for s in styles)
 
@@ -1114,7 +1114,7 @@ def test_format_health_check_desc_disabled_known_check() -> None:
     from tff.core.registry import registry
 
     desc = _format_health_check_desc("-", "banselectstar", "No SELECT *", disabled=True)
-    assert desc.plain == "  - No SELECT *\n    (banselectstar)"
+    assert desc.plain == "  - No SELECT * (banselectstar)"
 
     docs_url = registry.get_docs_url("banselectstar")
     assert docs_url is not None
@@ -1128,7 +1128,7 @@ def test_format_health_check_desc_disabled_unknown_check() -> None:
     from tff.core.health import _format_health_check_desc
 
     desc = _format_health_check_desc("-", "unknown_check", "Unknown Check", disabled=True)
-    assert desc.plain == "  - Unknown Check\n    (unknown_check)"
+    assert desc.plain == "  - Unknown Check (unknown_check)"
 
     styles = [str(span.style) for span in desc.spans]
     assert all("dim" in s and "link" not in s for s in styles)
@@ -1202,6 +1202,136 @@ def test_render_health_report_domain_breakdown_hyperlinks() -> None:
     assert docs_url is not None
     assert f'href="{docs_url}"' in html
     assert "https://tff.readthedocs.io" not in text
+
+
+def test_render_health_report_top_penalty_drivers() -> None:
+    """Verify top penalty drivers section and remediation guide callout."""
+    config = FitnessFunctionsConfig.model_validate({
+        "rules": {
+            "ban_select_star": {"enabled": True},
+            "layer_integrity": {"enabled": True},
+        },
+    })
+    findings = [
+        LintFinding(
+            check="layer_integrity",
+            severity="error",
+            message="cross layer error",
+            model="dim_users",
+            path="models/core/dim_users.sql",
+        ),
+    ]
+    scores = calculate_health_scores(findings, models_checked=2, config=config, provider="dbt")
+
+    console = Console(record=True, width=120)
+    render_health_report(scores, config, provider="dbt", console=console, fail_under=98.0)
+    output = console.export_text()
+
+    assert "TOP PENALTY DRIVERS" in output
+    assert "pts" in output
+    assert "layer_integrity" in output
+    assert "Run tff explain <rule> for remediation guides." in output
+    assert "[FAIL: below threshold 98.0%]" in output
+
+
+def test_render_health_report_pass_threshold_and_no_penalties() -> None:
+    """Verify pass threshold indicator and zero penalty state."""
+    config = FitnessFunctionsConfig.model_validate({
+        "rules": {"ban_select_star": {"enabled": True}},
+    })
+    findings = []
+    scores = calculate_health_scores(findings, models_checked=5, config=config, provider="dbt")
+
+    console = Console(record=True, width=120)
+    render_health_report(scores, config, provider="dbt", console=console, fail_under=80.0)
+    output = console.export_text()
+
+    assert "[PASS: meets threshold 80.0%]" in output
+    assert "No penalty drivers — all active fitness functions scored 100.0%" in output
+
+
+def test_render_health_report_top_penalty_drivers_alignment() -> None:
+    """Verify alignment across multiple drivers with single-digit and double-digit points."""
+    config = FitnessFunctionsConfig.model_validate({
+        "rules": {
+            "ban_select_star": {"enabled": True},
+            "layer_integrity": {"enabled": True},
+            "nomissingdescription": {"enabled": True},
+        },
+    })
+    findings = [
+        LintFinding(check="layer_integrity", severity="error", message="err", model="dim_users", path="models/core/dim_users.sql"),
+        LintFinding(check="nomissingdescription", severity="error", message="err", model="dim_users", path="models/core/dim_users.sql"),
+        LintFinding(check="nomissingdescription", severity="error", message="err", model="fct_orders", path="models/core/fct_orders.sql"),
+    ]
+    scores = calculate_health_scores(findings, models_checked=2, config=config, provider="dbt")
+
+    console = Console(record=True, width=120)
+    render_health_report(scores, config, provider="dbt", console=console)
+    output = console.export_text()
+
+    assert "TOP PENALTY DRIVERS" in output
+    assert "layer_integrity" in output
+    assert "nomissingdescription" in output
+
+
+def test_render_health_report_verbose_flag() -> None:
+    """Verify that verbose=False collapses passing/disabled checks and verbose=True expands them."""
+    config = FitnessFunctionsConfig.model_validate({
+        "rules": {
+            "ban_select_star": {"enabled": True},
+            "filename_equals_modelname": {"enabled": False},
+            "nomissingowner": {"enabled": True},
+            "nomissingdescription": {"enabled": True},
+        },
+    })
+    # ban_select_star has error, nomissingowner has warning, nomissingdescription passes (100%)
+    findings = [
+        LintFinding(check="banselectstar", severity="error", message="err", model="m1"),
+        LintFinding(check="nomissingowner", severity="warning", message="warn", model="m2"),
+    ]
+    scores = calculate_health_scores(findings, models_checked=5, config=config, provider="dbt")
+
+    # 1. Default (verbose=False)
+    console_default = Console(record=True, width=120)
+    render_health_report(scores, config, provider="dbt", console=console_default, verbose=False)
+    output_default = console_default.export_text()
+
+    assert "Use --verbose to expand all passing and disabled checks." in output_default
+    assert "checks disabled" in output_default
+    assert "banselectstar" in output_default
+    assert "nomissingowner" in output_default
+
+    # 2. Verbose (verbose=True)
+    console_verbose = Console(record=True, width=120)
+    render_health_report(scores, config, provider="dbt", console=console_verbose, verbose=True)
+    output_verbose = console_verbose.export_text()
+
+    assert "Use --verbose to expand all passing and disabled checks." not in output_verbose
+    assert "Disabled" in output_verbose
+    assert "nomissingowner" in output_verbose
+    assert "nomissingdescription" in output_verbose
+    assert "1 warning" in output_verbose
+
+
+def test_cli_health_verbose_flag(tmp_path, monkeypatch) -> None:
+    """Verify that --verbose and -v flags are accepted and executed by the CLI."""
+    mock_runner = MagicMock()
+    mock_runner.run_all_checks.return_value = ([], 5, ["rules"])
+    monkeypatch.setattr("importlib.import_module", lambda name: mock_runner)
+
+    config_file = tmp_path / "fitness_functions.yaml"
+    config_file.write_text("rules:\n  ban_select_star:\n    enabled: true\n", encoding="utf-8")
+    (tmp_path / "dbt_project.yml").write_text("", encoding="utf-8")
+
+    exit_code_verbose = main(["health", "--project", str(tmp_path), "--config", str(config_file), "--verbose"])
+    assert exit_code_verbose == 0
+
+    exit_code_v = main(["health", "--project", str(tmp_path), "--config", str(config_file), "-v"])
+    assert exit_code_v == 0
+
+
+
 
 
 
