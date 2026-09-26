@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.23.0](https://github.com/tjirab/tff/compare/tff-core-v0.22.0...tff-core-v0.23.0) (2026-09-26)
+
+
+### Features
+
+* **cli:** redesign check and health command output aesthetics ([#323](https://github.com/tjirab/tff/issues/323)) ([3d8c525](https://github.com/tjirab/tff/commit/3d8c525f1b79ac67f4442fc74391d51910867b39))
+
 ## [0.22.0](https://github.com/tjirab/tff/compare/tff-core-v0.21.0...tff-core-v0.22.0) (2026-09-25)
 
 
