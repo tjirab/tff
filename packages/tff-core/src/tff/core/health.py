@@ -435,16 +435,28 @@ def render_health_report(
     penalties_list.sort(key=lambda x: x[0], reverse=True)
 
     if penalties_list:
+        penalties_table = Table(
+            box=None,
+            show_header=False,
+            padding=(0, 2, 0, 2),
+        )
+        penalties_table.add_column("Points", justify="right", style="bold red", no_wrap=True)
+        penalties_table.add_column("Label", justify="left", style="bold")
+        penalties_table.add_column("Check", justify="left", no_wrap=True)
+
         for pts_lost, label, check in penalties_list[:5]:
-            driver_text = Text()
-            driver_text.append(f"  -{pts_lost:.1f} pts  ", style="bold red")
-            driver_text.append(f"{label:<32} ", style="bold")
             docs_url = registry.get_docs_url(check)
-            if docs_url:
-                driver_text.append(f"({check})", style=f"dim link {docs_url}")
-            else:
-                driver_text.append(f"({check})", style="dim")
-            console.print(driver_text)
+            check_cell = (
+                Text(f"({check})", style=f"dim link {docs_url}")
+                if docs_url
+                else Text(f"({check})", style="dim")
+            )
+            penalties_table.add_row(
+                f"-{pts_lost:.1f} pts",
+                label,
+                check_cell,
+            )
+        console.print(penalties_table)
     else:
         console.print("  [green]✔ No penalty drivers — all active fitness functions scored 100.0%[/green]")
 

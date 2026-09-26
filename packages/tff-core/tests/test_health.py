@@ -1250,5 +1250,31 @@ def test_render_health_report_pass_threshold_and_no_penalties() -> None:
     assert "No penalty drivers — all active fitness functions scored 100.0%" in output
 
 
+def test_render_health_report_top_penalty_drivers_alignment() -> None:
+    """Verify alignment across multiple drivers with single-digit and double-digit points."""
+    config = FitnessFunctionsConfig.model_validate({
+        "rules": {
+            "ban_select_star": {"enabled": True},
+            "layer_integrity": {"enabled": True},
+            "nomissingdescription": {"enabled": True},
+        },
+    })
+    findings = [
+        LintFinding(check="layer_integrity", severity="error", message="err", model="dim_users", path="models/core/dim_users.sql"),
+        LintFinding(check="nomissingdescription", severity="error", message="err", model="dim_users", path="models/core/dim_users.sql"),
+        LintFinding(check="nomissingdescription", severity="error", message="err", model="fct_orders", path="models/core/fct_orders.sql"),
+    ]
+    scores = calculate_health_scores(findings, models_checked=2, config=config, provider="dbt")
+
+    console = Console(record=True, width=120)
+    render_health_report(scores, config, provider="dbt", console=console)
+    output = console.export_text()
+
+    assert "TOP PENALTY DRIVERS" in output
+    assert "layer_integrity" in output
+    assert "nomissingdescription" in output
+
+
+
 
 
