@@ -303,6 +303,7 @@ def render_health_report(
     group_by: str = "connascence",
     duration: float | None = None,
     fail_under: float | None = None,
+    verbose: bool = False,
 ) -> None:
     """Render a beautiful CLI health report using rich.
 
@@ -317,6 +318,9 @@ def render_health_report(
         Execution duration in seconds (optional).
     fail_under:
         Health score threshold for pass/fail status indicator (optional).
+    verbose:
+        If True, expand all individual checks (including 100% passing and
+        disabled checks) in the detailed breakdown.
     """
     console = console or Console()
     
@@ -465,9 +469,11 @@ def render_health_report(
     
     # 3. Detailed Breakdown
     if group_by == "domain":
-        _render_health_by_domain(scores, console, config=config)
+        _render_health_by_domain(scores, console, config=config, verbose=verbose)
     else:
-        _render_health_by_connascence(scores, enabled_checks, check_scores, check_findings, console)
+        _render_health_by_connascence(
+            scores, enabled_checks, check_scores, check_findings, console, verbose=verbose
+        )
 
 
 def _format_health_check_desc(
@@ -483,20 +489,17 @@ def _format_health_check_desc(
     if disabled:
         desc.append("  - ", style="dim")
         desc.append(label, style=f"dim link {docs_url}" if docs_url else "dim")
-        desc.append("\n    (", style="dim")
-        desc.append(check, style=f"dim link {docs_url}" if docs_url else "dim")
-        desc.append(")", style="dim")
+        desc.append(" ")
+        desc.append(f"({check})", style=f"dim link {docs_url}" if docs_url else "dim")
         return desc
 
     desc.append("  ")
     desc.append_text(Text.from_markup(icon_markup))
     desc.append(" ")
     desc.append(label, style=f"link {docs_url}" if docs_url else None)
-    desc.append("\n    (", style="dim")
-    desc.append(check, style=f"dim link {docs_url}" if docs_url else "dim")
-    if weight_str:
-        desc.append(weight_str, style="dim")
-    desc.append(")", style="dim")
+    desc.append(" ")
+    check_inner = f"({check}{weight_str})"
+    desc.append(check_inner, style=f"dim link {docs_url}" if docs_url else "dim")
     return desc
 
 
@@ -506,12 +509,14 @@ def _render_health_by_connascence(
     check_scores: dict[str, float],
     check_findings: Any,
     console: Console,
+    verbose: bool = False,
 ) -> None:
     """Render detailed breakdown grouped by connascence category."""
     console.print("[bold cyan]Detailed Breakdown by Check[/bold cyan]")
 
     check_weights = scores.get("check_weights", {})
     first_cat = True
+    collapsed_count = 0
     for cat_name, cat_checks in CATEGORIES.items():
         # Only print category if it contains enabled checks
         enabled_cat_checks = [c for c in cat_checks if c in enabled_checks]
@@ -529,32 +534,68 @@ def _render_health_by_connascence(
         table.add_column(width=22, no_wrap=True)
         table.add_column(no_wrap=True)
 
-        for check in cat_checks:
-            label = CHECK_LABELS.get(check, check)
+        if verbose:
+            for check in cat_checks:
+                label = CHECK_LABELS.get(check, check)
 
-            if check in enabled_checks:
+                if check in enabled_checks:
+                    score = check_scores[check]
+                    cf = check_findings[check]
+
+                    # Determine status icon and color
+                    if score == 100.0:
+                        icon = "[green]✔[/green]"
+                        score_text = "[green]100.0%[/green]"
+                        violation_text = ""
+                    else:
+                        icon_char = "✘" if score < 70 else "⚠"
+                        color = "red" if score < 70 else "yellow"
+                        icon = f"[{color}]{icon_char}[/{color}]"
+                        score_text = f"[{color}]{score:.1f}%[/{color}]"
+
+                        errors = sum(1 for f in cf if f.severity == "error")
+                        warnings = sum(1 for f in cf if f.severity == "warning")
+                        parts = []
+                        if errors:
+                            parts.append(f"{errors} error{'s' if errors != 1 else ''}")
+                        if warnings:
+                            parts.append(f"{warnings} warning{'s' if warnings != 1 else ''}")
+                        violation_text = f"[dim]({', '.join(parts)})[/dim]"
+
+                    weight = check_weights.get(check, 1.0)
+                    weight_str = f" · weight: {weight:g}" if weight != 1.0 else ""
+                    check_desc = _format_health_check_desc(icon, check, label, weight_str=weight_str)
+                    bar = make_progress_bar(score, width=10)
+                    score_cell = Text.from_markup(f"{bar} {score_text}")
+
+                    table.add_row(check_desc, score_cell, Text.from_markup(violation_text))
+                else:
+                    check_desc = _format_health_check_desc("-", check, label, disabled=True)
+                    table.add_row(check_desc, Text("Disabled", style="dim"), "")
+        else:
+            failing = [c for c in enabled_cat_checks if check_scores.get(c, 100.0) < 100.0]
+            passing = [c for c in enabled_cat_checks if check_scores.get(c, 100.0) >= 100.0]
+            disabled = [c for c in cat_checks if c not in enabled_checks]
+
+            # 1. Failing / warning checks
+            for check in failing:
+                label = CHECK_LABELS.get(check, check)
                 score = check_scores[check]
                 cf = check_findings[check]
 
-                # Determine status icon and color
-                if score == 100.0:
-                    icon = "[green]✔[/green]"
-                    score_text = "[green]100.0%[/green]"
-                    violation_text = ""
-                else:
-                    icon_char = "✘" if score < 70 else "⚠"
-                    color = "red" if score < 70 else "yellow"
-                    icon = f"[{color}]{icon_char}[/{color}]"
-                    score_text = f"[{color}]{score:.1f}%[/{color}]"
+                icon_char = "✘" if score < 70 else "⚠"
+                color = "red" if score < 70 else "yellow"
+                icon = f"[{color}]{icon_char}[/{color}]"
+                score_text = f"[{color}]{score:.1f}%[/{color}]"
 
-                    errors = sum(1 for f in cf if f.severity == "error")
-                    warnings = sum(1 for f in cf if f.severity == "warning")
-                    parts = []
-                    if errors:
-                        parts.append(f"{errors} error{'s' if errors != 1 else ''}")
-                    if warnings:
-                        parts.append(f"{warnings} warning{'s' if warnings != 1 else ''}")
-                    violation_text = f"[dim]({', '.join(parts)})[/dim]"
+                errors = sum(1 for f in cf if f.severity == "error")
+                warnings = sum(1 for f in cf if f.severity == "warning")
+                parts = []
+                if errors:
+                    parts.append(f"{errors} error{'s' if errors != 1 else ''}")
+                if warnings:
+                    parts.append(f"{warnings} warning{'s' if warnings != 1 else ''}")
+                violation_text = f"[dim]({', '.join(parts)})[/dim]"
 
                 weight = check_weights.get(check, 1.0)
                 weight_str = f" · weight: {weight:g}" if weight != 1.0 else ""
@@ -563,9 +604,43 @@ def _render_health_by_connascence(
                 score_cell = Text.from_markup(f"{bar} {score_text}")
 
                 table.add_row(check_desc, score_cell, Text.from_markup(violation_text))
-            else:
-                check_desc = _format_health_check_desc("-", check, label, disabled=True)
-                table.add_row(check_desc, Text("Disabled", style="dim"), "")
+
+            # 2. Passing checks
+            if passing:
+                if len(passing) == 1 and not failing:
+                    c = passing[0]
+                    label = CHECK_LABELS.get(c, c)
+                    weight = check_weights.get(c, 1.0)
+                    weight_str = f" · weight: {weight:g}" if weight != 1.0 else ""
+                    check_desc = _format_health_check_desc("[green]✔[/green]", c, label, weight_str=weight_str)
+                    bar = make_progress_bar(100.0, width=10)
+                    score_cell = Text.from_markup(f"{bar} [green]100.0%[/green]")
+                    table.add_row(check_desc, score_cell, "")
+                else:
+                    collapsed_count += len(passing)
+                    if not failing:
+                        desc_text = f"  [green]✔[/green] All {len(passing)} checks scored [green]100.0%[/green]"
+                    else:
+                        desc_text = f"  [green]✔[/green] {len(passing)} check{'s' if len(passing) != 1 else ''} passing"
+                    bar = make_progress_bar(100.0, width=10)
+                    score_cell = Text.from_markup(f"{bar} [green]100.0%[/green]")
+                    table.add_row(Text.from_markup(desc_text), score_cell, "")
+
+            # 3. Disabled checks
+            if disabled:
+                collapsed_count += len(disabled)
+                desc = Text("  - ", style="dim")
+                desc.append(
+                    f"{len(disabled)} check{'s' if len(disabled) != 1 else ''} disabled (",
+                    style="dim",
+                )
+                for i, c in enumerate(disabled):
+                    if i > 0:
+                        desc.append(", ", style="dim")
+                    url = registry.get_docs_url(c)
+                    desc.append(c, style=f"dim link {url}" if url else "dim")
+                desc.append(")", style="dim")
+                table.add_row(desc, Text("Disabled", style="dim"), "")
 
         console.print(table)
 
@@ -618,6 +693,10 @@ def _render_health_by_connascence(
 
         console.print(table)
 
+    if not verbose and collapsed_count > 0:
+        console.print()
+        console.print("[dim]Use [bold]--verbose[/bold] to expand all passing and disabled checks.[/dim]")
+
     console.print()
 
 
@@ -657,6 +736,7 @@ def _render_health_by_domain(
     scores: dict[str, Any],
     console: Console,
     config: FitnessFunctionsConfig | None = None,
+    verbose: bool = False,
 ) -> None:
     """Render detailed breakdown grouped by domain (path segment after models/)."""
     penalties = (

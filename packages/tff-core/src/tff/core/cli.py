@@ -936,6 +936,13 @@ def _main_impl(argv: list[str] | None = None) -> int:
         default=None,
         help="Only evaluate models/files modified relative to git ref (e.g. origin/main, HEAD~1)",
     )
+    health_parser.add_argument(
+        "--verbose",
+        "-v",
+        action="store_true",
+        default=False,
+        help="Show detailed breakdown for all checks including passing and disabled checks",
+    )
 
     # Info subcommand
     info_parser = subparsers.add_parser(
@@ -2053,6 +2060,7 @@ def _main_impl(argv: list[str] | None = None) -> int:
                     group_by=group_by,
                     duration=execution_duration,
                     fail_under=args.fail_under,
+                    verbose=getattr(args, "verbose", False),
                 )
 
             overall_score = scores["overall_score"]
