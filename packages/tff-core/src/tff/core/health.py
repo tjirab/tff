@@ -6,7 +6,6 @@ from collections import defaultdict
 from pathlib import Path
 from typing import Any
 
-from rich import box
 from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
@@ -303,6 +302,7 @@ def render_health_report(
     *,
     group_by: str = "connascence",
     duration: float | None = None,
+    fail_under: float | None = None,
 ) -> None:
     """Render a beautiful CLI health report using rich.
 
@@ -315,6 +315,8 @@ def render_health_report(
         ``models/sources``, ``models/marts/marketing``.
     duration:
         Execution duration in seconds (optional).
+    fail_under:
+        Health score threshold for pass/fail status indicator (optional).
     """
     console = console or Console()
     
@@ -323,20 +325,28 @@ def render_health_report(
     category_scores = scores["category_scores"]
     check_scores = scores["check_scores"]
     check_findings = scores["check_findings"]
+    check_weights = scores.get("check_weights", {})
     
     score_color = "green" if overall_score >= 90 else "yellow" if overall_score >= 70 else "red"
     
+    panel_text = Text()
+    panel_text.append("Overall Project Health Score: ", style="bold white")
+    panel_text.append(f"{overall_score:.1f}%", style=f"bold {score_color}")
+
+    if fail_under is not None and fail_under > 0:
+        if overall_score < fail_under:
+            panel_text.append(f"  [FAIL: below threshold {fail_under:.1f}%]", style="bold red")
+        else:
+            panel_text.append(f"  [PASS: meets threshold {fail_under:.1f}%]", style="bold green")
+
+    panel_text.append("\n")
     panel_info = f"Active checks: {len(enabled_checks)}  ·  Categories: {sum(1 for v in category_scores.values() if v is not None)}"
     if duration is not None:
         panel_info += f"  ·  Duration: {duration:.2f}s"
+    panel_text.append(panel_info, style="dim")
 
     score_panel = Panel(
-        Text.assemble(
-            ("Overall Project Health Score: ", "bold white"),
-            (f"{overall_score:.1f}%", f"bold {score_color}"),
-            ("\n", ""),
-            (panel_info, "dim")
-        ),
+        panel_text,
         title=f"[bold {score_color}]tff PROJECT HEALTH REPORT[/bold {score_color}]",
         border_style=score_color,
         padding=(1, 2),
@@ -344,19 +354,21 @@ def render_health_report(
     console.print(score_panel)
     console.print()
     
-    # 1. Summary Table
+    # 1. Summary Table with meter bars
     console.print("[bold cyan]Health Score by Category[/bold cyan]")
+    width = min(console.width - 2, 78) if console.width else 78
+    console.print("─" * width, style="dim")
+
     summary_table = Table(
-        box=box.SIMPLE,
-        show_header=True,
-        header_style="bold cyan",
+        box=None,
+        show_header=False,
         padding=(0, 2, 0, 0),
     )
-    summary_table.add_column("Category", style="bold", no_wrap=True)
-    summary_table.add_column("Checks", justify="center", no_wrap=True)
-    summary_table.add_column("Errors", justify="right", no_wrap=True)
-    summary_table.add_column("Warnings", justify="right", no_wrap=True)
-    summary_table.add_column("Score", justify="right", no_wrap=True)
+    summary_table.add_column("Category", style="bold", min_width=34, no_wrap=True)
+    summary_table.add_column("Progress", width=12, justify="left", no_wrap=True)
+    summary_table.add_column("Score", justify="right", width=7, no_wrap=True)
+    summary_table.add_column("Checks", justify="left", width=12, no_wrap=True)
+    summary_table.add_column("Violations", justify="left", no_wrap=True)
     
     for cat_name, cat_score in category_scores.items():
         if cat_score is None:
@@ -375,27 +387,71 @@ def render_health_report(
                 else:
                     warnings += 1
                     
-        total_in_cat = len(cat_checks) if cat_name in CATEGORIES else len(enabled_cat_checks)
-        checks_ratio = f"{len(enabled_cat_checks)}/{total_in_cat}"
+        checks_label = f"{len(enabled_cat_checks)} check{'s' if len(enabled_cat_checks) != 1 else ''}"
         
-        error_cell = Text(str(errors) if errors else "·", style="bold red" if errors else "dim")
-        warn_cell = Text(str(warnings) if warnings else "·", style="bold yellow" if warnings else "dim")
+        bar_str = make_progress_bar(cat_score, width=10)
+        c_color = "green" if cat_score >= 90 else "yellow" if cat_score >= 70 else "red"
+        bar_cell = Text.from_markup(f"[{c_color}]{bar_str}[/{c_color}]")
+        score_cell = Text(f"{cat_score:.1f}%", style=f"bold {c_color}")
         
-        score_color = "green" if cat_score >= 90 else "yellow" if cat_score >= 70 else "red"
-        score_cell = Text(f"{cat_score:.1f}%", style=f"bold {score_color}")
+        parts = []
+        if errors:
+            parts.append(f"{errors} error{'s' if errors != 1 else ''}")
+        if warnings:
+            parts.append(f"{warnings} warning{'s' if warnings != 1 else ''}")
+        violation_cell = (
+            Text(", ".join(parts), style="bold red" if errors else "bold yellow")
+            if parts
+            else Text("·", style="dim")
+        )
         
         summary_table.add_row(
             cat_name,
-            checks_ratio,
-            error_cell,
-            warn_cell,
+            bar_cell,
             score_cell,
+            checks_label,
+            violation_cell,
         )
         
     console.print(summary_table)
     console.print()
+
+    # 2. Top Penalty Drivers
+    overall_total_weight = sum(check_weights.get(c, 1.0) for c in enabled_checks)
+
+    console.print("[bold cyan]TOP PENALTY DRIVERS[/bold cyan]")
+    console.print("─" * width, style="dim")
+
+    penalties_list: list[tuple[float, str, str]] = []
+    if overall_total_weight > 0:
+        for check in enabled_checks:
+            score = check_scores.get(check, 100.0)
+            if score < 100.0:
+                weight = check_weights.get(check, 1.0)
+                pts_lost = ((100.0 - score) * weight) / overall_total_weight
+                label = CHECK_LABELS.get(check, check)
+                penalties_list.append((pts_lost, label, check))
+
+    penalties_list.sort(key=lambda x: x[0], reverse=True)
+
+    if penalties_list:
+        for pts_lost, label, check in penalties_list[:5]:
+            driver_text = Text()
+            driver_text.append(f"  -{pts_lost:.1f} pts  ", style="bold red")
+            driver_text.append(f"{label:<32} ", style="bold")
+            docs_url = registry.get_docs_url(check)
+            if docs_url:
+                driver_text.append(f"({check})", style=f"dim link {docs_url}")
+            else:
+                driver_text.append(f"({check})", style="dim")
+            console.print(driver_text)
+    else:
+        console.print("  [green]✔ No penalty drivers — all active fitness functions scored 100.0%[/green]")
+
+    console.print("\n[dim]Run [bold]tff explain <rule>[/bold] for remediation guides.[/dim]")
+    console.print()
     
-    # 2. Detailed Breakdown
+    # 3. Detailed Breakdown
     if group_by == "domain":
         _render_health_by_domain(scores, console, config=config)
     else:

@@ -2052,6 +2052,7 @@ def _main_impl(argv: list[str] | None = None) -> int:
                     provider,
                     group_by=group_by,
                     duration=execution_duration,
+                    fail_under=args.fail_under,
                 )
 
             overall_score = scores["overall_score"]

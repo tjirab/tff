@@ -624,12 +624,13 @@ def test_render_lint_report_model_view_shows_line_coordinates() -> None:
     )
 
     output = console.export_text(clear=False)
-    # Finding with line=42 should show path:line prefix
-    assert "models/core/dim_users.sql:42" in output
-    # Finding without line should NOT show a path prefix in the finding row
-    assert output.count("models/core/dim_users.sql:") == 1
+    # Finding with line=42 should show line:col coordinate in tree branch
+    assert "42:1" in output
+    # Finding without line should show '──' dash in coordinate column
+    assert "──" in output
+    assert "models/core/dim_users.sql" in output
 
-    # Header path should be a clickable file:// hyperlink (verify via HTML export)
+    # Header and coordinate should be clickable file:// hyperlinks (verify via HTML export)
     html_output = console.export_html(clear=False)
     assert "file://" in html_output
 
@@ -822,6 +823,115 @@ def test_render_lint_report_model_grouping_e2e() -> None:
     assert "models/core/dim_users.sql" in output
     assert "Column type mismatch." in output
     assert "SELECT * prohibited." in output
+
+
+def test_render_lint_report_tree_branches_and_footer() -> None:
+    """Verify tree formatting with branch symbols and fixable footer."""
+    from rich.console import Console
+    from tff.core.report import LintFinding, render_lint_report
+
+    console = Console(record=True, width=120)
+    findings = [
+        LintFinding(
+            check="banselectstar",
+            severity="error",
+            message="SELECT * is prohibited.",
+            model="dim_users",
+            path="models/core/dim_users.sql",
+            line=42,
+            col=1,
+        ),
+        LintFinding(
+            check="nopositionalgroupbyororderby",
+            severity="warning",
+            message="Positional reference found.",
+            model="dim_users",
+            path="models/core/dim_users.sql",
+            line=50,
+        ),
+    ]
+
+    render_lint_report(
+        findings,
+        models_checked=5,
+        executed_checks=["sqlmesh"],
+        console=console,
+        group_by="model",
+        duration=0.38,
+    )
+
+    output = console.export_text()
+    assert "Findings Summary · LINT FAILED" in output
+    assert "5 models checked" in output
+    assert "2 issues (1 error, 1 warning)" in output
+    assert "0.38s" in output
+    assert "● dim_users" in output
+    assert "├─ 42:1" in output
+    assert "└─ 50:1" in output
+    assert "rule: No SELECT * (banselectstar)" in output
+    assert "connascence: name" in output
+    assert "✖ 1 error, 1 warning in 1 file" in output
+    assert "1 issue fixable automatically with `tff check --fix`" in output
+
+
+def test_format_connascence_tag_helper() -> None:
+    from tff.core.report import _format_connascence_tag
+
+    assert _format_connascence_tag("Connascence of Name (CoN)") == "name"
+    assert _format_connascence_tag("Connascence of Meaning (CoM)") == "meaning"
+    assert _format_connascence_tag("Connascence of Algorithm (CoA)") == "algorithm"
+    assert _format_connascence_tag("Connascence of Position (CoP)") == "position"
+    assert _format_connascence_tag("Connascence of Value (CoV)") == "value"
+    assert _format_connascence_tag("Connascence of Type (CoT)") == "type"
+    assert _format_connascence_tag("Dynamic Coupling & DAG Structure") == "dynamic coupling"
+    assert _format_connascence_tag("Quality & Metadata (Non-Connascence)") == "quality"
+    assert _format_connascence_tag("Unknown Category") == "Unknown Category"
+
+
+def test_is_fixable_finding_helper() -> None:
+    from tff.core.report import LintFinding, _is_fixable_finding
+
+    f1 = LintFinding(check="nopositionalgroupbyororderby", severity="error", message="pos")
+    f2 = LintFinding(check="nomissingdescription", severity="warning", message="desc")
+    f3 = LintFinding(check="sqlcomplexity", severity="error", message="nested subquery in final SELECT")
+    f4 = LintFinding(check="sqlcomplexity", severity="error", message="too many CTEs")
+    f5 = LintFinding(check="banselectstar", severity="error", message="select *")
+
+    assert _is_fixable_finding(f1) is True
+    assert _is_fixable_finding(f2) is True
+    assert _is_fixable_finding(f3) is True
+    assert _is_fixable_finding(f4) is False
+    assert _is_fixable_finding(f5) is False
+
+
+def test_render_lint_report_connascence_model_without_path_and_custom_rule() -> None:
+    """Verify connascence rendering when model has no path and rule has no docs URL."""
+    from rich.console import Console
+    from tff.core.report import LintFinding, render_lint_report
+
+    console = Console(record=True, width=120)
+    findings = [
+        LintFinding(
+            check="custom_rule_without_url",
+            severity="error",
+            message="Custom violation without url.",
+            model="dim_users",
+            path=None,
+        ),
+    ]
+
+    render_lint_report(
+        findings,
+        models_checked=1,
+        console=console,
+        group_by="connascence",
+    )
+
+    output = console.export_text()
+    assert "dim_users" in output
+    assert "custom_rule_without_url" in output
+
+
 
 
 

@@ -1204,4 +1204,51 @@ def test_render_health_report_domain_breakdown_hyperlinks() -> None:
     assert "https://tff.readthedocs.io" not in text
 
 
+def test_render_health_report_top_penalty_drivers() -> None:
+    """Verify top penalty drivers section and remediation guide callout."""
+    config = FitnessFunctionsConfig.model_validate({
+        "rules": {
+            "ban_select_star": {"enabled": True},
+            "layer_integrity": {"enabled": True},
+        },
+    })
+    findings = [
+        LintFinding(
+            check="layer_integrity",
+            severity="error",
+            message="cross layer error",
+            model="dim_users",
+            path="models/core/dim_users.sql",
+        ),
+    ]
+    scores = calculate_health_scores(findings, models_checked=2, config=config, provider="dbt")
+
+    console = Console(record=True, width=120)
+    render_health_report(scores, config, provider="dbt", console=console, fail_under=98.0)
+    output = console.export_text()
+
+    assert "TOP PENALTY DRIVERS" in output
+    assert "pts" in output
+    assert "layer_integrity" in output
+    assert "Run tff explain <rule> for remediation guides." in output
+    assert "[FAIL: below threshold 98.0%]" in output
+
+
+def test_render_health_report_pass_threshold_and_no_penalties() -> None:
+    """Verify pass threshold indicator and zero penalty state."""
+    config = FitnessFunctionsConfig.model_validate({
+        "rules": {"ban_select_star": {"enabled": True}},
+    })
+    findings = []
+    scores = calculate_health_scores(findings, models_checked=5, config=config, provider="dbt")
+
+    console = Console(record=True, width=120)
+    render_health_report(scores, config, provider="dbt", console=console, fail_under=80.0)
+    output = console.export_text()
+
+    assert "[PASS: meets threshold 80.0%]" in output
+    assert "No penalty drivers — all active fitness functions scored 100.0%" in output
+
+
+
 
