@@ -1847,9 +1847,9 @@ def _main_impl(argv: list[str] | None = None) -> int:
         else:
             try:
                 if is_interactive:
-                    from rich.status import Status
+                    from tff.core.spinner import get_status
 
-                    with Status(
+                    with get_status(
                         f"Evaluating fitness functions with {adapter.provider_name}...",
                         console=Console(stderr=True),
                     ):
@@ -1899,9 +1899,9 @@ def _main_impl(argv: list[str] | None = None) -> int:
                     try:
                         rerun_start = time.perf_counter()
                         if is_interactive:
-                            from rich.status import Status
+                            from tff.core.spinner import get_status
 
-                            with Status(
+                            with get_status(
                                 f"Re-evaluating fitness functions with {adapter.provider_name}...",
                                 console=Console(stderr=True),
                             ):

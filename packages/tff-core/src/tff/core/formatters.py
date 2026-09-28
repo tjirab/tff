@@ -34,7 +34,7 @@ def _get_relative_path(file_path: str | Path, project_root: Path | None = None) 
 
 
 def _format_annotation_title(check: str, severity: str = "error") -> str:
-    """Format human-friendly rule label and connascence category with Bauhaus signal."""
+    """Format human-friendly rule label and connascence category with status signal."""
     from tff.core.report import CONNASCENCE_CATEGORIES
 
     tag = "ERR" if severity == "error" else "WRN"
@@ -50,7 +50,7 @@ def format_github_annotation(
     finding: LintFinding,
     project_root: Path | None = None,
 ) -> str:
-    """Format a LintFinding as a GitHub Actions workflow command annotation with Bauhaus signals."""
+    """Format a LintFinding as a GitHub Actions workflow command annotation with status signals."""
     from tff.core.registry import registry
 
     command = "error" if finding.severity == "error" else "warning"

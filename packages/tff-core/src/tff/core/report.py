@@ -276,7 +276,7 @@ def render_lint_report(
     provider: str | None = None,
     dialect: str | None = None,
 ) -> bool:
-    """Render lint report in Bauhaus architectural audit ledger format."""
+    """Render lint report in architectural audit ledger format."""
     console = console or Console()
     errors = [f for f in findings if f.severity == "error"]
     warnings = [f for f in findings if f.severity == "warning"]

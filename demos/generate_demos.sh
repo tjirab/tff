@@ -16,9 +16,9 @@ Ad-hoc generation of VHS terminal demo GIFs.
 
 Targets:
   all         Generate all demo GIFs (default)
-  dbt         Generate demo.gif (dbt check)
-  sqlmesh     Generate demo-sqlmesh.gif (SQLMesh check & CTE fingerprinting)
-  health      Generate demo-health.gif (project health scoring)
+  dbt         Generate demo.gif (dbt check - architectural audit ledger)
+  sqlmesh     Generate demo-sqlmesh.gif (SQLMesh check - audit ledger & duplicate CTEs)
+  health      Generate demo-health.gif (project fitness scoring & dimension breakdown)
   <file.tape> Generate demo GIF from a specific tape file
 
 Options:
@@ -58,18 +58,18 @@ run_tape() {
 
 case "${TARGET}" in
     all)
-        run_tape "demos/demo-check-dbt.tape" "demo.gif (dbt check)"
-        run_tape "demos/demo-sqlmesh.tape" "demo-sqlmesh.gif (SQLMesh check & CTE fingerprinting)"
-        run_tape "demos/demo-health.tape" "demo-health.gif (project health scoring)"
+        run_tape "demos/demo-check-dbt.tape" "demo.gif (dbt check - architectural audit ledger)"
+        run_tape "demos/demo-sqlmesh.tape" "demo-sqlmesh.gif (SQLMesh check - audit ledger & duplicate CTEs)"
+        run_tape "demos/demo-health.tape" "demo-health.gif (project fitness scoring & dimension breakdown)"
         ;;
     dbt|check-dbt|demo-check-dbt|demo-check-dbt.tape)
-        run_tape "demos/demo-check-dbt.tape" "demo.gif (dbt check)"
+        run_tape "demos/demo-check-dbt.tape" "demo.gif (dbt check - architectural audit ledger)"
         ;;
     sqlmesh|demo-sqlmesh|demo-sqlmesh.tape)
-        run_tape "demos/demo-sqlmesh.tape" "demo-sqlmesh.gif (SQLMesh check & CTE fingerprinting)"
+        run_tape "demos/demo-sqlmesh.tape" "demo-sqlmesh.gif (SQLMesh check - audit ledger & duplicate CTEs)"
         ;;
     health|demo-health|demo-health.tape)
-        run_tape "demos/demo-health.tape" "demo-health.gif (project health scoring)"
+        run_tape "demos/demo-health.tape" "demo-health.gif (project fitness scoring & dimension breakdown)"
         ;;
     *)
         if [ -f "${TARGET}" ]; then

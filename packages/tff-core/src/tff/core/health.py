@@ -318,7 +318,7 @@ SHORT_CHECK_LABELS: dict[str, str] = {
 
 
 def _get_action_phrase(check: str, count: int) -> str:
-    """Format an actionable Bauhaus remediation command."""
+    """Format an actionable remediation command."""
     if check == "duplicate_ctes":
         return f"Refactor {count} duplicate CTE{'s' if count != 1 else ''}"
     if check == "layer_integrity":
@@ -356,7 +356,7 @@ def render_health_report(
     verbose: bool = False,
     project_root: Path | None = None,
 ) -> None:
-    """Render project fitness score in Bauhaus architectural style."""
+    """Render project fitness score in architectural style."""
     console = console or Console()
 
     overall_score = scores["overall_score"]
