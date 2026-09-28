@@ -84,27 +84,24 @@ Using the configured layer order (`sources` → `common_prep` → `common` → `
 
 ### Overall Health Score: **76.3%**
 
-```
-╭───────────────────────── tff PROJECT HEALTH REPORT ──────────────────────────╮
-│                                                                              │
-│  Overall Project Health Score: 76.3%                                         │
-│  Models Checked: 2,213  ·  Active Checks: 19  ·  Categories: 8               │
-│                                                                              │
-╰──────────────────────────────────────────────────────────────────────────────╯
+```text
+PROJECT FITNESS SCORE
+──────────────────────────────────────────────────────────────────────────────
+OVERALL HEALTH                                  76.3%
+──────────────────────────────────────────────────────────────────────────────
 
-Health Score by Category
-────────────────────────────────────────────────────────────────────────────────
-Category                             Checks   Errors   Warnings    Score
-────────────────────────────────────────────────────────────────────────────────
-Connascence of Name (CoN)             4/6      1,470          ·    92.6%
-Connascence of Type (CoT)             2/2          ·          ·   100.0%
-Connascence of Position (CoP)         1/1         37          ·    98.5%
-Connascence of Meaning (CoM)          1/1          ·          ·   100.0%
-Connascence of Algorithm (CoA)        1/1          ·         54    98.8%
-Connascence of Value (CoV)            1/1          ·      1,206    88.3%
-Dynamic Coupling & DAG Structure      5/5        114         18    50.0%
-Quality & Metadata                    4/7      3,451          ·    61.0%
-────────────────────────────────────────────────────────────────────────────────
+DIMENSION                                 SCORE   DEFECTS  DISTRIBUTION (0-100)
+Connascence of Name                       92.6%      1470  █████████░
+Connascence of Type                      100.0%         0  ██████████
+Connascence of Position                   98.5%        37  ██████████
+Connascence of Meaning                   100.0%         0  ██████████
+Connascence of Algorithm                  98.8%        54  ██████████
+Connascence of Value                      88.3%      1206  ████████░░
+Architecture & DAG                        50.0%       132  █████░░░░░
+Contract & Metadata                       61.0%      3451  ██████░░░░
+──────────────────────────────────────────────────────────────────────────────
+STATUS: 19 checks evaluated across 2,213 models.
+ACTION: Add missing contract metadata to improve project fitness.
 ```
 
 ---

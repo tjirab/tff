@@ -108,8 +108,8 @@ Under the hood:
 3. Violations, annotations, and pass/fail exit codes are filtered strictly to the modified files.
 4. The PR comment explicitly displays:
    ```markdown
-   > **Mode**: 🔍 Gating 3 modified file(s) in PR · Minimum score: 80.0% · Severity threshold: error
-   > ℹ️ *4 pre-existing violation(s) in unmodified files were excluded due to only-changed: true.*
+   > **Mode**: Gating `3` modified file(s) in PR · Minimum score: `80.0%` · Severity threshold: `error`
+   > *4 pre-existing violation(s) in unmodified files were excluded due to `only-changed: true`.*
    ```
 
 ---
@@ -184,10 +184,12 @@ dbt relies on Jinja macros, package dispatch (`dbt_utils`), and adapter configs 
 
 #### 1. Interactive PR Summary Comment
 When `comment-pr: "true"` is enabled:
-* **Overall Metrics**: Health score, pass/fail status badge, violation counts.
-* **Score Delta**: Displays progress against target branch (`+2.5% vs main 📈` or `-1.0% vs main 📉`).
-* **Violation Diffs**: Explicitly distinguishes **New Violations Introduced** from **Resolved Violations**.
-* **Category Breakdown**: Displays health score percentages across Connascence categories.
+* **Architecture Audit Scorecard**: Overall health score, pass/fail status badge, total defects, errors, and warnings (`| OVERALL HEALTH | STATUS | DEFECTS | ERRORS | WARNINGS |`).
+* **Score Delta**: Displays progress against target branch (`+2.5% vs main` or `-1.0% vs main`).
+* **Violation Diffs**: Explicitly distinguishes **New Violations Introduced** from **Resolved Violations** with status badges (`ERR`/`WRN`), file locations, coupling dimensions, and remediation hints.
+* **Dimension Distribution**: Displays health score percentages and distribution progress bars (`■■■■■■■■··`) across Connascence categories.
+* **Audit Ledger Detail**: Collapsible violations ledger (`| STATUS | LOCATION | RULE | COUPLING | DETAILS |`).
+* **Action Footer**: Identifies the single highest-impact remediation action to raise project health.
 * **Idempotent Updates**: Automatically edits the existing comment on new commits to avoid comment clutter.
 
 #### 2. In-File Inline Annotations ("Files changed" Tab)

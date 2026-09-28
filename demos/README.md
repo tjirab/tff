@@ -6,9 +6,9 @@ This directory contains automated terminal recording scripts (.tape files) power
 
 | Tape File | Output Asset | Description |
 | :--- | :--- | :--- |
-| [`demo-check-dbt.tape`](demo-check-dbt.tape) | [`docs/assets/demo.gif`](../docs/assets/demo.gif) | Hero demo: running `tff check` on `examples/minimal-dbt-project` with zero-config default conventions. |
-| [`demo-sqlmesh.tape`](demo-sqlmesh.tape) | [`docs/assets/demo-sqlmesh.gif`](../docs/assets/demo-sqlmesh.gif) | Demonstrates duplicate CTE detection (Connascence of Algorithm), layer integrity enforcement, and anti-pattern bans on `examples/minimal-sqlmesh-project`. |
-| [`demo-health.tape`](demo-health.tape) | [`docs/assets/demo-health.gif`](../docs/assets/demo-health.gif) | Demonstrates project health scoring and category breakdowns with visual progress bars. |
+| [`demo-check-dbt.tape`](demo-check-dbt.tape) | [`docs/assets/demo.gif`](../docs/assets/demo.gif) | Hero demo: running `tff check` on `examples/minimal-dbt-project` with zero-config default conventions in Bauhaus audit ledger layout. |
+| [`demo-sqlmesh.tape`](demo-sqlmesh.tape) | [`docs/assets/demo-sqlmesh.gif`](../docs/assets/demo-sqlmesh.gif) | Demonstrates architectural audit ledger, duplicate CTE detection (Connascence of Algorithm), layer integrity enforcement, and anti-pattern bans on `examples/minimal-sqlmesh-project`. |
+| [`demo-health.tape`](demo-health.tape) | [`docs/assets/demo-health.gif`](../docs/assets/demo-health.gif) | Demonstrates project fitness scoring, dimension distribution bars, domain breakdown, and prioritized action advice on `examples/minimal-sqlmesh-project`. |
 
 ## Prerequisites
 
