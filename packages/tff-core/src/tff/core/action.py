@@ -45,7 +45,7 @@ def _make_markdown_progress_bar(score: float, width: int = 10) -> str:
 
 
 def _get_coupling_tag(check: str) -> str:
-    """Resolve short Bauhaus coupling tag for a check name."""
+    """Resolve short coupling tag for a check name."""
     cat = CONNASCENCE_CATEGORIES.get(check, "")
     if cat:
         return _format_connascence_tag(cat)

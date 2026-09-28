@@ -16,7 +16,7 @@ Ad-hoc generation of VHS terminal demo GIFs.
 
 Targets:
   all         Generate all demo GIFs (default)
-  dbt         Generate demo.gif (dbt check - Bauhaus audit ledger)
+  dbt         Generate demo.gif (dbt check - architectural audit ledger)
   sqlmesh     Generate demo-sqlmesh.gif (SQLMesh check - audit ledger & duplicate CTEs)
   health      Generate demo-health.gif (project fitness scoring & dimension breakdown)
   <file.tape> Generate demo GIF from a specific tape file
@@ -58,12 +58,12 @@ run_tape() {
 
 case "${TARGET}" in
     all)
-        run_tape "demos/demo-check-dbt.tape" "demo.gif (dbt check - Bauhaus audit ledger)"
+        run_tape "demos/demo-check-dbt.tape" "demo.gif (dbt check - architectural audit ledger)"
         run_tape "demos/demo-sqlmesh.tape" "demo-sqlmesh.gif (SQLMesh check - audit ledger & duplicate CTEs)"
         run_tape "demos/demo-health.tape" "demo-health.gif (project fitness scoring & dimension breakdown)"
         ;;
     dbt|check-dbt|demo-check-dbt|demo-check-dbt.tape)
-        run_tape "demos/demo-check-dbt.tape" "demo.gif (dbt check - Bauhaus audit ledger)"
+        run_tape "demos/demo-check-dbt.tape" "demo.gif (dbt check - architectural audit ledger)"
         ;;
     sqlmesh|demo-sqlmesh|demo-sqlmesh.tape)
         run_tape "demos/demo-sqlmesh.tape" "demo-sqlmesh.gif (SQLMesh check - audit ledger & duplicate CTEs)"

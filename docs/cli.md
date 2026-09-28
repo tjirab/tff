@@ -362,7 +362,7 @@ tff supports multiple structured output formats for seamless CI/CD and tool inte
 
 | Format | CLI Option | Primary Target | Description |
 | :--- | :--- | :--- | :--- |
-| **Terminal Text** | (default) | Local developers, CI terminal | Bauhaus architectural audit ledger, status badges (`ERR`/`WRN`), coupling tags, clickable OSC-8 file coordinates/docs hyperlinks, and prioritized remediation actions. |
+| **Terminal Text** | (default) | Local developers, CI terminal | Architectural audit ledger, status badges (`ERR`/`WRN`), coupling tags, clickable OSC-8 file coordinates/docs hyperlinks, and prioritized remediation actions. |
 | **JSON** | `--format json` or `--json` | `jq`, custom telemetry, scripts | Pure JSON output of findings, health scores, and metrics. |
 | **SARIF v2.1.0** | `--format sarif` | GitHub Code Scanning | OASIS standard format for GitHub Security Alerts and PR file annotations. |
 | **GitHub Annotations**| `--format github` or `--github-annotations` | GitHub Actions Runners | Emits `::error` and `::warning` workflow commands to annotate changed lines in PRs. |
