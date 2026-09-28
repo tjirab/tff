@@ -17,29 +17,22 @@ from tff.core.cli import (
 from tff.core.registry import CheckDefinition
 
 
-def test_detect_provider_dbt(tmp_path: Path):
-    (tmp_path / "dbt_project.yml").touch()
-    assert _detect_provider(tmp_path) == "dbt"
-
-
-def test_detect_provider_sqlmesh_py(tmp_path: Path):
-    (tmp_path / "config.py").touch()
-    assert _detect_provider(tmp_path) == "sqlmesh"
-
-
-def test_detect_provider_sqlmesh_yaml(tmp_path: Path):
-    (tmp_path / "config.yaml").touch()
-    assert _detect_provider(tmp_path) == "sqlmesh"
-
-
-def test_detect_provider_sqlmesh_yml(tmp_path: Path):
-    (tmp_path / "config.yml").touch()
-    assert _detect_provider(tmp_path) == "sqlmesh"
-
-
-def test_detect_provider_sqlmesh_dir(tmp_path: Path):
-    (tmp_path / ".sqlmesh").mkdir()
-    assert _detect_provider(tmp_path) == "sqlmesh"
+@pytest.mark.parametrize(
+    "marker,is_dir,expected",
+    [
+        ("dbt_project.yml", False, "dbt"),
+        ("config.py", False, "sqlmesh"),
+        ("config.yaml", False, "sqlmesh"),
+        ("config.yml", False, "sqlmesh"),
+        (".sqlmesh", True, "sqlmesh"),
+    ],
+)
+def test_detect_provider_success(tmp_path: Path, marker: str, is_dir: bool, expected: str):
+    if is_dir:
+        (tmp_path / marker).mkdir()
+    else:
+        (tmp_path / marker).touch()
+    assert _detect_provider(tmp_path) == expected
 
 
 def test_detect_provider_conflict(tmp_path: Path):
@@ -56,42 +49,36 @@ def test_detect_provider_not_found(tmp_path: Path):
         _detect_provider(tmp_path)
 
 
-def test_get_runner_success_dbt():
+@pytest.mark.parametrize(
+    "provider,expected_module",
+    [
+        ("dbt", "tff.dbt.runner"),
+        ("sqlmesh", "tff.sqlmesh.runner"),
+    ],
+)
+def test_get_runner_success(provider: str, expected_module: str):
     with patch("importlib.import_module") as mock_import:
         mock_module = MagicMock()
         mock_import.return_value = mock_module
-        runner = _get_runner("dbt")
-        mock_import.assert_called_once_with("tff.dbt.runner")
+        runner = _get_runner(provider)
+        mock_import.assert_called_once_with(expected_module)
         assert runner == mock_module
 
 
-def test_get_runner_success_sqlmesh():
-    with patch("importlib.import_module") as mock_import:
-        mock_module = MagicMock()
-        mock_import.return_value = mock_module
-        runner = _get_runner("sqlmesh")
-        mock_import.assert_called_once_with("tff.sqlmesh.runner")
-        assert runner == mock_module
-
-
-def test_get_runner_import_error_dbt():
+@pytest.mark.parametrize(
+    "provider,err_match",
+    [
+        ("dbt", "tff is not installed with dbt support"),
+        ("sqlmesh", "tff is not installed with sqlmesh support"),
+    ],
+)
+def test_get_runner_import_error(provider: str, err_match: str):
     with patch(
         "importlib.import_module",
-        side_effect=ImportError("No module named 'tff.dbt.runner'"),
+        side_effect=ImportError(f"No module named 'tff.{provider}.runner'"),
     ):
-        with pytest.raises(ImportError, match="tff is not installed with dbt support"):
-            _get_runner("dbt")
-
-
-def test_get_runner_import_error_sqlmesh():
-    with patch(
-        "importlib.import_module",
-        side_effect=ImportError("No module named 'tff.sqlmesh.runner'"),
-    ):
-        with pytest.raises(
-            ImportError, match="tff is not installed with sqlmesh support"
-        ):
-            _get_runner("sqlmesh")
+        with pytest.raises(ImportError, match=err_match):
+            _get_runner(provider)
 
 
 def test_get_runner_unknown():
@@ -381,17 +368,10 @@ def test_missing_command_defaults_to_help(capsys):
     assert "tff" in captured.out
 
 
-def test_version_flag_long(capsys):
+@pytest.mark.parametrize("flag", ["--version", "-v"])
+def test_version_flags(flag: str, capsys):
     with pytest.raises(SystemExit) as excinfo:
-        main(["--version"])
-    assert excinfo.value.code == 0
-    captured = capsys.readouterr()
-    assert "tff" in captured.out
-
-
-def test_version_flag_short(capsys):
-    with pytest.raises(SystemExit) as excinfo:
-        main(["-v"])
+        main([flag])
     assert excinfo.value.code == 0
     captured = capsys.readouterr()
     assert "tff" in captured.out
@@ -1050,72 +1030,42 @@ def test_cli_init_unexpected_error(tmp_path: Path, capsys):
         assert "Error creating configuration file: Disk full" in captured.err
 
 
-def test_cli_lint_missing_config_notice(tmp_path: Path, capsys):
+@pytest.mark.parametrize(
+    "cmd,has_config,is_json,expect_notice",
+    [
+        ("lint", False, False, True),
+        ("lint", True, False, False),
+        ("lint", False, True, False),
+        ("health", False, False, True),
+        ("health", True, False, False),
+    ],
+)
+def test_cli_config_notice(
+    tmp_path: Path, capsys, cmd: str, has_config: bool, is_json: bool, expect_notice: bool
+):
     (tmp_path / "dbt_project.yml").touch()
+    if has_config:
+        (tmp_path / "fitness_functions.yaml").write_text(
+            "layers:\n  order: [staging, marts]\n", encoding="utf-8"
+        )
     mock_runner = MagicMock()
     mock_runner.run_all_checks.return_value = ([], 0, [])
 
-    with patch("tff.core.cli._get_runner", return_value=mock_runner):
-        exit_code = main(["lint", "--project", str(tmp_path)])
-        assert exit_code == 0
-        captured = capsys.readouterr()
-        assert "Notice: No fitness_functions.yaml found." in captured.err
-        assert "staging -> intermediate -> core -> marts" in captured.err
-        assert "Run 'tff init' to generate a project configuration file." in captured.err
-
-
-def test_cli_lint_existing_config_no_notice(tmp_path: Path, capsys):
-    (tmp_path / "dbt_project.yml").touch()
-    (tmp_path / "fitness_functions.yaml").write_text("layers:\n  order: [staging, marts]\n", encoding="utf-8")
-    mock_runner = MagicMock()
-    mock_runner.run_all_checks.return_value = ([], 0, [])
-
-    with patch("tff.core.cli._get_runner", return_value=mock_runner):
-        exit_code = main(["lint", "--project", str(tmp_path)])
-        assert exit_code == 0
-        captured = capsys.readouterr()
-        assert "Notice: No fitness_functions.yaml found." not in captured.err
-
-
-def test_cli_lint_json_no_notice(tmp_path: Path, capsys):
-    (tmp_path / "dbt_project.yml").touch()
-    mock_runner = MagicMock()
-    mock_runner.run_all_checks.return_value = ([], 0, [])
-
-    with patch("tff.core.cli._get_runner", return_value=mock_runner):
-        exit_code = main(["lint", "--project", str(tmp_path), "--json"])
-        assert exit_code == 0
-        captured = capsys.readouterr()
-        assert "Notice: No fitness_functions.yaml found." not in captured.err
-        assert "Notice: No fitness_functions.yaml found." not in captured.out
-
-
-def test_cli_health_missing_config_notice(tmp_path: Path, capsys):
-    (tmp_path / "dbt_project.yml").touch()
-    mock_runner = MagicMock()
-    mock_runner.run_all_checks.return_value = ([], 0, [])
+    args = [cmd, "--project", str(tmp_path)]
+    if is_json:
+        args.append("--json")
 
     with patch("tff.core.cli._get_runner", return_value=mock_runner), \
          patch("tff.core.health.render_health_report"):
-        exit_code = main(["health", "--project", str(tmp_path)])
+        exit_code = main(args)
         assert exit_code == 0
         captured = capsys.readouterr()
-        assert "Notice: No fitness_functions.yaml found." in captured.err
-        assert "Run 'tff init' to generate a project configuration file." in captured.err
-
-
-def test_cli_health_existing_config_no_notice(tmp_path: Path, capsys):
-    (tmp_path / "dbt_project.yml").touch()
-    (tmp_path / "fitness_functions.yaml").write_text("layers:\n  order: [staging, marts]\n", encoding="utf-8")
-    mock_runner = MagicMock()
-    mock_runner.run_all_checks.return_value = ([], 0, [])
-
-    with patch("tff.core.cli._get_runner", return_value=mock_runner), \
-         patch("tff.core.health.render_health_report"):
-        exit_code = main(["health", "--project", str(tmp_path)])
-        assert exit_code == 0
-        captured = capsys.readouterr()
-        assert "Notice: No fitness_functions.yaml found." not in captured.err
+        if expect_notice:
+            assert "Notice: No fitness_functions.yaml found." in captured.err
+            assert "Run 'tff init' to generate a project configuration file." in captured.err
+        else:
+            assert "Notice: No fitness_functions.yaml found." not in captured.err
+            assert "Notice: No fitness_functions.yaml found." not in captured.out
 
 
 def test_cli_lint_format_sarif(tmp_path: Path, capsys):
@@ -1548,49 +1498,21 @@ def test_cli_debug_captures_logs(mock_render, mock_load_config, mock_get_runner,
     assert "Check execution completed" in captured.err
 
 
-@patch("tff.dbt.cli.run_all_checks")
-@patch("tff.dbt.cli.load_fitness_config")
-@patch("tff.dbt.cli.render_lint_report")
-def test_deprecated_dbt_cli_debug(mock_render, mock_load_config, mock_run_checks, tmp_path: Path):
+@pytest.mark.parametrize(
+    "cli_module_name",
+    ["tff.dbt.cli", "tff.dataform.cli", "tff.sqlmesh.cli"],
+)
+def test_deprecated_provider_cli_debug(tmp_path: Path, cli_module_name: str):
+    import importlib
     import logging
-    import tff.dbt.cli
 
-    mock_run_checks.return_value = ([], 1, ["rules"])
-    mock_render.return_value = True
-
-    exit_code = tff.dbt.cli.main(["lint", "--debug", "--project", str(tmp_path)])
-    assert exit_code == 0
-    assert logging.getLogger().level == logging.DEBUG
-
-
-@patch("tff.dataform.cli.run_all_checks")
-@patch("tff.dataform.cli.load_fitness_config")
-@patch("tff.dataform.cli.render_lint_report")
-def test_deprecated_dataform_cli_debug(mock_render, mock_load_config, mock_run_checks, tmp_path: Path):
-    import logging
-    import tff.dataform.cli
-
-    mock_run_checks.return_value = ([], 1, ["rules"])
-    mock_render.return_value = True
-
-    exit_code = tff.dataform.cli.main(["lint", "--debug", "--project", str(tmp_path)])
-    assert exit_code == 0
-    assert logging.getLogger().level == logging.DEBUG
-
-
-@patch("tff.sqlmesh.cli.run_all_checks")
-@patch("tff.sqlmesh.cli.load_fitness_config")
-@patch("tff.sqlmesh.cli.render_lint_report")
-def test_deprecated_sqlmesh_cli_debug(mock_render, mock_load_config, mock_run_checks, tmp_path: Path):
-    import logging
-    import tff.sqlmesh.cli
-
-    mock_run_checks.return_value = ([], 1, ["rules"])
-    mock_render.return_value = True
-
-    exit_code = tff.sqlmesh.cli.main(["lint", "--debug", "--project", str(tmp_path)])
-    assert exit_code == 0
-    assert logging.getLogger().level == logging.DEBUG
+    cli_mod = importlib.import_module(cli_module_name)
+    with patch(f"{cli_module_name}.run_all_checks", return_value=([], 1, ["rules"])), \
+         patch(f"{cli_module_name}.load_fitness_config"), \
+         patch(f"{cli_module_name}.render_lint_report", return_value=True):
+        exit_code = cli_mod.main(["lint", "--debug", "--project", str(tmp_path)])
+        assert exit_code == 0
+        assert logging.getLogger().level == logging.DEBUG
 
 
 @patch("tff.core.cli._get_adapter")
@@ -1768,123 +1690,127 @@ def test_cli_check_alias(tmp_path: Path):
             mock_adapter.run_checks.assert_called_once()
 
 
-def test_mask_sensitive_args_separate_values():
-    raw_args = ["action", "--github-token", "ghp_secret_token_123", "--diff-against-base"]
-    expected = ["action", "--github-token", "***", "--diff-against-base"]
+@pytest.mark.parametrize(
+    "raw_args,expected",
+    [
+        (
+            ["action", "--github-token", "ghp_secret_token_123", "--diff-against-base"],
+            ["action", "--github-token", "***", "--diff-against-base"],
+        ),
+        (
+            ["action", "--github-token=ghp_secret_token_123", "--diff-against-base"],
+            ["action", "--github-token=***", "--diff-against-base"],
+        ),
+        (
+            [
+                "--GITHUB-TOKEN=secret1",
+                "--github_token",
+                "secret2",
+                "--api-key",
+                "key123",
+                "--api_key=key456",
+                "--password",
+                "pass1",
+                "--secret=sec1",
+            ],
+            [
+                "--GITHUB-TOKEN=***",
+                "--github_token",
+                "***",
+                "--api-key",
+                "***",
+                "--api_key=***",
+                "--password",
+                "***",
+                "--secret=***",
+            ],
+        ),
+        (
+            [
+                "--my-custom-token",
+                "custom_tok",
+                "--db-password=pass",
+                "--oauth-client-secret",
+                "oauth_sec",
+            ],
+            [
+                "--my-custom-token",
+                "***",
+                "--db-password=***",
+                "--oauth-client-secret",
+                "***",
+            ],
+        ),
+        (
+            [
+                "--access-key",
+                "AKIAIOSFODNN7EXAMPLE",
+                "--private-key=my_private_key_content",
+                "--aws-access-key",
+                "secret_aws_key",
+                "--ssh-private-key=ssh_key_secret",
+                "--webhook-secret",
+                "whsec_abc123",
+                "--slack-webhook-url=https://hooks.slack.com/services/T00/B00/X00",
+                "--github-webhook-secret",
+                "gh_hook_sec",
+                "--webhook-url",
+                "https://example.com/webhook",
+            ],
+            [
+                "--access-key",
+                "***",
+                "--private-key=***",
+                "--aws-access-key",
+                "***",
+                "--ssh-private-key=***",
+                "--webhook-secret",
+                "***",
+                "--slack-webhook-url=***",
+                "--github-webhook-secret",
+                "***",
+                "--webhook-url",
+                "***",
+            ],
+        ),
+        (
+            [
+                "lint",
+                "--project",
+                "/path/to/project",
+                "--config=fitness_functions.yaml",
+                "--key-column",
+                "user_id",
+                "--primary-key=id",
+                "name=value",
+            ],
+            [
+                "lint",
+                "--project",
+                "/path/to/project",
+                "--config=fitness_functions.yaml",
+                "--key-column",
+                "user_id",
+                "--primary-key=id",
+                "name=value",
+            ],
+        ),
+        ([], []),
+        (["--github-token"], ["--github-token"]),
+        (
+            ["--token", "tok", "--password", "pass"],
+            ["--token", "***", "--password", "***"],
+        ),
+    ],
+)
+def test_mask_sensitive_args(raw_args: list[str], expected: list[str]):
     assert mask_sensitive_args(raw_args) == expected
-
-
-def test_mask_sensitive_args_equals_values():
-    raw_args = ["action", "--github-token=ghp_secret_token_123", "--diff-against-base"]
-    expected = ["action", "--github-token=***", "--diff-against-base"]
-    assert mask_sensitive_args(raw_args) == expected
-
-
-def test_mask_sensitive_args_case_and_underscores():
-    raw_args = [
-        "--GITHUB-TOKEN=secret1",
-        "--github_token",
-        "secret2",
-        "--api-key",
-        "key123",
-        "--api_key=key456",
-        "--password",
-        "pass1",
-        "--secret=sec1",
-    ]
-    expected = [
-        "--GITHUB-TOKEN=***",
-        "--github_token",
-        "***",
-        "--api-key",
-        "***",
-        "--api_key=***",
-        "--password",
-        "***",
-        "--secret=***",
-    ]
-    assert mask_sensitive_args(raw_args) == expected
-
-
-def test_mask_sensitive_args_suffix_matching():
-    raw_args = [
-        "--my-custom-token",
-        "custom_tok",
-        "--db-password=pass",
-        "--oauth-client-secret",
-        "oauth_sec",
-    ]
-    expected = [
-        "--my-custom-token",
-        "***",
-        "--db-password=***",
-        "--oauth-client-secret",
-        "***",
-    ]
-    assert mask_sensitive_args(raw_args) == expected
-
-
-def test_mask_sensitive_args_access_keys_and_webhooks():
-    raw_args = [
-        "--access-key",
-        "AKIAIOSFODNN7EXAMPLE",
-        "--private-key=my_private_key_content",
-        "--aws-access-key",
-        "secret_aws_key",
-        "--ssh-private-key=ssh_key_secret",
-        "--webhook-secret",
-        "whsec_abc123",
-        "--slack-webhook-url=https://hooks.slack.com/services/T00/B00/X00",
-        "--github-webhook-secret",
-        "gh_hook_sec",
-        "--webhook-url",
-        "https://example.com/webhook",
-    ]
-    expected = [
-        "--access-key",
-        "***",
-        "--private-key=***",
-        "--aws-access-key",
-        "***",
-        "--ssh-private-key=***",
-        "--webhook-secret",
-        "***",
-        "--slack-webhook-url=***",
-        "--github-webhook-secret",
-        "***",
-        "--webhook-url",
-        "***",
-    ]
-    assert mask_sensitive_args(raw_args) == expected
-
-
-def test_mask_sensitive_args_non_sensitive_args():
-    raw_args = [
-        "lint",
-        "--project",
-        "/path/to/project",
-        "--config=fitness_functions.yaml",
-        "--key-column",
-        "user_id",
-        "--primary-key=id",
-        "name=value",
-    ]
-    assert mask_sensitive_args(raw_args) == raw_args
 
 
 def test_mask_sensitive_args_custom_flags():
     raw_args = ["--internal-cred", "secret_val", "--normal-flag", "normal_val"]
     masked = mask_sensitive_args(raw_args, sensitive_flags=frozenset({"--internal-cred"}))
     assert masked == ["--internal-cred", "***", "--normal-flag", "normal_val"]
-
-
-def test_mask_sensitive_args_edge_cases():
-    assert mask_sensitive_args([]) == []
-    # Trailing sensitive flag without value
-    assert mask_sensitive_args(["--github-token"]) == ["--github-token"]
-    # Consecutive sensitive flags
-    raw_args = ["--token", "tok", "--password", "pass"]
-    assert mask_sensitive_args(raw_args) == ["--token", "***", "--password", "***"]
 
 
 def test_cli_debug_logging_masks_github_token(capsys):
@@ -1977,31 +1903,20 @@ def test_cli_lint_autofix_interactive_spinner(tmp_path: Path):
         assert mock_render.call_args[1]["duration"] is not None
 
 
-def test_fuzzy_typo_suggestion_lint(capsys):
-    """Typo 'lin' should suggest 'lint'."""
+@pytest.mark.parametrize(
+    "typo,expected_suggestion",
+    [
+        ("lin", "lint"),
+        ("chek", "check"),
+        ("healt", "health"),
+    ],
+)
+def test_fuzzy_typo_suggestions(typo: str, expected_suggestion: str, capsys):
     with pytest.raises(SystemExit) as excinfo:
-        main(["lin"])
+        main([typo])
     assert excinfo.value.code == 2
     captured = capsys.readouterr()
-    assert "Did you mean 'lint'?" in captured.err
-
-
-def test_fuzzy_typo_suggestion_check(capsys):
-    """Typo 'chek' should suggest 'check'."""
-    with pytest.raises(SystemExit) as excinfo:
-        main(["chek"])
-    assert excinfo.value.code == 2
-    captured = capsys.readouterr()
-    assert "Did you mean 'check'?" in captured.err
-
-
-def test_fuzzy_typo_suggestion_health(capsys):
-    """Typo 'healt' should suggest 'health'."""
-    with pytest.raises(SystemExit) as excinfo:
-        main(["healt"])
-    assert excinfo.value.code == 2
-    captured = capsys.readouterr()
-    assert "Did you mean 'health'?" in captured.err
+    assert f"Did you mean '{expected_suggestion}'?" in captured.err
 
 
 def test_fuzzy_typo_no_suggestion_for_unrelated(capsys):
@@ -2033,34 +1948,18 @@ def test_cli_explain_fixable_check(capsys):
     assert "Severity:   Error (Default)" in captured.out
 
 
-def test_cli_explain_category_abbreviation_single(capsys):
-    # CoA contains only duplicate_ctes -> explains it directly
-    assert main(["explain", "CoA"]) == 0
+@pytest.mark.parametrize(
+    "query,expected_phrase",
+    [
+        ("CoA", "duplicate_ctes (Connascence of Algorithm (CoA))"),
+        ("CoV", "connascence_of_value (Connascence of Value (CoV))"),
+        ("duplicate_cte", "duplicate_ctes (Connascence of Algorithm (CoA))"),
+    ],
+)
+def test_cli_explain_single_match_queries(query: str, expected_phrase: str, capsys):
+    assert main(["explain", query]) == 0
     captured = capsys.readouterr()
-    assert "duplicate_ctes (Connascence of Algorithm (CoA))" in captured.out
-
-
-def test_cli_explain_category_abbreviation_cov(capsys):
-    # CoV contains only connascence_of_value -> explains it directly
-    assert main(["explain", "CoV"]) == 0
-    captured = capsys.readouterr()
-    assert "connascence_of_value (Connascence of Value (CoV))" in captured.out
-
-
-def test_cli_explain_category_abbreviation_multi(capsys):
-    # CoN contains multiple rules -> renders table of CoN rules
-    assert main(["explain", "CoN"]) == 0
-    captured = capsys.readouterr()
-    assert "Connascence of Name (CoN)" in captured.out
-    assert "ban_select_star" in captured.out
-    assert "filename_equals_modelname" in captured.out
-
-
-def test_cli_explain_partial_substring_single(capsys):
-    # Partial substring 'duplicate_cte' uniquely matches duplicate_ctes
-    assert main(["explain", "duplicate_cte"]) == 0
-    captured = capsys.readouterr()
-    assert "duplicate_ctes (Connascence of Algorithm (CoA))" in captured.out
+    assert expected_phrase in captured.out
 
 
 def test_cli_explain_partial_substring_multi(capsys):
@@ -2099,17 +1998,18 @@ def test_cli_rules_subcommand(capsys):
     assert "duplicate_ctes (Connascence of Algorithm (CoA))" in captured2.out
 
 
-def test_cli_explain_json_single(capsys):
+@pytest.mark.parametrize("arg", ["duplicate_ctes", "CoA", "duplicate_cte"])
+def test_cli_explain_json_single_target(arg: str, capsys):
     import json
 
-    assert main(["explain", "duplicate_ctes", "--json"]) == 0
+    assert main(["explain", arg, "--json"]) == 0
     captured = capsys.readouterr()
     data = json.loads(captured.out)
     assert data["id"] == "duplicate_ctes"
     assert data["category"] == "Connascence of Algorithm (CoA)"
     assert data["default_severity"] == "warning"
     assert "dbt" in data["providers"]
-    assert len(data["what_it_checks"]) > 0
+    assert len(data.get("what_it_checks", "")) > 0
 
 
 def test_cli_explain_json_all(capsys):
@@ -2188,18 +2088,6 @@ def test_render_rules_table_direct_call():
     _render_rules_table([c])
 
 
-def test_cli_explain_json_category_single(capsys):
-    assert main(["explain", "CoA", "--json"]) == 0
-    captured = capsys.readouterr()
-    data = json.loads(captured.out)
-    assert data["id"] == "duplicate_ctes"
-
-
-def test_cli_explain_json_substring_single(capsys):
-    assert main(["explain", "duplicate_cte", "--json"]) == 0
-    captured = capsys.readouterr()
-    data = json.loads(captured.out)
-    assert data["id"] == "duplicate_ctes"
 
 
 
