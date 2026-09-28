@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.23.0](https://github.com/tjirab/tff/compare/tff-core-v0.22.0...tff-core-v0.23.0) (2026-09-28)
+
+
+### Features
+
+* **cli:** redesign audit ledger and project fitness reports ([#327](https://github.com/tjirab/tff/issues/327)) ([2a7f869](https://github.com/tjirab/tff/commit/2a7f869dcba338b59a17bd3badb00ef00491609b))
+* **cli:** redesign check and health command output aesthetics ([#323](https://github.com/tjirab/tff/issues/323)) ([3d8c525](https://github.com/tjirab/tff/commit/3d8c525f1b79ac67f4442fc74391d51910867b39))
+
+
+### Documentation
+
+* **cli:** update documentation and demo recordings for [#327](https://github.com/tjirab/tff/issues/327) layout redesign ([#331](https://github.com/tjirab/tff/issues/331)) ([08a16e9](https://github.com/tjirab/tff/commit/08a16e9df37c8d513c9b40cb09ddcf488f47df92))
+
 ## [0.22.0](https://github.com/tjirab/tff/compare/tff-core-v0.21.0...tff-core-v0.22.0) (2026-09-25)
 
 
