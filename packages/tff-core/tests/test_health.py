@@ -142,13 +142,13 @@ def test_render_health_report() -> None:
     render_health_report(scores, config, provider="dbt", console=console)
 
     output = console.export_text()
-    assert "tff PROJECT HEALTH REPORT" in output
-    assert "Health Score by Category" in output
-    assert "Connascence of Name (CoN)" in output
-    assert "banselectstar" in output
-    assert "filenameequalsmodelname" in output
-    assert "Disabled" in output  # filenameequalsmodelname is disabled, should show in breakdown
-    assert "[dim]Disabled[/dim]" not in output
+    assert "PROJECT FITNESS SCORE" in output
+    assert "OVERALL HEALTH" in output
+    assert "DIMENSION" in output
+    assert "Connascence of Name" in output
+    assert "DOMAIN BREAKDOWN" in output
+    assert "STATUS" in output
+    assert "ACTION" in output
 
 
 def test_render_health_report_with_duration() -> None:
@@ -160,8 +160,9 @@ def test_render_health_report_with_duration() -> None:
     console = Console(record=True, width=100)
     render_health_report(scores, config, provider="dbt", console=console, duration=1.23)
     output = console.export_text()
-    assert "tff PROJECT HEALTH REPORT" in output
-    assert "Duration: 1.23s" in output
+    assert "PROJECT FITNESS SCORE" in output
+    assert "OVERALL HEALTH" in output
+    assert "STATUS" in output
 
 
 def test_cli_health_command(tmp_path, monkeypatch) -> None:
@@ -309,7 +310,7 @@ def test_health_edge_cases() -> None:
     # 6. Score < 70 progress bar and Other Checks 100% rendering (hits lines 382-384)
     # Since models_checked=0, custom_unknown_check score is 100.0%
     console = Console(record=True, width=100)
-    render_health_report(scores_zero_models, config, provider="dbt", console=console)
+    render_health_report(scores_zero_models, config, provider="dbt", console=console, verbose=True)
     output = console.export_text()
     assert "Other Checks" in output
     assert "custom_unknown_check" in output
@@ -331,7 +332,7 @@ def test_health_edge_cases() -> None:
     assert abs(scores_red["check_scores"]["custom_unknown_check"] - 70.0) < 0.01
     
     console_red = Console(record=True, width=100)
-    render_health_report(scores_red, config, provider="dbt", console=console_red)
+    render_health_report(scores_red, config, provider="dbt", console=console_red, verbose=True)
     output_red = console_red.export_text()
     assert "Other Checks" in output_red
     assert "custom_unknown_check" in output_red
@@ -1025,7 +1026,7 @@ def test_render_health_report_custom_weights() -> None:
     scores = calculate_health_scores(findings, models_checked=10, config=config, provider="dbt")
 
     console = Console(record=True, width=120)
-    render_health_report(scores, config, provider="dbt", console=console)
+    render_health_report(scores, config, provider="dbt", console=console, verbose=True)
     output = console.export_text()
 
     # layer_integrity has weight 3.0 -> should display weight
@@ -1151,7 +1152,7 @@ def test_render_health_report_connascence_breakdown_hyperlinks() -> None:
     scores = calculate_health_scores(findings, models_checked=5, config=config, provider="dbt")
 
     console = Console(record=True, width=120)
-    render_health_report(scores, config, provider="dbt", console=console, group_by="connascence")
+    render_health_report(scores, config, provider="dbt", console=console, group_by="connascence", verbose=True)
     html = console.export_html()
     text = console.export_text()
 
@@ -1171,7 +1172,7 @@ def test_render_health_report_connascence_unknown_enabled_hyperlinks() -> None:
     scores["check_findings"]["custom_external_check"] = []
 
     console = Console(record=True, width=120)
-    render_health_report(scores, config, provider="dbt", console=console, group_by="connascence")
+    render_health_report(scores, config, provider="dbt", console=console, group_by="connascence", verbose=True)
     text = console.export_text()
 
     assert "Other Checks" in text
@@ -1227,11 +1228,10 @@ def test_render_health_report_top_penalty_drivers() -> None:
     render_health_report(scores, config, provider="dbt", console=console, fail_under=98.0)
     output = console.export_text()
 
-    assert "TOP PENALTY DRIVERS" in output
-    assert "pts" in output
-    assert "layer_integrity" in output
-    assert "Run tff explain <rule> for remediation guides." in output
-    assert "[FAIL: below threshold 98.0%]" in output
+    assert "PROJECT FITNESS SCORE" in output
+    assert "layer integrity" in output
+    assert "[FAIL: TARGET >= 98.0%]" in output
+    assert "ACTION: Fix 1 layer integrity violation to raise score above 98.0%." in output
 
 
 def test_render_health_report_pass_threshold_and_no_penalties() -> None:
@@ -1246,8 +1246,8 @@ def test_render_health_report_pass_threshold_and_no_penalties() -> None:
     render_health_report(scores, config, provider="dbt", console=console, fail_under=80.0)
     output = console.export_text()
 
-    assert "[PASS: meets threshold 80.0%]" in output
-    assert "No penalty drivers — all active fitness functions scored 100.0%" in output
+    assert "[PASS: TARGET >= 80.0%]" in output
+    assert "ACTION: All fitness functions satisfied. Fitness score is optimal." in output
 
 
 def test_render_health_report_top_penalty_drivers_alignment() -> None:
@@ -1270,9 +1270,10 @@ def test_render_health_report_top_penalty_drivers_alignment() -> None:
     render_health_report(scores, config, provider="dbt", console=console)
     output = console.export_text()
 
-    assert "TOP PENALTY DRIVERS" in output
-    assert "layer_integrity" in output
-    assert "nomissingdescription" in output
+    assert "PROJECT FITNESS SCORE" in output
+    assert "Architecture & DAG" in output
+    assert "Contract & Metadata" in output
+    assert "ACTION" in output
 
 
 def test_render_health_report_verbose_flag() -> None:
@@ -1298,9 +1299,9 @@ def test_render_health_report_verbose_flag() -> None:
     output_default = console_default.export_text()
 
     assert "Use --verbose to expand all passing and disabled checks." in output_default
-    assert "checks disabled" in output_default
-    assert "banselectstar" in output_default
-    assert "nomissingowner" in output_default
+    assert "checks disabled" not in output_default
+    assert "DIMENSION" in output_default
+    assert "DOMAIN BREAKDOWN" in output_default
 
     # 2. Verbose (verbose=True)
     console_verbose = Console(record=True, width=120)
@@ -1329,6 +1330,40 @@ def test_cli_health_verbose_flag(tmp_path, monkeypatch) -> None:
 
     exit_code_v = main(["health", "--project", str(tmp_path), "--config", str(config_file), "-v"])
     assert exit_code_v == 0
+
+
+def test_action_phrases_and_nonexistent_project_root() -> None:
+    """Verify action phrases for CTEs and join parity, and nonexistent project_root handling."""
+    from pathlib import Path
+
+    from tff.core.health import _get_action_phrase
+
+    assert _get_action_phrase("duplicate_ctes", 1) == "Refactor 1 duplicate CTE"
+    assert _get_action_phrase("duplicate_ctes", 2) == "Refactor 2 duplicate CTEs"
+    assert _get_action_phrase("join_type_parity", 1) == "Align data types across 1 JOIN condition"
+    assert _get_action_phrase("join_type_parity", 3) == "Align data types across 3 JOIN conditions"
+    assert _get_action_phrase("nomissingowner", 1) == "Add missing contract metadata to 1 model"
+    assert _get_action_phrase("nomissingowner", 2) == "Add missing contract metadata to 2 models"
+
+    # Test nonexistent project_root does not raise and continues cleanly
+    config = FitnessFunctionsConfig.model_validate({
+        "rules": {"ban_select_star": {"enabled": True}},
+    })
+    findings = [
+        LintFinding(check="banselectstar", severity="error", message="err", model="m1", path="models/core/m1.sql"),
+    ]
+    scores = calculate_health_scores(findings, models_checked=1, config=config, provider="dbt")
+    scores["check_weights"] = {c: 0.0 for c in scores["enabled_checks"]}
+    console = Console(record=True, width=120)
+    render_health_report(
+        scores,
+        config,
+        provider="dbt",
+        console=console,
+        project_root=Path("/nonexistent_dir_tff_test"),
+    )
+    output = console.export_text()
+    assert "PROJECT FITNESS SCORE" in output
 
 
 

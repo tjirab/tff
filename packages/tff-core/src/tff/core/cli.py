@@ -117,7 +117,7 @@ def render_cli_error(error: TffError | Exception, console: Console | None = None
 
     hint = getattr(error, "hint", None)
     if hint:
-        console.print(f"  [dim]•[/dim] [bold cyan]Hint:[/bold cyan] {escape(hint)}")
+        console.print(f"  [dim]•[/dim] [bold blue]Hint:[/bold blue] {escape(hint)}")
 
 
 
@@ -471,9 +471,9 @@ def _explain_single_check(check: CheckDefinition, console: Console | None = None
     if console is None:
         console = Console()
 
-    console.print(f"[bold cyan]{check.id}[/bold cyan] [dim]({check.category})[/dim]")
+    console.print(f"[bold]{check.id}[/bold] [dim]({check.category})[/dim]")
     width = min(console.width if console.width else 80, 78)
-    console.print("[dim]" + "─" * width + "[/dim]")
+    console.print("─" * width, style="dim")
 
     sev_label = "Error (Default)" if check.default_severity == "error" else "Warning (Default)"
     sev_style = "bold red" if check.default_severity == "error" else "bold yellow"
@@ -523,19 +523,20 @@ def _render_rules_table(
     console: Console | None = None,
 ) -> None:
     """Render a tabular catalog of checks with categories, severities, and descriptions."""
-    from rich import box
     from rich.table import Table
 
     if console is None:
         console = Console()
 
     header_text = title or "Available Fitness Checks & Rules"
-    console.print(f"[bold cyan]● {header_text}[/bold cyan]\n")
+    width = min(console.width if console.width else 80, 78)
+    console.print(f"[bold]{header_text}[/bold]")
+    console.print("─" * width, style="dim")
 
     table = Table(
-        box=box.SIMPLE,
+        box=None,
         show_header=True,
-        header_style="bold cyan",
+        header_style="bold dim",
         padding=(0, 2, 0, 0),
     )
     table.add_column("Rule / Check", style="bold", no_wrap=True)
@@ -557,7 +558,8 @@ def _render_rules_table(
         )
 
     console.print(table)
-    console.print("\n[dim]For detailed remediation guidance, try 'tff explain <rule_name>'[/dim]")
+    console.print("─" * width, style="dim")
+    console.print("[dim]For detailed remediation guidance, try 'tff explain <rule_name>'[/dim]")
 
 
 def handle_explain(
@@ -1345,17 +1347,9 @@ def _main_impl(argv: list[str] | None = None) -> int:
             else Path(config_path)
         )
         config_exists = resolved_config.is_file()
-        logo = (
-            " [cyan]            [/cyan][green]▄███▄   ▄███▄   [/green]\n"
-            " [cyan]    ██      [/cyan][green]██  ▀   ██  ▀   [/green]\n"
-            " [cyan]█████████[/cyan][green]█████████████████[/green]\n"
-            " [cyan]    ██      [/cyan][green]██      ██      [/green]\n"
-            " [cyan]    ██      [/cyan][green]██      ██      [/green]\n"
-            " [cyan]    ██▄▄▄   [/cyan][green]██      ██      [/green]"
-        )
-        console.print(logo)
-        console.print()
-        console.print("[bold cyan]● tff Info[/bold cyan]")
+        width = min(console.width if console.width else 80, 78)
+        console.print("[bold red]■[/bold red] [bold yellow]▲[/bold yellow] [bold blue]●[/bold blue]  [bold]tff Info[/bold]  [dim]·  TRANSFORMATION FITNESS FUNCTIONS[/dim]")
+        console.print("─" * width, style="dim")
         table = Table(show_header=False, box=None, padding=(0, 2, 0, 0))
         table.add_column()
         table.add_column()
@@ -1398,7 +1392,8 @@ def _main_impl(argv: list[str] | None = None) -> int:
         console.print(table)
 
 
-        console.print("\n[bold cyan]● Adapter Versions[/bold cyan]")
+        console.print("\n[bold]Adapter Versions[/bold]")
+        console.print("─" * width, style="dim")
         target_site_packages = []
         for venv_name in (".venv", "venv", "env"):
             venv_dir = project_root / venv_name
@@ -1438,7 +1433,7 @@ def _main_impl(argv: list[str] | None = None) -> int:
             ver = get_version(pkg)
             if ver == "not installed":
                 return "[dim red]not installed[/dim red]"
-            return f"[cyan]{ver}[/cyan]"
+            return f"[bold blue]{ver}[/bold blue]"
 
         tff_ver = format_ver("tff-core")
         ver_table.add_row("  [bold]tff-core[/bold]", tff_ver)
@@ -1464,7 +1459,7 @@ def _main_impl(argv: list[str] | None = None) -> int:
         for prov in get_available_providers():
             if prov not in ("dbt", "sqlmesh", "dataform"):
                 ver_table.add_row(
-                    f"  [bold]{prov} integration[/bold]", "[cyan]plugin[/cyan]"
+                    f"  [bold]{prov} integration[/bold]", "[bold blue]plugin[/bold blue]"
                 )
         console.print(ver_table)
 
@@ -1484,7 +1479,8 @@ def _main_impl(argv: list[str] | None = None) -> int:
         for label, val in adapter.get_diagnostic_files(project_roots):
             prov_table.add_row(f"  [bold]{escape(label)}[/bold]", val)
         if prov_table.row_count > 0:
-            console.print("\n[bold cyan]● Provider Files[/bold cyan]")
+            console.print("\n[bold]Provider Files[/bold]")
+            console.print("─" * width, style="dim")
             console.print(prov_table)
         return 0
 
@@ -1526,7 +1522,9 @@ def _main_impl(argv: list[str] | None = None) -> int:
 
         # 1. Health Score Trend
         console = Console()
-        console.print("[bold cyan]● tff Project Health Score Trend[/bold cyan]")
+        width = min(console.width if console.width else 80, 78)
+        console.print("[bold]tff Project Health Score Trend[/bold]")
+        console.print("─" * width, style="dim")
         has_health_data = any(h is not None for h in health_scores)
         if has_health_data:
             chart = render_ascii_chart(
@@ -1538,9 +1536,8 @@ def _main_impl(argv: list[str] | None = None) -> int:
         console.print()
 
         # 2. Lint Violations Trend
-        console.print(
-            "[bold cyan]● tff Lint Violations Trend (Errors & Warnings)[/bold cyan]"
-        )
+        console.print("[bold]tff Lint Violations Trend (Errors & Warnings)[/bold]")
+        console.print("─" * width, style="dim")
         has_lint_data = any(
             e is not None or w is not None for e, w in zip(errors, warnings)
         )
@@ -1561,12 +1558,11 @@ def _main_impl(argv: list[str] | None = None) -> int:
 
         # 3. Summary Table
         from rich.table import Table
-        from rich import box
 
         table = Table(
-            box=box.SIMPLE,
+            box=None,
             show_header=True,
-            header_style="bold cyan",
+            header_style="bold dim",
             padding=(0, 2, 0, 0),
         )
         table.add_column("Date", style="bold", no_wrap=True)
@@ -1608,7 +1604,8 @@ def _main_impl(argv: list[str] | None = None) -> int:
 
             table.add_row(d_formatted, h_val, e_val, w_val)
 
-        console.print("[bold cyan]● Summary History[/bold cyan]")
+        console.print("[bold]Summary History[/bold]")
+        console.print("─" * width, style="dim")
         console.print(table)
         return 0
 
@@ -2061,6 +2058,7 @@ def _main_impl(argv: list[str] | None = None) -> int:
                     duration=execution_duration,
                     fail_under=args.fail_under,
                     verbose=getattr(args, "verbose", False),
+                    project_root=project_root,
                 )
 
             overall_score = scores["overall_score"]
@@ -2104,7 +2102,7 @@ def main(argv: list[str] | None = None) -> int:
             else:
                 console.print(f"[bold red]✖ Unexpected Error:[/bold red] {escape(str(exc))}")
                 console.print("  [dim]•[/dim] Please report this issue at: https://github.com/tjirab/tff/issues")
-                console.print("  [dim]•[/dim] [bold cyan]Hint:[/bold cyan] Re-run with [bold]--debug[/bold] or set [bold]TFF_DEBUG=1[/bold] to display the full traceback.")
+                console.print("  [dim]•[/dim] [bold blue]Hint:[/bold blue] Re-run with [bold]--debug[/bold] or set [bold]TFF_DEBUG=1[/bold] to display the full traceback.")
             return 1
     finally:
         if orig_tff_no_cache is None:

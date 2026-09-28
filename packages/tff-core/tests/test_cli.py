@@ -1396,7 +1396,7 @@ def test_cli_info_and_lint_with_plugins_and_custom_adapter(tmp_path: Path, capsy
         ])
         assert exit_code_lint == 0
         captured_lint = capsys.readouterr()
-        assert "LINT PASSED" in captured_lint.out
+        assert "PASS — all fitness functions satisfied." in captured_lint.out
     finally:
         _REGISTERED_ADAPTERS.pop("my_custom_engine", None)
 

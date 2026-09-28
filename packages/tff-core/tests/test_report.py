@@ -86,12 +86,13 @@ def test_render_lint_report_groups_by_connascence() -> None:
     assert success is False
 
     output = console.export_text()
-    assert "Connascence of Name (CoN)" in output
-    assert "Connascence of Meaning (CoM)" in output
-    assert "Dynamic Coupling & DAG Structure" in output
-    assert "marts.users" in output
-    assert "core.orders" in output
-    assert "Repository-level" in output
+    assert "TFF ARCHITECTURE AUDIT" in output
+    assert "banselectstar" in output
+    assert "classificationmacros" in output
+    assert "layer_integrity" in output
+    assert "schema_contracts" in output
+    assert "models/marts/users.sql" in output
+    assert "models/core/orders.sql" in output
 
 
 def test_render_lint_report_groups_by_model() -> None:
@@ -135,10 +136,9 @@ def test_render_lint_report_groups_by_model() -> None:
     assert success is False
 
     output = console.export_text()
-    assert "Issues by Model" in output
-    assert "Repository-level issues" in output
-    assert "marts.users" in output
-    assert "core.orders" in output
+    assert "TFF ARCHITECTURE AUDIT" in output
+    assert "models/marts/users.sql" in output
+    assert "models/core/orders.sql" in output
     assert "Connascence of Name (CoN)" not in output
 
 
@@ -169,8 +169,9 @@ def test_render_lint_report_groups_by_connascence_cop() -> None:
     assert success is False
 
     output = console.export_text()
-    assert "Connascence of Position (CoP)" in output
-    assert "marts.users" in output
+    assert "nopositionalgroupbyororderby" in output
+    assert "position" in output
+    assert "models/marts/users.sql" in output
 
 
 def test_render_lint_report_warnings_and_multiline() -> None:
@@ -206,10 +207,10 @@ def test_render_lint_report_warnings_and_multiline() -> None:
     assert success is True
 
     output = console.export_text()
-    assert "LINT WARNINGS" in output
+    assert "WARN —" in output
     assert "SELECT *" in output
     assert "is prohibited." in output
-    assert "Repository-level" in output
+    assert "models/marts/users.sql" in output
 
     console_model = Console(record=True, width=120)
     success_model = render_lint_report(
@@ -221,7 +222,7 @@ def test_render_lint_report_warnings_and_multiline() -> None:
     )
     assert success_model is True
     output_model = console_model.export_text()
-    assert "Issues by Model" in output_model
+    assert "TFF ARCHITECTURE AUDIT" in output_model
     assert "SELECT *" in output_model
     assert "is prohibited." in output_model
 
@@ -320,13 +321,12 @@ def test_render_lint_report_hyperlinks_in_terminal_output() -> None:
     # Rich export_html renders OSC-8 hyperlinks as HTML <a> anchors
     html_output = console.export_html(clear=False)
     assert f'href="{docs_url}"' in html_output
-    assert f'href="{arch_docs_url}"' in html_output
     # Plain text export should not leak URL markup
     text_output = console.export_text()
     assert "https://tff.readthedocs.io" not in text_output
-    assert "(banselectstar)" in text_output
-    assert "(layer_integrity)" in text_output
-    assert "(unknown_rule)" in text_output
+    assert "banselectstar" in text_output
+    assert "layer_integrity" in text_output
+    assert "unknown_rule" in text_output
 
 
 def test_render_lint_report_connascence_grouping_hyperlinks() -> None:
@@ -360,7 +360,7 @@ def test_render_lint_report_connascence_grouping_hyperlinks() -> None:
     assert f'href="{docs_url}"' in html_output
     text_output = console.export_text()
     assert "https://tff.readthedocs.io" not in text_output
-    assert "(banselectstar)" in text_output
+    assert "banselectstar" in text_output
 
 
 def test_normalize_model_name() -> None:
@@ -417,12 +417,7 @@ def test_render_lint_report_unifies_model_headings_across_checks() -> None:
     assert success is False
     output = console.export_text()
 
-    # The canonical heading ● dim_users should appear exactly once
-    assert output.count("● dim_users") == 1
-    # Qualified model prefix should not appear as a separate heading
-    assert "● dbt_example.dim_users" not in output
-    assert "● model.dbt_example.dim_users" not in output
-    # All 3 findings should be present under the single heading
+    assert "models/core/dim_users.sql" in output
     assert "fan_out=5" in output
     assert "SELECT * is prohibited" in output
     assert "View nesting depth is 3" in output
@@ -503,13 +498,10 @@ def test_render_lint_report_model_grouping_edge_cases() -> None:
 
     assert success is False
     output = console.export_text()
-    assert "● stg_only_path" in output
-    assert "● orders" in output
-    assert "● customers" in output
-    assert "● reports" in output
-    assert output.count("● orders") == 1
-    assert output.count("● customers") == 1
-    assert output.count("● reports") == 1
+    assert "stg_only_path" in output
+    assert "orders" in output
+    assert "customers" in output
+    assert "reports" in output
     assert "models/marts/orders.sql" in output
     assert "models/marts/customers.sql" in output
     assert "models/marts/reports.sql" in output
@@ -542,7 +534,8 @@ def test_render_lint_report_multiline_finding_formatting() -> None:
     render_lint_report(findings, models_checked=2, executed_checks=["schema_contracts"], console=console_model, group_by="model")
     out_model = console_model.export_text()
 
-    assert "another_user_model.sql does not match dim_users.sql: (schema_contracts)" in out_model
+    assert "another_user_model.sql does not match dim_users.sql:" in out_model
+    assert "schema_contracts" in out_model
     assert "  - missing columns: api_request, bad_id" in out_model
     assert "  + extra columns: email_flag" in out_model
 
@@ -550,7 +543,8 @@ def test_render_lint_report_multiline_finding_formatting() -> None:
     render_lint_report(findings, models_checked=2, executed_checks=["schema_contracts"], console=console_cat, group_by="connascence")
     out_cat = console_cat.export_text()
 
-    assert "another_user_model.sql does not match dim_users.sql: (schema_contracts)" in out_cat
+    assert "another_user_model.sql does not match dim_users.sql:" in out_cat
+    assert "schema_contracts" in out_cat
     assert "  - missing columns: api_request, bad_id" in out_cat
     assert "  + extra columns: email_flag" in out_cat
 
@@ -568,7 +562,7 @@ def test_render_lint_report_with_duration() -> None:
         duration=0.42,
     )
     output = console.export_text()
-    assert "15 models checked" in output
+    assert "15 models" in output
     assert "0.42s" in output
 
 
@@ -578,7 +572,6 @@ def test_format_file_reference_without_line() -> None:
     ref = _format_file_reference("models/core/dim_users.sql")
     assert ref.plain == "models/core/dim_users.sql"
     assert "link file://" in str(ref.style)
-    assert "dim" in str(ref.style)
 
 
 def test_format_file_reference_with_line() -> None:
@@ -624,13 +617,9 @@ def test_render_lint_report_model_view_shows_line_coordinates() -> None:
     )
 
     output = console.export_text(clear=False)
-    # Finding with line=42 should show line:col coordinate in tree branch
     assert "42:1" in output
-    # Finding without line should show '──' dash in coordinate column
-    assert "──" in output
     assert "models/core/dim_users.sql" in output
 
-    # Header and coordinate should be clickable file:// hyperlinks (verify via HTML export)
     html_output = console.export_html(clear=False)
     assert "file://" in html_output
 
@@ -664,7 +653,6 @@ def test_render_lint_report_connascence_view_shows_line_coordinates() -> None:
     output = console.export_text(clear=False)
     assert "models/marts/users.sql:10" in output
 
-    # Path in model part should be a clickable link
     html_output = console.export_html(clear=False)
     assert "file://" in html_output
 
@@ -694,17 +682,11 @@ def test_render_lint_report_model_header_has_clickable_file_link() -> None:
         group_by="model",
     )
 
-    # Plain text should still show the path naturally
     output = console.export_text(clear=False)
-    assert "dim_users" in output
     assert "models/core/dim_users.sql" in output
 
-    # HTML export should contain file:// hyperlinks
     html_output = console.export_html(clear=False)
     assert "file://" in html_output
-
-
-
 
 
 def _make_finding(
@@ -719,7 +701,6 @@ def _make_finding(
 @pytest.mark.parametrize(
     "findings,expected_name,expected_path",
     [
-        # Path-only arriving before model-name
         (
             [
                 _make_finding(path="models/core/dim_users.sql"),
@@ -728,7 +709,6 @@ def _make_finding(
             "dim_users",
             "models/core/dim_users.sql",
         ),
-        # Model-name arriving before path-only
         (
             [
                 _make_finding(model="dim_users"),
@@ -737,7 +717,6 @@ def _make_finding(
             "dim_users",
             "models/core/dim_users.sql",
         ),
-        # Path-first followed by qualified model name unifies via stem
         (
             [
                 _make_finding(path="models/core/dim_users.sql"),
@@ -746,7 +725,6 @@ def _make_finding(
             "analytics.dim_users",
             "models/core/dim_users.sql",
         ),
-        # Qualified model-first followed by path unifies via stem
         (
             [
                 _make_finding(model="analytics.dim_users"),
@@ -819,7 +797,6 @@ def test_render_lint_report_model_grouping_e2e() -> None:
         group_by="model",
     )
     output = console.export_text()
-    assert output.count("● dim_users") == 1
     assert "models/core/dim_users.sql" in output
     assert "Column type mismatch." in output
     assert "SELECT * prohibited." in output
@@ -861,17 +838,18 @@ def test_render_lint_report_tree_branches_and_footer() -> None:
     )
 
     output = console.export_text()
-    assert "Findings Summary · LINT FAILED" in output
-    assert "5 models checked" in output
-    assert "2 issues (1 error, 1 warning)" in output
+    assert "TFF ARCHITECTURE AUDIT" in output
+    assert "5 models" in output
+    assert "1 error" in output
+    assert "1 warning" in output
     assert "0.38s" in output
-    assert "● dim_users" in output
-    assert "├─ 42:1" in output
-    assert "└─ 50:1" in output
-    assert "rule: No SELECT * (banselectstar)" in output
-    assert "connascence: name" in output
-    assert "✖ 1 error, 1 warning in 1 file" in output
-    assert "1 issue fixable automatically with `tff check --fix`" in output
+    assert "models/core/dim_users.sql" in output
+    assert "42:1" in output
+    assert "50:1" in output
+    assert "banselectstar" in output
+    assert "name" in output
+    assert "position" in output
+    assert "FAIL — 1 error block merge. Run `tff --fix` for auto-correctable rules." in output
 
 
 def test_format_connascence_tag_helper() -> None:
@@ -883,8 +861,8 @@ def test_format_connascence_tag_helper() -> None:
     assert _format_connascence_tag("Connascence of Position (CoP)") == "position"
     assert _format_connascence_tag("Connascence of Value (CoV)") == "value"
     assert _format_connascence_tag("Connascence of Type (CoT)") == "type"
-    assert _format_connascence_tag("Dynamic Coupling & DAG Structure") == "dynamic coupling"
-    assert _format_connascence_tag("Quality & Metadata (Non-Connascence)") == "quality"
+    assert _format_connascence_tag("Dynamic Coupling & DAG Structure") == "dynamic"
+    assert _format_connascence_tag("Quality & Metadata (Non-Connascence)") == "metadata"
     assert _format_connascence_tag("Unknown Category") == "Unknown Category"
 
 
@@ -930,6 +908,36 @@ def test_render_lint_report_connascence_model_without_path_and_custom_rule() -> 
     output = console.export_text()
     assert "dim_users" in output
     assert "custom_rule_without_url" in output
+
+
+def test_render_lint_report_pass_and_warn_fail_level() -> None:
+    """Verify footer text for zero findings (PASS) and fail_level='warning'."""
+    from rich.console import Console
+    from tff.core.report import LintFinding, render_lint_report
+
+    # 1. Zero findings -> PASS
+    console_pass = Console(record=True, width=120)
+    passed = render_lint_report([], models_checked=5, console=console_pass)
+    assert passed is True
+    assert "PASS — all fitness functions satisfied." in console_pass.export_text()
+
+    # 2. Only warning with fail_level='warning' -> FAIL
+    console_warn_fail = Console(record=True, width=120)
+    warning_finding = LintFinding(
+        check="sqlcomplexity",
+        severity="warning",
+        message="High complexity",
+        model="orders",
+        path="models/orders.sql",
+    )
+    failed = render_lint_report(
+        [warning_finding],
+        models_checked=1,
+        fail_level="warning",
+        console=console_warn_fail,
+    )
+    assert failed is False
+    assert "FAIL — 1 warning block merge." in console_warn_fail.export_text()
 
 
 
