@@ -307,6 +307,6 @@ def test_report_includes_rule_execution_error_in_summary_and_labels():
     )
     assert not passed
     rendered = buf.getvalue()
-    assert "Rule execution error" in rendered
+    assert "rule_execution_error" in rendered
     assert "orders" in rendered
     assert "Rule 'ban_select_star' failed to evaluate: Invalid AST token" in rendered

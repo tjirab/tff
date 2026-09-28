@@ -201,7 +201,7 @@ def test_generate_pr_comment_markdown_clean_run() -> None:
     assert "100.0%" in md
     assert "PASSED" in md
     assert "All architectural fitness functions and linter checks passed without any violations!" in md
-    assert "### 📊 Health Score by Category" in md
+    assert "### DIMENSION DISTRIBUTION" in md
 
 
 def test_generate_pr_comment_markdown_with_diff_and_violations() -> None:
@@ -456,7 +456,7 @@ def test_execute_action_cli_json_and_annotations(tmp_path: Path) -> None:
         code = execute_action(args)
         assert code == 0
         assert "passed=true" in out_file.read_text(encoding="utf-8")
-        assert "## 🎯 Transformation Fitness Functions Report" in summary_file.read_text(encoding="utf-8")
+        assert "## ■ ▲ ● TFF ARCHITECTURE AUDIT" in summary_file.read_text(encoding="utf-8")
 
 
 def test_execute_action_cli_with_annotations_and_findings(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
