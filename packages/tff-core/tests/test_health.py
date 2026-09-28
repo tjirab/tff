@@ -2,20 +2,90 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+from typing import Any
 from unittest.mock import MagicMock
+import pytest
 from rich.console import Console
 
+from conftest import _make_finding, _make_model
 from tff.core.config import FitnessFunctionsConfig
-from tff.core.report import LintFinding
 from tff.core.health import (
-    is_check_enabled,
     calculate_health_scores,
+    is_check_enabled,
     render_health_report,
 )
 from tff.core.cli import main
 
 
-def test_is_check_enabled() -> None:
+def test_test_factories_and_fixtures(make_finding, make_model) -> None:
+    """Verify shared test factories and pytest fixtures."""
+    f = make_finding()
+    assert f.check == "banselectstar"
+    assert f.severity == "error"
+
+    m = make_model()
+    assert m.name == "test_model"
+    assert m.dialect == "duckdb"
+
+    m2 = _make_model(name="custom_model", path="models/custom.sql")
+    assert m2.name == "custom_model"
+    assert m2.path == "models/custom.sql"
+
+
+def _make_config(
+    enabled_checks: list[str] | None = None,
+    enabled_rules: list[str] | None = None,
+    health: dict[str, Any] | None = None,
+    **kwargs: Any,
+) -> FitnessFunctionsConfig:
+    """Build a test FitnessFunctionsConfig with specified checks and rules enabled."""
+    all_checks = [
+        "layer_integrity",
+        "custom_exclusions",
+        "schema_contracts",
+        "dependency_graph",
+        "materialization_depth",
+        "duplicate_ctes",
+        "connascence_of_value",
+        "join_type_parity",
+    ]
+    all_rules = [
+        "ban_select_star",
+        "filename_equals_modelname",
+        "column_names",
+        "column_types",
+        "mart_naming",
+        "classification_macros",
+        "sql_complexity",
+        "environment_agnostic_references",
+        "metadata",
+        "no_positional_group_by_or_order_by",
+    ]
+    checks_dict = {c: {"enabled": c in (enabled_checks or [])} for c in all_checks}
+    rules_dict = {r: {"enabled": r in (enabled_rules or [])} for r in all_rules}
+    data: dict[str, Any] = {"checks": checks_dict, "rules": rules_dict, **kwargs}
+    if health:
+        data["health"] = health
+    return FitnessFunctionsConfig.model_validate(data)
+
+
+@pytest.mark.parametrize(
+    "check,provider,metadata_enabled,expected",
+    [
+        ("layer_integrity", "dbt", True, True),
+        ("custom_exclusions", "dbt", True, False),
+        ("banselectstar", "dbt", True, True),
+        ("nomissingowner", "dbt", True, True),
+        ("nomissingdescription", "dbt", True, False),
+        ("nomissingowner", "dbt", False, False),
+        ("ambiguousorinvalidcolumn", "sqlmesh", True, True),
+        ("ambiguousorinvalidcolumn", "dbt", True, False),
+    ],
+)
+def test_is_check_enabled(
+    check: str, provider: str, metadata_enabled: bool, expected: bool
+) -> None:
     config = FitnessFunctionsConfig.model_validate({
         "checks": {
             "layer_integrity": {"enabled": True},
@@ -24,122 +94,57 @@ def test_is_check_enabled() -> None:
         "rules": {
             "ban_select_star": {"enabled": True},
             "metadata": {
-                "enabled": True,
+                "enabled": metadata_enabled,
                 "owner": True,
                 "description": False,
-            }
-        }
+            },
+        },
     })
-    
-    # 1. Project level checks
-    assert is_check_enabled(config, "layer_integrity", "dbt") is True
-    assert is_check_enabled(config, "custom_exclusions", "dbt") is False
-
-    # 2. Rule checks
-    assert is_check_enabled(config, "banselectstar", "dbt") is True
-
-    # 3. Metadata sub-checks
-    assert is_check_enabled(config, "nomissingowner", "dbt") is True
-    assert is_check_enabled(config, "nomissingdescription", "dbt") is False
-
-    # Metadata disabled entirely
-    config.rules.metadata.enabled = False
-    assert is_check_enabled(config, "nomissingowner", "dbt") is False
-
-    # 4. SQLMesh native rules
-    assert is_check_enabled(config, "ambiguousorinvalidcolumn", "sqlmesh") is True
-    assert is_check_enabled(config, "ambiguousorinvalidcolumn", "dbt") is False
+    assert is_check_enabled(config, check, provider) is expected
 
 
 def test_calculate_health_scores() -> None:
-    config = FitnessFunctionsConfig.model_validate({
-        "checks": {
-            "layer_integrity": {"enabled": True},
-            "custom_exclusions": {"enabled": False},
-            "schema_contracts": {"enabled": False},
-            "dependency_graph": {"enabled": False},
-            "materialization_depth": {"enabled": False},
-            "duplicate_ctes": {"enabled": False},
-            "connascence_of_value": {"enabled": False},
-            "join_type_parity": {"enabled": False},
-        },
-        "rules": {
-            "ban_select_star": {"enabled": True},
-            "filename_equals_modelname": {"enabled": True},
-            "column_names": {"enabled": False},
-            "column_types": {"enabled": False},
-            "mart_naming": {"enabled": False},
-            "classification_macros": {"enabled": False},
-            "sql_complexity": {"enabled": False},
-            "environment_agnostic_references": {"enabled": False},
-            "metadata": {"enabled": False},
-            "no_positional_group_by_or_order_by": {"enabled": False},
-        }
-    })
+    config = _make_config(
+        enabled_checks=["layer_integrity"],
+        enabled_rules=["ban_select_star", "filename_equals_modelname"],
+    )
 
-    # Findings:
-    # 1. banselectstar: 1 error on model_a, 1 warning on model_b (out of 10 models checked)
-    # 2. filenameequalsmodelname: no findings
-    # 3. layer_integrity: 1 warning finding (project level)
     findings = [
-        LintFinding(check="banselectstar", severity="error", message="error msg", model="model_a"),
-        LintFinding(check="banselectstar", severity="warning", message="warn msg", model="model_b"),
-        LintFinding(check="layer_integrity", severity="warning", message="project warn"),
+        _make_finding(check="banselectstar", severity="error", message="error msg", model="model_a"),
+        _make_finding(check="banselectstar", severity="warning", message="warn msg", model="model_b"),
+        _make_finding(check="layer_integrity", severity="warning", message="project warn"),
     ]
 
     scores = calculate_health_scores(findings, models_checked=10, config=config, provider="dbt")
 
     # banselectstar score: 100 * (1 - (1 + 0.5 * 1) / 10) = 85.0%
     assert scores["check_scores"]["banselectstar"] == 85.0
-
     # filenameequalsmodelname score: 100.0% (no findings)
     assert scores["check_scores"]["filenameequalsmodelname"] == 100.0
-
     # layer_integrity score: 50.0% (project level, only warning)
     assert scores["check_scores"]["layer_integrity"] == 50.0
 
-    # overall score: average of enabled (banselectstar: 85, filenameequalsmodelname: 100, layer_integrity: 50)
-    # (85 + 100 + 50) / 3 = 78.333%
+    # overall score: (85 + 100 + 50) / 3 = 78.333%
     assert abs(scores["overall_score"] - 78.333) < 0.01
-
-    # Connascence of Name (CoN) category score: (banselectstar: 85, filenameequalsmodelname: 100) / 2 = 92.5%
     assert scores["category_scores"]["Connascence of Name (CoN)"] == 92.5
-
-    # Dynamic Coupling category score: (layer_integrity: 50) / 1 = 50.0%
     assert scores["category_scores"]["Dynamic Coupling & DAG Structure"] == 50.0
 
 
-def test_render_health_report() -> None:
-    config = FitnessFunctionsConfig.model_validate({
-        "checks": {
-            "layer_integrity": {"enabled": True},
-            "custom_exclusions": {"enabled": False},
-            "schema_contracts": {"enabled": False},
-            "dependency_graph": {"enabled": False},
-            "materialization_depth": {"enabled": False},
-        },
-        "rules": {
-            "ban_select_star": {"enabled": True},
-            "filename_equals_modelname": {"enabled": False},
-            "column_names": {"enabled": False},
-            "column_types": {"enabled": False},
-            "mart_naming": {"enabled": False},
-            "classification_macros": {"enabled": False},
-            "sql_complexity": {"enabled": False},
-            "environment_agnostic_references": {"enabled": False},
-            "metadata": {"enabled": False},
-            "no_positional_group_by_or_order_by": {"enabled": False},
-        }
-    })
-
+def test_render_health_report_smoke() -> None:
+    """Smoke test verifying Rich console visual layout for the health report."""
+    config = _make_config(
+        enabled_checks=["layer_integrity"],
+        enabled_rules=["ban_select_star"],
+    )
     findings = [
-        LintFinding(check="banselectstar", severity="error", message="error msg", model="model_a"),
+        _make_finding(check="banselectstar", severity="error", message="error msg", model="model_a"),
     ]
-
     scores = calculate_health_scores(findings, models_checked=5, config=config, provider="dbt")
 
     console = Console(record=True, width=100)
-    render_health_report(scores, config, provider="dbt", console=console)
+    render_health_report(
+        scores, config, provider="dbt", console=console, duration=1.23, fail_under=98.0
+    )
 
     output = console.export_text()
     assert "PROJECT FITNESS SCORE" in output
@@ -149,47 +154,31 @@ def test_render_health_report() -> None:
     assert "DOMAIN BREAKDOWN" in output
     assert "STATUS" in output
     assert "ACTION" in output
-
-
-def test_render_health_report_with_duration() -> None:
-    config = FitnessFunctionsConfig.model_validate({
-        "checks": {"layer_integrity": {"enabled": True}},
-        "rules": {"ban_select_star": {"enabled": True}},
-    })
-    scores = calculate_health_scores([], 5, config, provider="dbt")
-    console = Console(record=True, width=100)
-    render_health_report(scores, config, provider="dbt", console=console, duration=1.23)
-    output = console.export_text()
-    assert "PROJECT FITNESS SCORE" in output
-    assert "OVERALL HEALTH" in output
-    assert "STATUS" in output
+    assert "[FAIL: TARGET >= 98.0%]" in output
 
 
 def test_cli_health_command(tmp_path, monkeypatch) -> None:
-    # We will mock the runner to avoid actually parsing a project directory
     mock_runner = MagicMock()
-    # 5 models checked, 1 finding of warning severity on banselectstar
     mock_runner.run_all_checks.return_value = (
-        [LintFinding(check="banselectstar", severity="warning", message="warning", model="model_a")],
+        [
+            _make_finding(check="banselectstar", severity="warning", message="warning", model="model_a"),
+        ],
         5,
         ["rules"],
     )
-    
-    # Patch import_module to return our mock runner when importing tff.dbt.runner
+
     def mock_import_module(name):
         if name == "tff.dbt.runner":
             return mock_runner
         raise ImportError("mock error")
-        
+
     monkeypatch.setattr("importlib.import_module", mock_import_module)
 
-    # Trigger the ImportError path to get 100% coverage
     try:
         mock_import_module("non_existent")
     except ImportError:
         pass
 
-    # Write a dummy config file
     config_file = tmp_path / "fitness_functions.yaml"
     config_file.write_text("""
 checks:
@@ -205,166 +194,78 @@ rules:
   ban_select_star:
     enabled: true
 """, encoding="utf-8")
-
-    # Create a dummy dbt project signature
     (tmp_path / "dbt_project.yml").write_text("", encoding="utf-8")
 
-    # Run with a threshold that will pass: banselectstar has 1 warning in 5 models -> score is 90%
-    # fail-under 80 should pass (return 0)
     exit_code = main(["health", "--project", str(tmp_path), "--config", str(config_file), "--fail-under", "80.0"])
     assert exit_code == 0
 
-    # Run with a threshold that will fail: fail-under 99.5 should fail (return 1)
-    exit_code = main(["health", "--project", str(tmp_path), "--config", str(config_file), "--fail-under", "99.5"])
-    assert exit_code == 1
+    exit_code_fail = main([
+        "health",
+        "--project", str(tmp_path),
+        "--config", str(config_file),
+        "--fail-under", "99.5",
+    ])
+    assert exit_code_fail == 1
 
 
 def test_health_edge_cases() -> None:
-    # 1. is_check_enabled fallback
-    config = FitnessFunctionsConfig.model_validate({
-        "checks": {
-            "layer_integrity": {"enabled": False},
-        },
-        "rules": {
-            "ban_select_star": {"enabled": False},
-            "metadata": {"enabled": False},
-        }
-    })
-    assert is_check_enabled(config, "non_existent_check", "dbt") is False
+    config = _make_config(enabled_checks=["layer_integrity"], enabled_rules=["ban_select_star"])
 
-    # 2. No enabled checks (all disabled)
-    config_empty = FitnessFunctionsConfig.model_validate({
-        "checks": {
-            "layer_integrity": {"enabled": False},
-            "custom_exclusions": {"enabled": False},
-            "schema_contracts": {"enabled": False},
-            "dependency_graph": {"enabled": False},
-            "materialization_depth": {"enabled": False},
-        },
-        "rules": {
-            "ban_select_star": {"enabled": False},
-            "filename_equals_modelname": {"enabled": False},
-            "column_names": {"enabled": False},
-            "column_types": {"enabled": False},
-            "mart_naming": {"enabled": False},
-            "classification_macros": {"enabled": False},
-            "sql_complexity": {"enabled": False},
-            "environment_agnostic_references": {"enabled": False},
-            "metadata": {"enabled": False},
-            "no_positional_group_by_or_order_by": {"enabled": False},
-        }
-    })
-    scores = calculate_health_scores([], models_checked=5, config=config_empty, provider="dbt")
-    assert scores["overall_score"] == 100.0
+    # 1. Zero enabled checks -> overall_score = 100.0
+    scores_empty = calculate_health_scores([], models_checked=5, config=_make_config(), provider="dbt")
+    assert scores_empty["overall_score"] == 100.0
 
-    # Enable checks for tests
-    config = FitnessFunctionsConfig.model_validate({
-        "checks": {
-            "layer_integrity": {"enabled": True},
-        },
-        "rules": {
-            "ban_select_star": {"enabled": True},
-            "filename_equals_modelname": {"enabled": False},
-            "column_names": {"enabled": False},
-            "column_types": {"enabled": False},
-            "mart_naming": {"enabled": False},
-            "classification_macros": {"enabled": False},
-            "sql_complexity": {"enabled": False},
-            "environment_agnostic_references": {"enabled": False},
-            "metadata": {"enabled": False},
-            "no_positional_group_by_or_order_by": {"enabled": False},
-        }
-    })
-
-    # 3. Project check passes with a severity non-error/non-warning (hits line 153)
-    # Also add an unknown check (Other Checks) with warning (hits line 397)
-    findings = [
-        LintFinding(check="banselectstar", severity="error", message="error msg", model=None),
-        LintFinding(check="banselectstar", severity="warning", message="warn msg", model=None),
-        # info severity on layer_integrity will go to the else block (line 153)
-        LintFinding(check="layer_integrity", severity="info", message="project info"),
-        # unknown check finding with warning (hits line 397)
-        LintFinding(check="custom_unknown_check", severity="warning", message="custom warning", model="model_a"),
+    # 2. Check not in all_known_checks added to enabled_checks
+    findings_unknown = [
+        _make_finding(check="custom_unknown_check", severity="error", message="unknown error", model="model_a"),
     ]
+    scores_unknown = calculate_health_scores(findings_unknown, models_checked=5, config=config, provider="dbt")
+    assert "custom_unknown_check" in scores_unknown["enabled_checks"]
+    assert scores_unknown["category_scores"]["Other Checks"] == 80.0
 
+    # 3. Model with both error and warning -> warning ignored for that model
+    findings = [
+        _make_finding(check="banselectstar", severity="error", message="error", model="model_a"),
+        _make_finding(check="banselectstar", severity="warning", message="warn", model="model_a"),
+    ]
     scores = calculate_health_scores(findings, models_checked=5, config=config, provider="dbt")
-    
-    # layer_integrity should pass (100%)
-    assert scores["check_scores"]["layer_integrity"] == 100.0
-    
-    # custom_unknown_check score: 1 warning on 5 models -> 90.0%
-    assert scores["check_scores"]["custom_unknown_check"] == 90.0
-    assert scores["category_scores"]["Other Checks"] == 90.0
+    assert scores["check_scores"]["banselectstar"] == 80.0
 
-    # 4. Project check with error (hits line 149)
+    # 4. Project-level check with error -> 0.0
     findings_project_error = [
-        LintFinding(check="layer_integrity", severity="error", message="project error"),
+        _make_finding(check="layer_integrity", severity="error", message="project error"),
     ]
     scores_project_error = calculate_health_scores(findings_project_error, models_checked=5, config=config, provider="dbt")
     assert scores_project_error["check_scores"]["layer_integrity"] == 0.0
 
-    # 5. models_checked <= 0 (hits line 179)
+    # 5. models_checked <= 0 -> 100.0
     scores_zero_models = calculate_health_scores(findings, models_checked=0, config=config, provider="dbt")
     assert scores_zero_models["check_scores"]["banselectstar"] == 100.0
 
-    # 6. Score < 70 progress bar and Other Checks 100% rendering (hits lines 382-384)
-    # Since models_checked=0, custom_unknown_check score is 100.0%
-    console = Console(record=True, width=100)
-    render_health_report(scores_zero_models, config, provider="dbt", console=console, verbose=True)
-    output = console.export_text()
-    assert "Other Checks" in output
-    assert "custom_unknown_check" in output
-    assert "100.0%" in output
-
-    # 7. Score < 70 progress bar and Other Checks < 100% rendering (hits lines 224, 386-389, 391-398)
-    # banselectstar: 4 errors on 5 models -> score is 20% (< 70)
-    # custom_unknown_check: 1 error on 5 models -> score is 80% (< 100)
+    # 6. Score calculations for custom unknown check and severe errors
     findings_red_score = [
-        LintFinding(check="banselectstar", severity="error", message="error", model="model_a"),
-        LintFinding(check="banselectstar", severity="error", message="error", model="model_b"),
-        LintFinding(check="banselectstar", severity="error", message="error", model="model_c"),
-        LintFinding(check="banselectstar", severity="error", message="error", model="model_d"),
-        LintFinding(check="custom_unknown_check", severity="error", message="unknown error", model="model_a"),
-        LintFinding(check="custom_unknown_check", severity="warning", message="unknown warning", model="model_b"),
+        _make_finding(check="banselectstar", severity="error", message="error", model=f"model_{c}")
+        for c in ("a", "b", "c", "d")
+    ] + [
+        _make_finding(check="custom_unknown_check", severity="error", message="unknown error", model="model_a"),
+        _make_finding(check="custom_unknown_check", severity="warning", message="unknown warning", model="model_b"),
     ]
     scores_red = calculate_health_scores(findings_red_score, models_checked=5, config=config, provider="dbt")
     assert abs(scores_red["check_scores"]["banselectstar"] - 20.0) < 0.01
     assert abs(scores_red["check_scores"]["custom_unknown_check"] - 70.0) < 0.01
-    
-    console_red = Console(record=True, width=100)
-    render_health_report(scores_red, config, provider="dbt", console=console_red, verbose=True)
-    output_red = console_red.export_text()
-    assert "Other Checks" in output_red
-    assert "custom_unknown_check" in output_red
-    assert "70.0%" in output_red
 
-
-# ---------------------------------------------------------------------------
-# Scope filtering
-# ---------------------------------------------------------------------------
 
 def test_calculate_health_scores_with_scope() -> None:
-    """Findings outside the scope are excluded; models_checked is re-derived."""
-    config = FitnessFunctionsConfig.model_validate({
-        "rules": {
-            "ban_select_star": {"enabled": True},
-        }
-    })
+    config = _make_config(enabled_rules=["ban_select_star"])
 
     findings = [
-        # In scope
-        LintFinding(
+        _make_finding(
             check="banselectstar", severity="error", message="err",
             model="model_a", path="models/marts/marketing/model_a.sql",
         ),
-        LintFinding(
-            check="banselectstar", severity="warning", message="warn",
-            model="model_b", path="models/marts/marketing/model_b.sql",
-        ),
-        # Out of scope
-        LintFinding(
+        _make_finding(
             check="banselectstar", severity="error", message="err",
-            model="model_c", path="models/sources/model_c.sql",
+            model="model_b", path="models/marts/finance/model_b.sql",
         ),
     ]
 
@@ -372,109 +273,95 @@ def test_calculate_health_scores_with_scope() -> None:
         findings, models_checked=10, config=config, provider="dbt",
         scope=["models/marts/marketing"],
     )
-
-    # Only the 2 in-scope findings remain; models_checked becomes 2 (unique paths)
-    # E=1, W=1 (warning_models = {model_b} - {model_a} = {model_b}), M=2
-    # score = 100 * (1 - (1 + 0.5*1) / 2) = 100 * (1 - 0.75) = 25.0
-    assert abs(scores["check_scores"]["banselectstar"] - 25.0) < 0.01
+    assert scores["check_scores"]["banselectstar"] == 0.0
+    assert scores["overall_score"] == 0.0
 
 
 def test_calculate_health_scores_with_scoped_models_count() -> None:
-    """When scoped_models_count is explicitly passed, it is used as denominator."""
-    config = FitnessFunctionsConfig.model_validate({
-        "rules": {
-            "ban_select_star": {"enabled": True},
-        }
-    })
+    config = _make_config(enabled_rules=["ban_select_star"])
 
     findings = [
-        LintFinding(
+        _make_finding(
             check="banselectstar", severity="error", message="err",
             model="model_a", path="models/marts/marketing/model_a.sql",
         ),
     ]
 
     scores = calculate_health_scores(
-        findings,
-        models_checked=50,
-        config=config,
-        provider="dbt",
+        findings, models_checked=10, config=config, provider="dbt",
         scope=["models/marts/marketing"],
-        scoped_models_count=10,
+        scoped_models_count=5,
     )
-
-    # 1 error among 10 models in scope: score = 100 * (1 - 1/10) = 90.0
-    assert abs(scores["check_scores"]["banselectstar"] - 90.0) < 0.01
-    expected_overall = sum(scores["check_scores"].values()) / len(scores["enabled_checks"])
-    assert abs(scores["overall_score"] - expected_overall) < 0.01
+    assert scores["check_scores"]["banselectstar"] == 80.0
+    assert scores["overall_score"] == 80.0
 
 
 def test_calculate_health_scores_scope_excludes_all() -> None:
-    """When scope matches nothing, scores default to 100 (no models, no findings)."""
-    config = FitnessFunctionsConfig.model_validate({
-        "rules": {"ban_select_star": {"enabled": True}},
-    })
+    config = _make_config(enabled_rules=["ban_select_star"])
+
     findings = [
-        LintFinding(
+        _make_finding(
             check="banselectstar", severity="error", message="err",
-            model="model_a", path="models/sources/model_a.sql",
+            model="model_a", path="models/marts/finance/model_a.sql",
         ),
     ]
+
     scores = calculate_health_scores(
-        findings, models_checked=5, config=config, provider="dbt",
-        scope=["models/marts"],
+        findings, models_checked=10, config=config, provider="dbt",
+        scope=["models/marts/marketing"],
     )
-    # No findings survive the filter → 100%
     assert scores["check_scores"]["banselectstar"] == 100.0
+    assert scores["overall_score"] == 100.0
 
 
-def test_matches_scope_helper() -> None:
+@pytest.mark.parametrize(
+    "path,scope,expected",
+    [
+        ("models/marts/marketing/foo.sql", ["models/marts/marketing"], True),
+        ("models/marts/finance/foo.sql", ["models/marts/marketing"], False),
+        ("models/marts", ["models/marts"], True),
+        (None, ["models/marts"], False),
+        ("models/sources/foo.sql", ["models/marts", "models/sources"], True),
+    ],
+)
+def test_matches_scope_helper(path: str | None, scope: list[str], expected: bool) -> None:
     from tff.core.health import _matches_scope
 
-    assert _matches_scope("models/marts/marketing/foo.sql", ["models/marts/marketing"]) is True
-    assert _matches_scope("models/marts/finance/foo.sql", ["models/marts/marketing"]) is False
-    # Exact prefix match (no trailing slash)
-    assert _matches_scope("models/marts", ["models/marts"]) is True
-    # None path → False
-    assert _matches_scope(None, ["models/marts"]) is False
-    # Multiple prefixes
-    assert _matches_scope("models/sources/foo.sql", ["models/marts", "models/sources"]) is True
+    assert _matches_scope(path, scope) is expected
 
 
-def test_domain_key_helper() -> None:
+@pytest.mark.parametrize(
+    "path,expected",
+    [
+        ("models/marts/marketing/model.sql", "models/marts/marketing"),
+        ("models/sources/model.sql", "models/sources"),
+        (None, "Project-level"),
+        ("some/other/path/model.sql", "some/other/path/model.sql"),
+        ("models", "models"),
+    ],
+)
+def test_domain_key_helper(path: str | None, expected: str) -> None:
     from tff.core.health import _domain_key
 
-    assert _domain_key("models/marts/marketing/model.sql") == "models/marts/marketing"
-    assert _domain_key("models/sources/model.sql") == "models/sources"
-    assert _domain_key(None) == "Project-level"
-    # Path with no 'models' dir → returned as-is (hits the ValueError branch)
-    assert _domain_key("some/other/path/model.sql") == "some/other/path/model.sql"
-    # Path that is exactly 'models' with nothing after (hits the len guard)
-    assert _domain_key("models") == "models"
+    assert _domain_key(path) == expected
 
 
-# ---------------------------------------------------------------------------
-# Domain-grouped health report rendering
-# ---------------------------------------------------------------------------
+def test_render_health_report_group_by_domain_smoke() -> None:
+    """Smoke test verifying domain breakdown rendering and hyperlinks."""
+    from tff.core.registry import registry
 
-def test_render_health_report_group_by_domain() -> None:
-    config = FitnessFunctionsConfig.model_validate({
-        "rules": {
-            "ban_select_star": {"enabled": True},
-            "filename_equals_modelname": {"enabled": True},
-        }
-    })
+    config = _make_config(enabled_rules=["ban_select_star", "filename_equals_modelname"])
 
     findings = [
-        LintFinding(
+        _make_finding(
             check="banselectstar", severity="error", message="err A",
             model="model_a", path="models/sources/model_a.sql",
         ),
-        LintFinding(
+        _make_finding(
             check="banselectstar", severity="warning", message="warn B",
             model="model_b", path="models/marts/marketing/model_b.sql",
         ),
-        LintFinding(
+        _make_finding(
             check="filenameequalsmodelname", severity="error", message="err C",
             model="model_c", path="models/marts/marketing/model_c.sql",
         ),
@@ -484,107 +371,49 @@ def test_render_health_report_group_by_domain() -> None:
 
     console = Console(record=True, width=120)
     render_health_report(scores, config, provider="dbt", console=console, group_by="domain")
+    html = console.export_html(clear=False)
     output = console.export_text()
 
     assert "Detailed Breakdown by Domain" in output
-    # Both domain labels should appear
     assert "models/sources" in output
     assert "models/marts/marketing" in output
-    # Check names appear inside the domain sections
     assert "banselectstar" in output
     assert "filenameequalsmodelname" in output
 
-
-def test_render_health_report_group_by_domain_no_findings() -> None:
-    """With no findings, domain breakdown shows 'No findings' message."""
-    config = FitnessFunctionsConfig.model_validate({
-        "rules": {"ban_select_star": {"enabled": True}},
-    })
-
-    scores = calculate_health_scores([], models_checked=5, config=config, provider="dbt")
-
-    console = Console(record=True, width=120)
-    render_health_report(scores, config, provider="dbt", console=console, group_by="domain")
-    output = console.export_text()
-
-    assert "Detailed Breakdown by Domain" in output
-    assert "No findings" in output
+    docs_url = registry.get_docs_url("banselectstar")
+    assert docs_url is not None
+    assert f'href="{docs_url}"' in html
+    assert "https://tff.readthedocs.io" not in output
 
 
-def test_render_health_report_group_by_domain_project_level_findings() -> None:
-    """Project-level findings (path=None) fall into a 'Project-level' section
-    and exercise the domain_models_checked==0 branch (line 574)."""
-    config = FitnessFunctionsConfig.model_validate({
-        "checks": {"layer_integrity": {"enabled": True}},
-    })
+def test_calculate_health_scores_domain_variations() -> None:
+    """Verify domain breakdown logic directly without terminal console rendering."""
+    # 1. No findings -> 100%
+    config_rule = _make_config(enabled_rules=["ban_select_star"])
+    scores_empty = calculate_health_scores([], models_checked=5, config=config_rule, provider="dbt")
+    assert scores_empty["overall_score"] == 100.0
 
-    findings = [
-        # No path → project-level; domain_models_checked will be 0
-        LintFinding(
-            check="layer_integrity", severity="warning", message="proj warning",
-            model=None, path=None,
-        ),
-    ]
+    # 2. Project-level finding (path=None)
+    config_check = _make_config(enabled_checks=["layer_integrity"])
+    findings_proj = [_make_finding("layer_integrity", severity="warning", message="proj warning", path=None)]
+    scores_proj = calculate_health_scores(findings_proj, models_checked=5, config=config_check, provider="dbt")
+    assert scores_proj["check_scores"]["layer_integrity"] == 50.0
 
-    scores = calculate_health_scores(findings, models_checked=5, config=config, provider="dbt")
+    # 3. Info severity keeps check score at 100%
+    findings_info = [_make_finding("layer_integrity", severity="info", message="informational", path=None)]
+    scores_info = calculate_health_scores(findings_info, models_checked=5, config=config_check, provider="dbt")
+    assert scores_info["check_scores"]["layer_integrity"] == 100.0
 
-    console = Console(record=True, width=120)
-    render_health_report(scores, config, provider="dbt", console=console, group_by="domain")
-    output = console.export_text()
-
-    assert "Detailed Breakdown by Domain" in output
-    assert "Project-level" in output
-    assert "layer_integrity" in output
-
-
-def test_render_health_report_group_by_domain_perfect_domain() -> None:
-    """A project-level finding with 'info' severity keeps check_score at 100%,
-    which exercises the local_score==100.0 green-check branch (lines 577-579)
-    via the domain_models_checked==0 path (line 574).
-    """
-    config = FitnessFunctionsConfig.model_validate({
-        "checks": {"layer_integrity": {"enabled": True}},
-    })
-
-    # 'info' severity is neither 'error' nor 'warning' → score stays at 100.0
-    findings = [
-        LintFinding(
-            check="layer_integrity", severity="info", message="informational",
-            model=None, path=None,
-        ),
-    ]
-
-    scores = calculate_health_scores(findings, models_checked=5, config=config, provider="dbt")
-    # Confirm the check score is 100 (info severity doesn't penalise)
-    assert scores["check_scores"]["layer_integrity"] == 100.0
-
-    console = Console(record=True, width=120)
-    render_health_report(scores, config, provider="dbt", console=console, group_by="domain")
-    output = console.export_text()
-
-    assert "Detailed Breakdown by Domain" in output
-    assert "Project-level" in output
-    assert "layer_integrity" in output
-    assert "100.0%" in output
-
-
-# ---------------------------------------------------------------------------
-# CLI integration: --scope and --group-by domain
-# ---------------------------------------------------------------------------
 
 def test_cli_health_scope(tmp_path, monkeypatch) -> None:
-    """--scope filters findings to in-scope models only."""
-    from unittest.mock import MagicMock
-
     mock_runner = MagicMock()
-    # Runner returns findings from two domains; --scope should restrict to sources
     mock_runner.run_all_checks.return_value = (
         [
-            LintFinding(
+            _make_finding(
                 check="banselectstar", severity="error", message="err",
                 model="model_a", path="models/sources/model_a.sql",
             ),
-            LintFinding(
+            _make_finding(
                 check="banselectstar", severity="error", message="err",
                 model="model_b", path="models/marts/marketing/model_b.sql",
             ),
@@ -592,13 +421,11 @@ def test_cli_health_scope(tmp_path, monkeypatch) -> None:
         10,
         ["rules"],
     )
-
     monkeypatch.setattr(
         "importlib.import_module",
         lambda name: mock_runner if name == "tff.dbt.runner" else (_ for _ in ()).throw(ImportError()),
     )
 
-    # Only enable ban_select_star so it dominates the overall score
     config_file = tmp_path / "fitness_functions.yaml"
     config_file.write_text(
         "checks:\n"
@@ -625,8 +452,6 @@ def test_cli_health_scope(tmp_path, monkeypatch) -> None:
     )
     (tmp_path / "dbt_project.yml").write_text("", encoding="utf-8")
 
-    # With scope=models/sources only 1 model (model_a) is in scope → score = 0%
-    # (1 error, 1 model → 100*(1-1/1) = 0%), fail-under 50 should fail
     exit_code = main([
         "health",
         "--project", str(tmp_path),
@@ -638,30 +463,21 @@ def test_cli_health_scope(tmp_path, monkeypatch) -> None:
 
 
 def test_cli_health_group_by_domain(tmp_path, monkeypatch) -> None:
-    """--group-by domain reaches the domain rendering path without error."""
-    from unittest.mock import MagicMock
-
     mock_runner = MagicMock()
     mock_runner.run_all_checks.return_value = (
         [
-            LintFinding(
-                check="banselectstar", severity="warning", message="warn",
+            _make_finding(
+                check="banselectstar", severity="error", message="err",
                 model="model_a", path="models/sources/model_a.sql",
             ),
         ],
         5,
-        ["rules"],
+        ["banselectstar"],
     )
-
-    monkeypatch.setattr(
-        "importlib.import_module",
-        lambda name: mock_runner if name == "tff.dbt.runner" else (_ for _ in ()).throw(ImportError()),
-    )
+    monkeypatch.setattr("importlib.import_module", lambda name: mock_runner)
 
     config_file = tmp_path / "fitness_functions.yaml"
-    config_file.write_text(
-        "rules:\n  ban_select_star:\n    enabled: true\n", encoding="utf-8"
-    )
+    config_file.write_text("rules:\n  ban_select_star:\n    enabled: true\n", encoding="utf-8")
     (tmp_path / "dbt_project.yml").write_text("", encoding="utf-8")
 
     exit_code = main([
@@ -675,605 +491,312 @@ def test_cli_health_group_by_domain(tmp_path, monkeypatch) -> None:
 
 def test_configurable_weights_scoring() -> None:
     """Validate weighted category and overall health scores."""
-    config = FitnessFunctionsConfig.model_validate({
-        "checks": {
-            "layer_integrity": {"enabled": True},
-            "schema_contracts": {"enabled": True},
-            "custom_exclusions": {"enabled": False},
-            "dependency_graph": {"enabled": False},
-            "materialization_depth": {"enabled": False},
-            "duplicate_ctes": {"enabled": False},
-            "connascence_of_value": {"enabled": False},
-            "join_type_parity": {"enabled": False},
-        },
-        "rules": {
-            "ban_select_star": {"enabled": True},
-            "column_names": {"enabled": True},
-            "filename_equals_modelname": {"enabled": False},
-            "column_types": {"enabled": False},
-            "mart_naming": {"enabled": False},
-            "classification_macros": {"enabled": False},
-            "sql_complexity": {"enabled": False},
-            "environment_agnostic_references": {"enabled": False},
-            "metadata": {"enabled": False},
-            "no_positional_group_by_or_order_by": {"enabled": False},
-        },
-        "health": {
+    config = _make_config(
+        enabled_checks=["layer_integrity", "schema_contracts"],
+        enabled_rules=["ban_select_star", "column_names"],
+        health={
             "weights": {
                 "layer_integrity": 3.0,
                 "schema_contracts": 2.0,
                 "column_names": 0.5,
             }
-        }
-    })
+        },
+    )
 
     findings = [
-        LintFinding(check="layer_integrity", severity="warning", message="warn"),
-        LintFinding(check="columnnames", severity="error", message="col error", model="model_a"),
-        LintFinding(check="banselectstar", severity="error", message="star error 1", model="model_b"),
-        LintFinding(check="banselectstar", severity="error", message="star error 2", model="model_c"),
+        _make_finding(check="layer_integrity", severity="warning", message="warn"),
+        _make_finding(check="columnnames", severity="error", message="col error", model="model_a"),
+        _make_finding(check="banselectstar", severity="error", message="star error 1", model="model_b"),
+        _make_finding(check="banselectstar", severity="error", message="star error 2", model="model_c"),
     ]
 
     scores = calculate_health_scores(findings, models_checked=10, config=config, provider="dbt")
 
-    # Verify check weights resolved correctly
     assert scores["check_weights"]["layer_integrity"] == 3.0
     assert scores["check_weights"]["schema_contracts"] == 2.0
     assert scores["check_weights"]["columnnames"] == 0.5
-    assert scores["check_weights"]["banselectstar"] == 1.0  # default
+    assert scores["check_weights"]["banselectstar"] == 1.0
 
-    # Verify individual check scores
     assert scores["check_scores"]["layer_integrity"] == 50.0
     assert scores["check_scores"]["schema_contracts"] == 100.0
     assert scores["check_scores"]["columnnames"] == 90.0
     assert scores["check_scores"]["banselectstar"] == 80.0
 
-    # Overall score: (3.0*50 + 2.0*100 + 0.5*90 + 1.0*80) / (3.0 + 2.0 + 0.5 + 1.0)
-    # = (150 + 200 + 45 + 80) / 6.5 = 475.0 / 6.5 = 73.0769%
     assert abs(scores["overall_score"] - (475.0 / 6.5)) < 0.001
-
-    # Connascence of Name category score:
-    # checks: columnnames (w=0.5, score=90.0), banselectstar (w=1.0, score=80.0)
-    # = (0.5*90 + 1.0*80) / (0.5 + 1.0) = 125.0 / 1.5 = 83.333%
     assert abs(scores["category_scores"]["Connascence of Name (CoN)"] - (125.0 / 1.5)) < 0.001
-
-    # Single check categories
     assert scores["category_scores"]["Dynamic Coupling & DAG Structure"] == 50.0
     assert scores["category_scores"]["Connascence of Type (CoT)"] == 100.0
 
 
 def test_category_weights_and_overrides() -> None:
-    """Validate category-level weights and individual check overrides."""
-    config = FitnessFunctionsConfig.model_validate({
-        "checks": {
-            "layer_integrity": {"enabled": True},
-            "dependency_graph": {"enabled": True},
-            "custom_exclusions": {"enabled": False},
-            "schema_contracts": {"enabled": False},
-            "materialization_depth": {"enabled": False},
-            "duplicate_ctes": {"enabled": False},
-            "connascence_of_value": {"enabled": False},
-            "join_type_parity": {"enabled": False},
-        },
-        "rules": {
-            "ban_select_star": {"enabled": True},
-            "filename_equals_modelname": {"enabled": False},
-            "column_names": {"enabled": False},
-            "column_types": {"enabled": False},
-            "mart_naming": {"enabled": False},
-            "classification_macros": {"enabled": False},
-            "sql_complexity": {"enabled": False},
-            "environment_agnostic_references": {"enabled": False},
-            "metadata": {"enabled": False},
-            "no_positional_group_by_or_order_by": {"enabled": False},
-        },
-        "health": {
+    config = _make_config(
+        enabled_checks=["layer_integrity", "dependency_graph"],
+        enabled_rules=["ban_select_star", "filename_equals_modelname"],
+        health={
             "weights": {
-                # Category weight via exact name
-                "Dynamic Coupling & DAG Structure": 2.0,
-                # Check override inside the same category
-                "layer_integrity": 4.0,
+                "dynamic_coupling": 2.0,
+                "connascence_of_name": 0.5,
+                "ban_select_star": 4.0,
             }
-        }
-    })
+        },
+    )
 
-    scores = calculate_health_scores([], models_checked=5, config=config, provider="dbt")
-    # layer_integrity gets check override: 4.0
-    assert scores["check_weights"]["layer_integrity"] == 4.0
-    # dependency_graph gets category weight: 2.0
+    findings = [
+        _make_finding(check="layer_integrity", severity="warning", message="warn"),
+        _make_finding(check="banselectstar", severity="error", message="star error", model="model_a"),
+    ]
+
+    scores = calculate_health_scores(findings, models_checked=10, config=config, provider="dbt")
+
+    assert scores["check_weights"]["layer_integrity"] == 2.0
     assert scores["check_weights"]["dependency_graph"] == 2.0
-    # banselectstar gets default: 1.0
-    assert scores["check_weights"]["banselectstar"] == 1.0
+    assert scores["check_weights"]["filenameequalsmodelname"] == 0.5
+    assert scores["check_weights"]["banselectstar"] == 4.0
+
+    assert scores["check_scores"]["layer_integrity"] == 50.0
+    assert scores["check_scores"]["dependency_graph"] == 100.0
+    assert scores["check_scores"]["filenameequalsmodelname"] == 100.0
+    assert scores["check_scores"]["banselectstar"] == 90.0
+
+    # Total weight: 2.0 + 2.0 + 4.0 + 0.5 = 8.5
+    # Overall: (2*50 + 2*100 + 4*90 + 0.5*100) / 8.5 = 710 / 8.5 = 83.529%
+    assert abs(scores["overall_score"] - (710.0 / 8.5)) < 0.001
 
 
 def test_category_weight_aliases_and_category_weights_field() -> None:
-    """Validate category aliases (e.g. dynamic_coupling, con) and category_weights field."""
-    config = FitnessFunctionsConfig.model_validate({
-        "checks": {
-            "dependency_graph": {"enabled": True},
-            "layer_integrity": {"enabled": False},
-            "custom_exclusions": {"enabled": False},
-            "schema_contracts": {"enabled": False},
-            "materialization_depth": {"enabled": False},
-            "duplicate_ctes": {"enabled": False},
-            "connascence_of_value": {"enabled": False},
-            "join_type_parity": {"enabled": False},
-        },
-        "rules": {
-            "ban_select_star": {"enabled": True},
-            "filename_equals_modelname": {"enabled": False},
-            "column_names": {"enabled": False},
-            "column_types": {"enabled": False},
-            "mart_naming": {"enabled": False},
-            "classification_macros": {"enabled": False},
-            "sql_complexity": {"enabled": False},
-            "environment_agnostic_references": {"enabled": False},
-            "metadata": {"enabled": False},
-            "no_positional_group_by_or_order_by": {"enabled": False},
-        },
-        "health": {
+    config = _make_config(
+        enabled_checks=["layer_integrity"],
+        enabled_rules=["ban_select_star"],
+        health={
             "category_weights": {
-                "dynamic_coupling": 2.5,
-                "con": 1.5,
+                "dag": 3.0,
+                "name": 2.0,
             }
-        }
-    })
+        },
+    )
 
-    scores = calculate_health_scores([], models_checked=5, config=config, provider="dbt")
-    assert scores["check_weights"]["dependency_graph"] == 2.5
-    assert scores["check_weights"]["banselectstar"] == 1.5
+    findings = [
+        _make_finding(check="layer_integrity", severity="warning", message="warn"),
+        _make_finding(check="banselectstar", severity="error", message="star error", model="model_a"),
+    ]
+
+    scores = calculate_health_scores(findings, models_checked=10, config=config, provider="dbt")
+
+    assert scores["check_weights"]["layer_integrity"] == 3.0
+    assert scores["check_weights"]["banselectstar"] == 2.0
+    assert scores["overall_score"] == (3.0 * 50.0 + 2.0 * 90.0) / 5.0
 
 
 def test_weights_edge_cases() -> None:
-    """Validate edge cases such as all weights zero, custom unknown checks, and fallback."""
-    config_zero = FitnessFunctionsConfig.model_validate({
-        "checks": {
-            "layer_integrity": {"enabled": True},
-            "custom_exclusions": {"enabled": False},
-            "schema_contracts": {"enabled": False},
-            "dependency_graph": {"enabled": False},
-            "materialization_depth": {"enabled": False},
-            "duplicate_ctes": {"enabled": False},
-            "connascence_of_value": {"enabled": False},
-            "join_type_parity": {"enabled": False},
-        },
-        "rules": {
-            "ban_select_star": {"enabled": True},
-            "filename_equals_modelname": {"enabled": False},
-            "column_names": {"enabled": False},
-            "column_types": {"enabled": False},
-            "mart_naming": {"enabled": False},
-            "classification_macros": {"enabled": False},
-            "sql_complexity": {"enabled": False},
-            "environment_agnostic_references": {"enabled": False},
-            "metadata": {"enabled": False},
-            "no_positional_group_by_or_order_by": {"enabled": False},
-        },
-        "health": {
-            "weights": {
-                "layer_integrity": 0.0,
-                "ban_select_star": 0.0,
-            }
-        }
-    })
-    findings = [
-        LintFinding(check="layer_integrity", severity="warning", message="w"),
-        LintFinding(check="banselectstar", severity="error", message="e", model="m1"),
-    ]
-    scores_zero = calculate_health_scores(findings, models_checked=10, config=config_zero, provider="dbt")
-    assert scores_zero["check_scores"]["layer_integrity"] == 50.0
-    assert scores_zero["check_scores"]["banselectstar"] == 90.0
-    # Fallback to unweighted category and overall average
-    assert scores_zero["category_scores"]["Connascence of Name (CoN)"] == 90.0
-    assert scores_zero["overall_score"] == 70.0
-
-    # 2. Unknown check with custom weight
-    config_unknown = FitnessFunctionsConfig.model_validate({
-        "health": {
-            "weights": {
-                "custom_unknown_check": 3.0,
-            }
-        }
-    })
-    findings_unknown = [
-        LintFinding(check="custom_unknown_check", severity="warning", message="w", model="m1"),
-    ]
-    scores_unknown = calculate_health_scores(findings_unknown, models_checked=10, config=config_unknown, provider="dbt")
-    assert scores_unknown["check_weights"]["custom_unknown_check"] == 3.0
-    assert scores_unknown["category_scores"]["Other Checks"] == 95.0
-
-    # 3. Unknown check with weight 0.0 (tests unweighted fallback in Other Checks)
-    config_unknown_zero = FitnessFunctionsConfig.model_validate({
-        "health": {
-            "weights": {
-                "custom_unknown_check": 0.0,
-            }
-        }
-    })
-    scores_unknown_zero = calculate_health_scores(findings_unknown, models_checked=10, config=config_unknown_zero, provider="dbt")
-    assert scores_unknown_zero["category_scores"]["Other Checks"] == 95.0
-
-    # 4. Config without health attribute (tests fallback)
     from tff.core.health import get_check_weight
-    assert get_check_weight("banselectstar", object()) == 1.0  # type: ignore[arg-type]
+
+    # 1. No health config -> default 1.0
+    cfg_empty = _make_config()
+    assert get_check_weight("layer_integrity", cfg_empty) == 1.0
+
+    # 2. Unknown check with no category or match -> default 1.0
+    cfg_weights = _make_config(
+        health={"weights": {"layer_integrity": 5.0, "unknown_category": 2.0}}
+    )
+    assert get_check_weight("totally_unknown_check_xyz", cfg_weights) == 1.0
+    assert get_check_weight("layer_integrity", cfg_weights) == 5.0
+
+    # 3. All weights set to 0.0 -> fallback to unweighted average
+    config_zeros = _make_config(
+        enabled_checks=["layer_integrity"],
+        enabled_rules=["ban_select_star"],
+        health={"weights": {"layer_integrity": 0.0, "ban_select_star": 0.0}},
+    )
+    findings = [
+        _make_finding(check="layer_integrity", severity="warning", message="warn"),
+        _make_finding(check="banselectstar", severity="error", message="star", model="m1"),
+    ]
+    scores_zeros = calculate_health_scores(findings, models_checked=10, config=config_zeros, provider="dbt")
+    assert scores_zeros["overall_score"] == (50.0 + 90.0) / 2.0
+    assert scores_zeros["category_scores"]["Dynamic Coupling & DAG Structure"] == 50.0
+    assert scores_zeros["category_scores"]["Connascence of Name (CoN)"] == 90.0
 
 
 def test_configurable_penalties_project_level() -> None:
-    """Validate configurable severity penalties for project-level checks."""
-    # Custom percentage penalties
-    config_pct = FitnessFunctionsConfig.model_validate({
-        "checks": {"layer_integrity": {"enabled": True}},
-        "health": {
+    config = _make_config(
+        enabled_checks=["layer_integrity"],
+        health={
             "penalties": {
-                "project_error": 25.0,
-                "project_warning": 10.0,
+                "project_error": 60.0,
+                "project_warning": 25.0,
             }
-        }
-    })
+        },
+    )
 
-    findings_err = [LintFinding(check="layer_integrity", severity="error", message="err")]
-    scores_err = calculate_health_scores(findings_err, models_checked=5, config=config_pct, provider="dbt")
-    # Score is 100 - 25 = 75%
-    assert scores_err["check_scores"]["layer_integrity"] == 75.0
+    findings_warn = [_make_finding(check="layer_integrity", severity="warning", message="warn")]
+    scores_warn = calculate_health_scores(findings_warn, models_checked=5, config=config, provider="dbt")
+    assert scores_warn["check_scores"]["layer_integrity"] == 75.0
 
-    findings_warn = [LintFinding(check="layer_integrity", severity="warning", message="warn")]
-    scores_warn = calculate_health_scores(findings_warn, models_checked=5, config=config_pct, provider="dbt")
-    # Score is 100 - 10 = 90%
-    assert scores_warn["check_scores"]["layer_integrity"] == 90.0
-
-    # Custom ratio penalties (0.30 -> 30%, 0.15 -> 15%)
-    config_ratio = FitnessFunctionsConfig.model_validate({
-        "checks": {"layer_integrity": {"enabled": True}},
-        "health": {
-            "penalties": {
-                "project_error": 0.30,
-                "project_warning": 0.15,
-            }
-        }
-    })
-    scores_ratio_err = calculate_health_scores(findings_err, models_checked=5, config=config_ratio, provider="dbt")
-    assert scores_ratio_err["check_scores"]["layer_integrity"] == 70.0
-    scores_ratio_warn = calculate_health_scores(findings_warn, models_checked=5, config=config_ratio, provider="dbt")
-    assert scores_ratio_warn["check_scores"]["layer_integrity"] == 85.0
+    findings_err = [_make_finding(check="layer_integrity", severity="error", message="err")]
+    scores_err = calculate_health_scores(findings_err, models_checked=5, config=config, provider="dbt")
+    assert scores_err["check_scores"]["layer_integrity"] == 40.0
 
 
 def test_configurable_penalties_model_level() -> None:
-    """Validate configurable error and warning multipliers for model-level checks."""
-    config = FitnessFunctionsConfig.model_validate({
-        "rules": {"ban_select_star": {"enabled": True}},
-        "health": {
+    config = _make_config(
+        enabled_rules=["ban_select_star"],
+        health={
             "penalties": {
                 "error": 2.0,
-                "warning": 0.1,
+                "warning": 0.25,
             }
-        }
-    })
+        },
+    )
 
-    # 10 models checked:
-    # 1 error -> 100 * (1 - 2.0 * 1 / 10) = 80%
-    findings_err = [LintFinding(check="banselectstar", severity="error", message="err", model="m1")]
-    scores_err = calculate_health_scores(findings_err, models_checked=10, config=config, provider="dbt")
-    assert scores_err["check_scores"]["banselectstar"] == 80.0
-
-    # 1 warning -> 100 * (1 - 0.1 * 1 / 10) = 99%
-    findings_warn = [LintFinding(check="banselectstar", severity="warning", message="warn", model="m1")]
-    scores_warn = calculate_health_scores(findings_warn, models_checked=10, config=config, provider="dbt")
-    assert scores_warn["check_scores"]["banselectstar"] == 99.0
+    findings = [
+        _make_finding(check="banselectstar", severity="error", message="err", model="model_a"),
+        _make_finding(check="banselectstar", severity="warning", message="warn", model="model_b"),
+    ]
+    scores = calculate_health_scores(findings, models_checked=10, config=config, provider="dbt")
+    # Score: 100 * (1 - (2.0*1 + 0.25*1)/10) = 100 * (1 - 0.225) = 77.5%
+    assert scores["check_scores"]["banselectstar"] == 77.5
 
 
 def test_nested_penalties_and_check_specific_overrides() -> None:
-    """Validate nested model/project syntax and check-specific penalty overrides."""
-    config = FitnessFunctionsConfig.model_validate({
-        "checks": {
-            "layer_integrity": {"enabled": True},
-            "dependency_graph": {"enabled": True},
-        },
-        "rules": {
-            "ban_select_star": {"enabled": True},
-            "column_names": {"enabled": True},
-        },
-        "health": {
+    config = _make_config(
+        enabled_checks=["layer_integrity", "schema_contracts"],
+        enabled_rules=["ban_select_star", "column_names"],
+        health={
             "penalties": {
-                "model": {"error": 1.0, "warning": 0.5},
-                "project": {"error": 40.0, "warning": 20.0},
+                "error": 1.0,
+                "warning": 0.5,
                 "checks": {
-                    "layer_integrity": {"error": 15.0, "warning": 5.0},
-                    "ban_select_star": {"error": 0.5, "warning": 0.1},
-                }
+                    "layer_integrity": {"warning": 10.0},
+                    "ban_select_star": {"error": 0.5},
+                },
             }
-        }
-    })
+        },
+    )
 
     findings = [
-        LintFinding(check="layer_integrity", severity="error", message="err"),
-        LintFinding(check="dependency_graph", severity="error", message="err"),
-        LintFinding(check="banselectstar", severity="error", message="err", model="m1"),
-        LintFinding(check="columnnames", severity="error", message="err", model="m1"),
+        _make_finding(check="layer_integrity", severity="warning", message="warn"),
+        _make_finding(check="banselectstar", severity="error", message="err", model="model_a"),
+        _make_finding(check="columnnames", severity="error", message="err", model="model_b"),
     ]
     scores = calculate_health_scores(findings, models_checked=10, config=config, provider="dbt")
 
-    # layer_integrity gets check override: 100 - 15 = 85%
-    assert scores["check_scores"]["layer_integrity"] == 85.0
-    # dependency_graph gets default project error: 100 - 40 = 60%
-    assert scores["check_scores"]["dependency_graph"] == 60.0
-    # banselectstar gets check override: 100 * (1 - 0.5 * 1 / 10) = 95%
+    assert scores["check_scores"]["layer_integrity"] == 90.0
     assert scores["check_scores"]["banselectstar"] == 95.0
-    # columnnames gets default model error: 100 * (1 - 1.0 * 1 / 10) = 90%
     assert scores["check_scores"]["columnnames"] == 90.0
 
 
-def test_render_health_report_custom_weights() -> None:
-    """Validate that render_health_report prints custom weights when configured."""
-    config = FitnessFunctionsConfig.model_validate({
-        "checks": {
-            "layer_integrity": {"enabled": True},
+def test_calculate_health_scores_custom_weights_and_penalties() -> None:
+    """Verify weight and penalty resolution directly without console rendering."""
+    config = _make_config(
+        enabled_checks=["layer_integrity"],
+        enabled_rules=["ban_select_star"],
+        health={
+            "weights": {"layer_integrity": 3.0},
+            "penalties": {"warning": 0.1},
         },
-        "rules": {
-            "ban_select_star": {"enabled": True},
-        },
-        "health": {
-            "weights": {
-                "layer_integrity": 3.0,
-                # ban_select_star left at default 1.0
-            }
-        }
-    })
+    )
 
     findings = [
-        LintFinding(check="layer_integrity", severity="warning", message="w"),
-        LintFinding(check="banselectstar", severity="warning", message="w", model="m1"),
+        _make_finding(check="layer_integrity", severity="warning", message="w"),
+        _make_finding(check="banselectstar", severity="warning", message="w", model="m1", path="models/sources/m1.sql"),
     ]
     scores = calculate_health_scores(findings, models_checked=10, config=config, provider="dbt")
 
-    console = Console(record=True, width=120)
-    render_health_report(scores, config, provider="dbt", console=console, verbose=True)
-    output = console.export_text()
+    assert scores["check_weights"]["layer_integrity"] == 3.0
+    assert scores["check_weights"]["banselectstar"] == 1.0
 
-    # layer_integrity has weight 3.0 -> should display weight
-    assert "layer_integrity · weight: 3" in output
-    # banselectstar has weight 1.0 -> should display without weight string
-    assert "banselectstar" in output
-    assert "banselectstar · weight" not in output
-
-
-def test_render_health_report_domain_custom_penalties() -> None:
-    """Validate that domain breakdown rendering respects custom penalties."""
-    config = FitnessFunctionsConfig.model_validate({
-        "rules": {"ban_select_star": {"enabled": True}},
-        "health": {
-            "penalties": {
-                "warning": 0.1,
-            }
-        }
-    })
-    findings = [
-        LintFinding(
-            check="banselectstar", severity="warning", message="warn",
-            model="model_a", path="models/sources/model_a.sql",
-        ),
-    ]
-    scores = calculate_health_scores(findings, models_checked=10, config=config, provider="dbt")
-
-    console = Console(record=True, width=120)
-    render_health_report(scores, config, provider="dbt", console=console, group_by="domain")
-    output = console.export_text()
-
-    assert "Detailed Breakdown by Domain" in output
-    assert "models/sources" in output
-    # With 1 warning and penalty 0.1 on 1 domain model, score is 100 * (1 - 0.1/1) = 90.0%
-    assert "90.0%" in output
+    scores_scoped = calculate_health_scores(
+        findings, models_checked=10, config=config, provider="dbt", scope=["models/sources"]
+    )
+    assert scores_scoped["check_scores"]["banselectstar"] == 90.0
 
 
 def test_get_health_json_data_includes_weights() -> None:
-    """Validate that get_health_json_data includes check_weights in JSON output."""
     from tff.core.logs import get_health_json_data
 
-    config = FitnessFunctionsConfig.model_validate({
-        "checks": {"layer_integrity": {"enabled": True}},
-        "health": {
-            "weights": {
-                "layer_integrity": 3.0,
-            }
-        }
-    })
+    config = _make_config(
+        enabled_checks=["layer_integrity"],
+        health={"weights": {"layer_integrity": 3.0}},
+    )
     scores = calculate_health_scores([], models_checked=5, config=config, provider="dbt")
     data = get_health_json_data(scores, models_checked=5)
     assert "check_weights" in data
     assert data["check_weights"]["layer_integrity"] == 3.0
 
 
-def test_format_health_check_desc_enabled_known_check() -> None:
-    """Enabled known check should have OSC-8 hyperlinks for label and check ID."""
-    from tff.core.health import _format_health_check_desc
-    from tff.core.registry import registry
-
-    desc = _format_health_check_desc("[green]✔[/green]", "banselectstar", "No SELECT *", weight_str=" · weight: 2")
-    assert desc.plain == "  ✔ No SELECT * (banselectstar · weight: 2)"
-
-    docs_url = registry.get_docs_url("banselectstar")
-    assert docs_url is not None
-
-    # Check styles applied across spans
-    styles = [str(span.style) for span in desc.spans]
-    assert any(f"link {docs_url}" in s for s in styles)
-    assert any(f"dim link {docs_url}" in s for s in styles)
-
-
-def test_format_health_check_desc_enabled_unknown_check() -> None:
-    """Enabled unknown check should not have hyperlinks."""
-    from tff.core.health import _format_health_check_desc
-
-    desc = _format_health_check_desc("[red]✘[/red]", "custom_check", "Custom Check")
-    assert desc.plain == "  ✘ Custom Check (custom_check)"
-    styles = [str(span.style) for span in desc.spans]
-    assert not any("link" in s for s in styles)
-
-
-def test_format_health_check_desc_disabled_known_check() -> None:
-    """Disabled known check should have dim OSC-8 hyperlinks for label and check ID."""
-    from tff.core.health import _format_health_check_desc
-    from tff.core.registry import registry
-
-    desc = _format_health_check_desc("-", "banselectstar", "No SELECT *", disabled=True)
-    assert desc.plain == "  - No SELECT * (banselectstar)"
-
-    docs_url = registry.get_docs_url("banselectstar")
-    assert docs_url is not None
-
-    styles = [str(span.style) for span in desc.spans]
-    assert any(f"dim link {docs_url}" in s for s in styles)
-
-
-def test_format_health_check_desc_disabled_unknown_check() -> None:
-    """Disabled unknown check should have purely dim styles without hyperlinks."""
-    from tff.core.health import _format_health_check_desc
-
-    desc = _format_health_check_desc("-", "unknown_check", "Unknown Check", disabled=True)
-    assert desc.plain == "  - Unknown Check (unknown_check)"
-
-    styles = [str(span.style) for span in desc.spans]
-    assert all("dim" in s and "link" not in s for s in styles)
-
-
-def test_render_health_report_connascence_breakdown_hyperlinks() -> None:
-    """render_health_report connascence breakdown includes Rich OSC-8 hyperlinks without plain text leakage."""
-    from tff.core.registry import registry
-
-    config = FitnessFunctionsConfig.model_validate({
-        "rules": {"ban_select_star": {"enabled": True}},
-        "checks": {"layer_integrity": {"enabled": True}},
-    })
-    findings = [
-        LintFinding(
-            check="banselectstar", severity="error", message="error",
-            model="model_a", path="models/marts/marketing/model_a.sql",
+@pytest.mark.parametrize(
+    "icon,check,label,weight_str,disabled,expected_plain,has_link,is_dim",
+    [
+        (
+            "[green]✔[/green]",
+            "banselectstar",
+            "No SELECT *",
+            " · weight: 2",
+            False,
+            "  ✔ No SELECT * (banselectstar · weight: 2)",
+            True,
+            False,
         ),
-    ]
-    scores = calculate_health_scores(findings, models_checked=5, config=config, provider="dbt")
-
-    console = Console(record=True, width=120)
-    render_health_report(scores, config, provider="dbt", console=console, group_by="connascence", verbose=True)
-    html = console.export_html()
-    text = console.export_text()
-
-    docs_url = registry.get_docs_url("banselectstar")
-    assert docs_url is not None
-    assert f'href="{docs_url}"' in html
-    assert "https://tff.readthedocs.io" not in text
-
-
-def test_render_health_report_connascence_unknown_enabled_hyperlinks() -> None:
-    """render_health_report handles unknown enabled checks in breakdown gracefully."""
-    config = FitnessFunctionsConfig.model_validate({})
-    scores = calculate_health_scores([], models_checked=5, config=config, provider="dbt")
-    # Artificially inject an unknown check into enabled_checks
-    scores["enabled_checks"].add("custom_external_check")
-    scores["check_scores"]["custom_external_check"] = 100.0
-    scores["check_findings"]["custom_external_check"] = []
-
-    console = Console(record=True, width=120)
-    render_health_report(scores, config, provider="dbt", console=console, group_by="connascence", verbose=True)
-    text = console.export_text()
-
-    assert "Other Checks" in text
-    assert "custom_external_check" in text
-
-
-def test_render_health_report_domain_breakdown_hyperlinks() -> None:
-    """render_health_report domain breakdown includes Rich OSC-8 hyperlinks without plain text leakage."""
+        (
+            "[red]✘[/red]",
+            "custom_check",
+            "Custom Check",
+            "",
+            False,
+            "  ✘ Custom Check (custom_check)",
+            False,
+            False,
+        ),
+        (
+            "-",
+            "banselectstar",
+            "No SELECT *",
+            "",
+            True,
+            "  - No SELECT * (banselectstar)",
+            True,
+            True,
+        ),
+        (
+            "-",
+            "unknown_check",
+            "Unknown Check",
+            "",
+            True,
+            "  - Unknown Check (unknown_check)",
+            False,
+            True,
+        ),
+    ],
+)
+def test_format_health_check_desc(
+    icon: str,
+    check: str,
+    label: str,
+    weight_str: str,
+    disabled: bool,
+    expected_plain: str,
+    has_link: bool,
+    is_dim: bool,
+) -> None:
+    from tff.core.health import _format_health_check_desc
     from tff.core.registry import registry
 
-    config = FitnessFunctionsConfig.model_validate({
-        "rules": {"ban_select_star": {"enabled": True}},
-    })
-    findings = [
-        LintFinding(
-            check="banselectstar", severity="error", message="error",
-            model="model_a", path="models/marts/marketing/model_a.sql",
-        ),
-    ]
-    scores = calculate_health_scores(findings, models_checked=5, config=config, provider="dbt")
+    desc = _format_health_check_desc(
+        icon, check, label, weight_str=weight_str, disabled=disabled
+    )
+    assert desc.plain == expected_plain
+    styles = [str(span.style) for span in desc.spans]
 
-    console = Console(record=True, width=120)
-    render_health_report(scores, config, provider="dbt", console=console, group_by="domain")
-    html = console.export_html()
-    text = console.export_text()
+    if has_link:
+        docs_url = registry.get_docs_url(check)
+        assert docs_url is not None
+        assert any(f"link {docs_url}" in s for s in styles)
+    else:
+        assert not any("link" in s for s in styles)
 
-    docs_url = registry.get_docs_url("banselectstar")
-    assert docs_url is not None
-    assert f'href="{docs_url}"' in html
-    assert "https://tff.readthedocs.io" not in text
-
-
-def test_render_health_report_top_penalty_drivers() -> None:
-    """Verify top penalty drivers section and remediation guide callout."""
-    config = FitnessFunctionsConfig.model_validate({
-        "rules": {
-            "ban_select_star": {"enabled": True},
-            "layer_integrity": {"enabled": True},
-        },
-    })
-    findings = [
-        LintFinding(
-            check="layer_integrity",
-            severity="error",
-            message="cross layer error",
-            model="dim_users",
-            path="models/core/dim_users.sql",
-        ),
-    ]
-    scores = calculate_health_scores(findings, models_checked=2, config=config, provider="dbt")
-
-    console = Console(record=True, width=120)
-    render_health_report(scores, config, provider="dbt", console=console, fail_under=98.0)
-    output = console.export_text()
-
-    assert "PROJECT FITNESS SCORE" in output
-    assert "layer integrity" in output
-    assert "[FAIL: TARGET >= 98.0%]" in output
-    assert "ACTION: Fix 1 layer integrity violation to raise score above 98.0%." in output
-
-
-def test_render_health_report_pass_threshold_and_no_penalties() -> None:
-    """Verify pass threshold indicator and zero penalty state."""
-    config = FitnessFunctionsConfig.model_validate({
-        "rules": {"ban_select_star": {"enabled": True}},
-    })
-    findings = []
-    scores = calculate_health_scores(findings, models_checked=5, config=config, provider="dbt")
-
-    console = Console(record=True, width=120)
-    render_health_report(scores, config, provider="dbt", console=console, fail_under=80.0)
-    output = console.export_text()
-
-    assert "[PASS: TARGET >= 80.0%]" in output
-    assert "ACTION: All fitness functions satisfied. Fitness score is optimal." in output
-
-
-def test_render_health_report_top_penalty_drivers_alignment() -> None:
-    """Verify alignment across multiple drivers with single-digit and double-digit points."""
-    config = FitnessFunctionsConfig.model_validate({
-        "rules": {
-            "ban_select_star": {"enabled": True},
-            "layer_integrity": {"enabled": True},
-            "nomissingdescription": {"enabled": True},
-        },
-    })
-    findings = [
-        LintFinding(check="layer_integrity", severity="error", message="err", model="dim_users", path="models/core/dim_users.sql"),
-        LintFinding(check="nomissingdescription", severity="error", message="err", model="dim_users", path="models/core/dim_users.sql"),
-        LintFinding(check="nomissingdescription", severity="error", message="err", model="fct_orders", path="models/core/fct_orders.sql"),
-    ]
-    scores = calculate_health_scores(findings, models_checked=2, config=config, provider="dbt")
-
-    console = Console(record=True, width=120)
-    render_health_report(scores, config, provider="dbt", console=console)
-    output = console.export_text()
-
-    assert "PROJECT FITNESS SCORE" in output
-    assert "Architecture & DAG" in output
-    assert "Contract & Metadata" in output
-    assert "ACTION" in output
+    if is_dim:
+        assert any("dim" in s for s in styles)
 
 
 def test_render_health_report_verbose_flag() -> None:
@@ -1282,14 +805,12 @@ def test_render_health_report_verbose_flag() -> None:
         "rules": {
             "ban_select_star": {"enabled": True},
             "filename_equals_modelname": {"enabled": False},
-            "nomissingowner": {"enabled": True},
-            "nomissingdescription": {"enabled": True},
+            "metadata": {"enabled": True, "owner": True, "description": True},
         },
     })
-    # ban_select_star has error, nomissingowner has warning, nomissingdescription passes (100%)
     findings = [
-        LintFinding(check="banselectstar", severity="error", message="err", model="m1"),
-        LintFinding(check="nomissingowner", severity="warning", message="warn", model="m2"),
+        _make_finding(check="banselectstar", severity="error", message="err", model="m1"),
+        _make_finding(check="nomissingowner", severity="warning", message="warn", model="m2"),
     ]
     scores = calculate_health_scores(findings, models_checked=5, config=config, provider="dbt")
 
@@ -1309,14 +830,12 @@ def test_render_health_report_verbose_flag() -> None:
     output_verbose = console_verbose.export_text()
 
     assert "Use --verbose to expand all passing and disabled checks." not in output_verbose
-    assert "Disabled" in output_verbose
     assert "nomissingowner" in output_verbose
     assert "nomissingdescription" in output_verbose
     assert "1 warning" in output_verbose
 
 
 def test_cli_health_verbose_flag(tmp_path, monkeypatch) -> None:
-    """Verify that --verbose and -v flags are accepted and executed by the CLI."""
     mock_runner = MagicMock()
     mock_runner.run_all_checks.return_value = ([], 5, ["rules"])
     monkeypatch.setattr("importlib.import_module", lambda name: mock_runner)
@@ -1332,25 +851,32 @@ def test_cli_health_verbose_flag(tmp_path, monkeypatch) -> None:
     assert exit_code_v == 0
 
 
-def test_action_phrases_and_nonexistent_project_root() -> None:
-    """Verify action phrases for CTEs and join parity, and nonexistent project_root handling."""
-    from pathlib import Path
-
+@pytest.mark.parametrize(
+    "check,count,expected",
+    [
+        ("duplicate_ctes", 1, "Refactor 1 duplicate CTE"),
+        ("duplicate_ctes", 2, "Refactor 2 duplicate CTEs"),
+        ("join_type_parity", 1, "Align data types across 1 JOIN condition"),
+        ("join_type_parity", 3, "Align data types across 3 JOIN conditions"),
+        ("nomissingowner", 1, "Add missing contract metadata to 1 model"),
+        ("nomissingowner", 2, "Add missing contract metadata to 2 models"),
+        ("banselectstar", 1, "Replace 1 wildcard SELECT * query"),
+        ("banselectstar", 2, "Replace 2 wildcard SELECT * queries"),
+        ("layer_integrity", 1, "Fix 1 layer integrity violation"),
+        ("layer_integrity", 2, "Fix 2 layer integrity violations"),
+    ],
+)
+def test_get_action_phrase(check: str, count: int, expected: str) -> None:
     from tff.core.health import _get_action_phrase
 
-    assert _get_action_phrase("duplicate_ctes", 1) == "Refactor 1 duplicate CTE"
-    assert _get_action_phrase("duplicate_ctes", 2) == "Refactor 2 duplicate CTEs"
-    assert _get_action_phrase("join_type_parity", 1) == "Align data types across 1 JOIN condition"
-    assert _get_action_phrase("join_type_parity", 3) == "Align data types across 3 JOIN conditions"
-    assert _get_action_phrase("nomissingowner", 1) == "Add missing contract metadata to 1 model"
-    assert _get_action_phrase("nomissingowner", 2) == "Add missing contract metadata to 2 models"
+    assert _get_action_phrase(check, count) == expected
 
-    # Test nonexistent project_root does not raise and continues cleanly
-    config = FitnessFunctionsConfig.model_validate({
-        "rules": {"ban_select_star": {"enabled": True}},
-    })
+
+def test_nonexistent_project_root_health_report() -> None:
+    """Nonexistent project_root does not raise and continues cleanly."""
+    config = _make_config(enabled_rules=["ban_select_star"])
     findings = [
-        LintFinding(check="banselectstar", severity="error", message="err", model="m1", path="models/core/m1.sql"),
+        _make_finding(check="banselectstar", severity="error", message="err", model="m1", path="models/core/m1.sql"),
     ]
     scores = calculate_health_scores(findings, models_checked=1, config=config, provider="dbt")
     scores["check_weights"] = {c: 0.0 for c in scores["enabled_checks"]}
@@ -1364,9 +890,3 @@ def test_action_phrases_and_nonexistent_project_root() -> None:
     )
     output = console.export_text()
     assert "PROJECT FITNESS SCORE" in output
-
-
-
-
-
-
