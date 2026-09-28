@@ -67,7 +67,7 @@ def test_format_github_annotation_error_and_warning():
     res_err = format_github_annotation(f_err)
     assert (
         res_err
-        == "::error file=models/marts/fct_orders.sql,line=42,title=Duplicate CTEs (Connascence of Algorithm)::Duplicate CTE found in model. (https://tff.readthedocs.io/en/latest/rules_and_checks/#duplicate-ctes-duplicate_ctes)"
+        == "::error file=models/marts/fct_orders.sql,line=42,title=ERR · Duplicate CTEs (Connascence of Algorithm)::! Duplicate CTE found in model. (https://tff.readthedocs.io/en/latest/rules_and_checks/#duplicate-ctes-duplicate_ctes)"
     )
 
     f_warn = LintFinding(
@@ -81,7 +81,7 @@ def test_format_github_annotation_error_and_warning():
     # When line is not provided, it defaults to line 1
     assert (
         res_warn
-        == "::warning file=models/marts/bad_name.sql,line=1,title=Mart naming convention (Connascence of Name)::Model in marts must start with fct_ or dim_. (https://tff.readthedocs.io/en/latest/rules_and_checks/#mart-naming-mart_naming)"
+        == "::warning file=models/marts/bad_name.sql,line=1,title=WRN · Mart naming convention (Connascence of Name)::* Model in marts must start with fct_ or dim_. (https://tff.readthedocs.io/en/latest/rules_and_checks/#mart-naming-mart_naming)"
     )
 
 
@@ -94,7 +94,7 @@ def test_format_github_annotation_repo_level_no_path():
     res = format_github_annotation(f_repo)
     assert (
         res
-        == "::error title=Layer integrity (Dynamic Coupling & DAG Structure)::Missing layers in config. (https://tff.readthedocs.io/en/latest/rules_and_checks/#layer-integrity-layer_integrity)"
+        == "::error title=ERR · Layer integrity (Dynamic Coupling & DAG Structure)::! Missing layers in config. (https://tff.readthedocs.io/en/latest/rules_and_checks/#layer-integrity-layer_integrity)"
     )
 
 
@@ -114,7 +114,7 @@ def test_format_github_annotation_with_coordinates():
     assert "endLine=45" in res
     assert "col=5" in res
     assert "endColumn=20" in res
-    assert "title=Duplicate CTEs (Connascence of Algorithm)" in res
+    assert "title=ERR · Duplicate CTEs (Connascence of Algorithm)" in res
 
 
 def test_format_github_annotation_custom_rule_no_category():
@@ -124,7 +124,7 @@ def test_format_github_annotation_custom_rule_no_category():
         message="Custom violation",
     )
     res = format_github_annotation(f)
-    assert res == "::warning title=my_custom_check::Custom violation"
+    assert res == "::warning title=WRN · my_custom_check::* Custom violation"
 
 
 def test_format_github_annotation_escaping():
@@ -162,8 +162,8 @@ def test_emit_github_annotations():
     output = stream.getvalue()
     lines = output.strip().split("\n")
     assert len(lines) == 2
-    assert lines[0] == "::error file=models/a.sql,line=10,title=c1::Error 1"
-    assert lines[1] == "::warning file=models/b.sql,line=1,title=c2::Warning 1"
+    assert lines[0] == "::error file=models/a.sql,line=10,title=ERR · c1::! Error 1"
+    assert lines[1] == "::warning file=models/b.sql,line=1,title=WRN · c2::* Warning 1"
 
 
 def test_emit_github_annotations_prioritization_and_capping(tmp_path: Path):
@@ -222,9 +222,9 @@ def test_emit_github_annotations_prioritization_and_capping(tmp_path: Path):
     # 1. Modified file error (f_mod_err)
     # 2. Modified file warning (f_mod_warn)
     # 3. Unmodified file error (f_unmod_err)
-    assert "title=c_mod_err" in output[1]
-    assert "title=c_mod_warn" in output[2]
-    assert "title=c_unmod_err" in output[3]
+    assert "title=ERR · c_mod_err" in output[1]
+    assert "title=WRN · c_mod_warn" in output[2]
+    assert "title=ERR · c_unmod_err" in output[3]
 
 
 def test_is_finding_in_modified_files_branches(tmp_path: Path):

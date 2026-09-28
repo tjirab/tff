@@ -33,35 +33,39 @@ def _get_relative_path(file_path: str | Path, project_root: Path | None = None) 
     return str(path_obj).replace("\\", "/")
 
 
-def _format_annotation_title(check: str) -> str:
-    """Format human-friendly rule label and connascence category for annotation title."""
+def _format_annotation_title(check: str, severity: str = "error") -> str:
+    """Format human-friendly rule label and connascence category with Bauhaus signal."""
     from tff.core.report import CONNASCENCE_CATEGORIES
 
+    tag = "ERR" if severity == "error" else "WRN"
     label = CHECK_LABELS.get(check, check)
     category = CONNASCENCE_CATEGORIES.get(check)
     if category:
         clean_cat = category.split(" (")[0]
-        return f"{label} ({clean_cat})"
-    return label
+        return f"{tag} · {label} ({clean_cat})"
+    return f"{tag} · {label}"
 
 
 def format_github_annotation(
     finding: LintFinding,
     project_root: Path | None = None,
 ) -> str:
-    """Format a LintFinding as a GitHub Actions workflow command annotation."""
+    """Format a LintFinding as a GitHub Actions workflow command annotation with Bauhaus signals."""
     from tff.core.registry import registry
 
     command = "error" if finding.severity == "error" else "warning"
-    msg = format_message(finding.message)
+    raw_msg = format_message(finding.message)
     docs_url = registry.get_docs_url(finding.check)
-    if docs_url and docs_url not in msg:
-        msg = f"{msg} ({docs_url})"
+    if docs_url and docs_url not in raw_msg:
+        raw_msg = f"{raw_msg} ({docs_url})"
+
+    sig = "!" if finding.severity == "error" else "*"
+    msg = f"{sig} {raw_msg}"
 
     # GitHub Actions workflow command escaping for message
     msg = msg.replace("%", "%25").replace("\r", "%0D").replace("\n", "%0A")
 
-    title = _format_annotation_title(finding.check)
+    title = _format_annotation_title(finding.check, severity=finding.severity)
 
     params: list[str] = []
     if finding.path:

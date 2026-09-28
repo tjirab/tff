@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+from collections import defaultdict
 import json
 import logging
 import os
@@ -18,9 +19,9 @@ import urllib.request
 from tff.core.adapter import detect_provider, get_adapter
 from tff.core.config import load_fitness_config
 from tff.core.formatters import emit_github_annotations
-from tff.core.health import calculate_health_scores, render_health_report
+from tff.core.health import _get_action_phrase, calculate_health_scores, render_health_report
 from tff.core.registry import registry
-from tff.core.report import LintFinding
+from tff.core.report import CONNASCENCE_CATEGORIES, LintFinding, _format_connascence_tag
 
 logger = logging.getLogger(__name__)
 
@@ -35,6 +36,20 @@ def _format_check_cell(check_name: str) -> str:
     if url:
         return f"[`{check_name}`]({url})"
     return f"`{check_name}`"
+
+
+def _make_markdown_progress_bar(score: float, width: int = 10) -> str:
+    """Generate a clean Unicode block progress bar for Markdown tables."""
+    filled = int(round(score / 100 * width))
+    return "█" * filled + "░" * (width - filled)
+
+
+def _get_coupling_tag(check: str) -> str:
+    """Resolve short Bauhaus coupling tag for a check name."""
+    cat = CONNASCENCE_CATEGORIES.get(check, "")
+    if cat:
+        return _format_connascence_tag(cat)
+    return "quality"
 
 
 def parse_bool(val: Any) -> bool:
@@ -340,7 +355,7 @@ def generate_pr_comment_markdown(
     passed = evaluate_pass_fail(
         current_data, fail_under=fail_under, fail_level=fail_level
     )
-    status_badge = "🟢 **PASSED**" if passed else "🔴 **FAILED**"
+    status_badge = "**PASSED**" if passed else "**FAILED**"
 
     total_violations = len(current_data.get("findings", []))
     errors_count = int(current_data.get("errors_count", 0))
@@ -355,16 +370,16 @@ def generate_pr_comment_markdown(
         if abs(delta) < 0.05:
             delta_str = f"0.0% vs {base_ref}"
         elif delta > 0:
-            delta_str = f"+{delta:.1f}% vs {base_ref} 📈"
+            delta_str = f"+{delta:.1f}% vs {base_ref}"
         else:
-            delta_str = f"{delta:.1f}% vs {base_ref} 📉"
+            delta_str = f"{delta:.1f}% vs {base_ref}"
         score_display = f"**{score:.1f}%** ({delta_str})"
 
         new_violations, resolved_violations = compare_findings(
             current_data.get("findings", []), base_data.get("findings", [])
         )
 
-        diff_summary_lines.append(f"### 📈 Changes vs `{base_ref}`")
+        diff_summary_lines.append(f"### Changes vs `{base_ref}`")
         diff_summary_lines.append(f"- **Score Delta**: `{delta_str}`")
         diff_summary_lines.append(
             f"- **Resolved Violations**: {len(resolved_violations)}"
@@ -374,26 +389,24 @@ def generate_pr_comment_markdown(
         )
 
         if new_violations:
-            diff_summary_lines.append("\n#### ⚠️ New Violations Introduced")
+            diff_summary_lines.append("\n#### New Violations Introduced")
             diff_summary_lines.append(
-                "| Severity | Check | Model / File | Message |"
+                "| STATUS | LOCATION | RULE | COUPLING | DETAILS |"
             )
-            diff_summary_lines.append("| :---: | :--- | :--- | :--- |")
+            diff_summary_lines.append("| :---: | :--- | :--- | :--- | :--- |")
             for nv in new_violations[:10]:
-                sev = (
-                    "🔴 Error"
-                    if nv.get("severity") == "error"
-                    else "🟡 Warning"
-                )
+                sev = "`ERR`" if nv.get("severity") == "error" else "`WRN`"
+                sig = "!" if nv.get("severity") == "error" else "*"
                 chk = _format_check_cell(nv.get("check", ""))
                 target = nv.get("model") or nv.get("path") or "-"
+                coup = f"`{_get_coupling_tag(nv.get('check', ''))}`"
                 msg = (
                     nv.get("message", "")
                     .replace("\n", " ")
                     .replace("|", "\\|")
                 )
                 diff_summary_lines.append(
-                    f"| {sev} | {chk} | `{target}` | {msg} |"
+                    f"| {sev} | `{target}` | {chk} | {coup} | {sig} {msg} |"
                 )
             if len(new_violations) > 10:
                 diff_summary_lines.append(
@@ -402,12 +415,12 @@ def generate_pr_comment_markdown(
 
     if only_changed:
         threshold_line = (
-            f"> **Mode**: 🔍 Gating `{modified_files_count}` modified file(s) in PR · "
+            f"> **Mode**: Gating `{modified_files_count}` modified file(s) in PR · "
             f"Minimum score: `{fail_under:.1f}%` · Severity threshold: `{fail_level}`\n"
         )
         if ignored_violations_count > 0:
             threshold_line += (
-                f"> ℹ️ *{ignored_violations_count} pre-existing violation(s) "
+                f"> *{ignored_violations_count} pre-existing violation(s) "
                 f"in unmodified files were excluded due to `only-changed: true`.*\n"
             )
     else:
@@ -415,8 +428,8 @@ def generate_pr_comment_markdown(
 
     lines = [
         PR_COMMENT_MARKER,
-        "## 🎯 Transformation Fitness Functions Report\n",
-        "| Overall Health Score | Pass/Fail Status | Violations | Errors | Warnings |",
+        "## ■ ▲ ● TFF ARCHITECTURE AUDIT\n",
+        "| OVERALL HEALTH | STATUS | DEFECTS | ERRORS | WARNINGS |",
         "| :---: | :---: | :---: | :---: | :---: |",
         f"| {score_display} | {status_badge} | {total_violations} | {errors_count} | {warnings_count} |\n",
         threshold_line,
@@ -429,49 +442,75 @@ def generate_pr_comment_markdown(
     category_scores = current_data.get("category_scores", {})
     if category_scores:
         cat_lines = [
-            "### 📊 Health Score by Category",
-            "| Category | Score |",
-            "| :--- | :---: |",
+            "### DIMENSION DISTRIBUTION",
+            "| DIMENSION | SCORE | DISTRIBUTION (0-100) |",
+            "| :--- | :---: | :--- |",
         ]
         has_categories = False
         for cat, cat_score in category_scores.items():
             if cat_score is not None:
                 has_categories = True
-                cat_lines.append(f"| {cat} | {cat_score:.1f}% |")
+                bar_str = _make_markdown_progress_bar(cat_score, width=10)
+                cat_lines.append(f"| {cat} | {cat_score:.1f}% | `{bar_str}` |")
         if has_categories:
             lines.extend(cat_lines)
             lines.append("")
 
     findings = current_data.get("findings", [])
     if not findings:
-        lines.append("### 🔍 Violations")
+        lines.append("### AUDIT LEDGER")
         lines.append(
-            "✅ **All architectural fitness functions and linter checks passed without any violations!**\n"
+            "All architectural fitness functions and linter checks passed without any violations!\n"
         )
     else:
         open_tag = " open" if len(findings) <= 15 else ""
-        lines.append(f"### 🔍 Violations Detail ({len(findings)})")
+        lines.append(f"### Violations Detail ({len(findings)})")
         lines.append(f"<details{open_tag}>")
         lines.append(
             f"<summary><b>Click to expand {len(findings)} violation(s)</b></summary>\n"
         )
-        lines.append("| Severity | Check | Model / File | Message |")
-        lines.append("| :---: | :--- | :--- | :--- |")
+        lines.append("| STATUS | LOCATION | RULE | COUPLING | DETAILS |")
+        lines.append("| :---: | :--- | :--- | :--- | :--- |")
         for f in findings[:50]:
-            sev = "🔴 Error" if f.get("severity") == "error" else "🟡 Warning"
+            sev = "`ERR`" if f.get("severity") == "error" else "`WRN`"
+            sig = "!" if f.get("severity") == "error" else "*"
             chk = _format_check_cell(f.get("check", ""))
             target = f.get("model") or f.get("path") or "-"
+            coup = f"`{_get_coupling_tag(f.get('check', ''))}`"
             msg = f.get("message", "").replace("\n", " ").replace("|", "\\|")
-            lines.append(f"| {sev} | {chk} | `{target}` | {msg} |")
+            lines.append(f"| {sev} | `{target}` | {chk} | {coup} | {sig} {msg} |")
         if len(findings) > 50:
             lines.append(
                 f"\n*... and {len(findings) - 50} more violations truncated.*"
             )
         lines.append("\n</details>\n")
 
+    # Action footer
+    if findings:
+        check_counts: dict[str, int] = defaultdict(int)
+        for f in findings:
+            check_counts[f.get("check", "")] += 1
+        top_check, top_count = sorted(
+            check_counts.items(), key=lambda x: x[1], reverse=True
+        )[0]
+        action_verb = _get_action_phrase(top_check, top_count)
+        target = fail_under if fail_under > 0 else 80.0
+        if score < target:
+            lines.append(
+                f"> **ACTION**: {action_verb} to raise score above {target:.1f}%.\n"
+            )
+        else:
+            lines.append(
+                f"> **ACTION**: {action_verb} to improve project fitness.\n"
+            )
+    else:
+        lines.append(
+            "> **ACTION**: All fitness functions satisfied. Fitness score is optimal.\n"
+        )
+
     lines.append("---")
     lines.append(
-        "*Generated by [tff (Transformation Fitness Functions)](https://github.com/tjirab/tff)*"
+        "■ ▲ ● *Generated by [tff (Transformation Fitness Functions)](https://github.com/tjirab/tff)*"
     )
 
     return "\n".join(lines)
