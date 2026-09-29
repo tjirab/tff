@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import logging
 from pathlib import Path
 import subprocess
@@ -18,6 +19,17 @@ logger = logging.getLogger(__name__)
 def get_git_root(path: Path | str | None = None) -> Path | None:
     """Return the git repository root for the given path, or None if not inside a git repository."""
     target = Path(path).resolve() if path is not None else Path.cwd().resolve()
+    clean_env = {
+        k: v
+        for k, v in os.environ.items()
+        if k not in {
+            "GIT_DIR",
+            "GIT_WORK_TREE",
+            "GIT_INDEX_FILE",
+            "GIT_PREFIX",
+            "GIT_OBJECT_DIRECTORY",
+        }
+    }
     try:
         res = subprocess.run(
             ["git", "rev-parse", "--show-toplevel"],
@@ -25,6 +37,7 @@ def get_git_root(path: Path | str | None = None) -> Path | None:
             capture_output=True,
             text=True,
             check=True,
+            env=clean_env,
         )
         return Path(res.stdout.strip()).resolve()
     except Exception:
