@@ -182,6 +182,7 @@ class MaterializationDepthCheckConfig(LayerFilterConfig):
 class DuplicateCtesCheckConfig(LayerFilterConfig):
     severity: str = "warning"
     min_ast_nodes: int = 12
+    ignore_macros: bool = True
 
 
 class ConnascenceOfValueCheckConfig(LayerFilterConfig):
