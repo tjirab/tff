@@ -115,6 +115,8 @@ def read_model_sql(
             target_path = Path(project_root) / p
 
     if prefer_file:
+        if model.raw_code is not None:
+            return model.raw_code
         disk_sql = read_file_safe(
             target_path,
             raise_on_error=False,
@@ -136,6 +138,8 @@ def read_model_sql(
 
     if model.query is not None:
         return model.query
+    if model.raw_code is not None:
+        return model.raw_code
     return read_file_safe(
         target_path,
         raise_on_error=raise_on_error,
@@ -159,6 +163,7 @@ class ModelRepresentation:
     # Audits represent assertions/tests, e.g. [("not_null", {"columns": ["id"]})]
     audits: list[tuple[str, dict]] = field(default_factory=list)
     query: str | None = None
+    raw_code: str | None = None
     materialized: str | None = None
     expression: sqlglot.expressions.Expression | None = field(default=None, repr=False, compare=False)
     tags: list[str] = field(default_factory=list)
@@ -179,6 +184,16 @@ class ModelRepresentation:
             project_root=project_root,
             raise_on_error=raise_on_error,
         )
+
+    def get_raw_sql(
+        self,
+        *,
+        project_root: str | Path | None = None,
+    ) -> str | None:
+        """Return uncompiled/raw SQL for this model safely, checking raw_code, disk, then query."""
+        if self.raw_code is not None:
+            return self.raw_code
+        return self.get_sql(prefer_file=True, project_root=project_root)
 
     def read_sql(
         self,

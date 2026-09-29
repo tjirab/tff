@@ -239,3 +239,27 @@ def test_read_model_sql_with_project_root_empty_path(tmp_path: Path) -> None:
     )
     assert read_model_sql(model, project_root=tmp_path) is None
     assert model.get_sql(project_root=tmp_path) is None
+
+
+def test_read_model_sql_raw_code_and_get_raw_sql() -> None:
+    model_raw = ModelRepresentation(
+        name="raw_model",
+        path="models/raw.sql",
+        dialect="duckdb",
+        raw_code="SELECT * FROM raw;",
+    )
+    # When query is None and prefer_file=False, falls back to raw_code
+    assert model_raw.get_sql(prefer_file=False) == "SELECT * FROM raw;"
+    assert model_raw.get_raw_sql() == "SELECT * FROM raw;"
+
+    model_both = ModelRepresentation(
+        name="both_model",
+        path="models/both.sql",
+        dialect="duckdb",
+        query="SELECT * FROM compiled;",
+        raw_code="SELECT * FROM raw;",
+    )
+    assert model_both.get_sql(prefer_file=False) == "SELECT * FROM compiled;"
+    assert model_both.get_sql(prefer_file=True) == "SELECT * FROM raw;"
+    assert model_both.get_raw_sql() == "SELECT * FROM raw;"
+
