@@ -108,6 +108,9 @@ def collect_connascence_of_value_findings(
                 val = get_literal_value(node)
                 val_lower = val.lower()
 
+                if node.is_string and rule_config.min_length > 0 and len(val) < rule_config.min_length:
+                    continue
+
                 if val_lower in ignored_values_lower:
                     continue
 

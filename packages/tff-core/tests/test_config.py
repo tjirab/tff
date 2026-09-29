@@ -602,6 +602,35 @@ def test_load_fitness_config_multiple_project_roots(tmp_path: Path) -> None:
     assert cfg3._project_root == r3.resolve()
 
 
+def test_connascence_of_value_config_min_length():
+    from tff.core.config import ConnascenceOfValueCheckConfig
+
+    # Default
+    cfg = ConnascenceOfValueCheckConfig()
+    assert cfg.min_length == 0
+    assert cfg.min_string_length is None
+
+    # Explicit min_length
+    cfg_explicit = ConnascenceOfValueCheckConfig(min_length=3)
+    assert cfg_explicit.min_length == 3
+
+    # Alias min_string_length resolves to min_length
+    cfg_alias = ConnascenceOfValueCheckConfig(min_string_length=5)
+    assert cfg_alias.min_length == 5
+    assert cfg_alias.min_string_length == 5
+
+    # Both provided with non-zero min_length: min_length stays if min_string_length given but min_length != 0
+    cfg_both = ConnascenceOfValueCheckConfig(min_length=2, min_string_length=4)
+    assert cfg_both.min_length == 2
+
+    # Negative value raises ValidationError
+    with pytest.raises(ValidationError):
+        ConnascenceOfValueCheckConfig(min_length=-1)
+
+    with pytest.raises(ValidationError):
+        ConnascenceOfValueCheckConfig(min_string_length=-1)
+
+
 def test_unrecognized_rule_config_is_disallowed(tmp_path: Path) -> None:
     yaml_path = tmp_path / "fitness_functions.yaml"
     # User misspelled skip_layers as skipped_layers
@@ -692,3 +721,4 @@ def test_version_and_project_name_top_level() -> None:
     })
     assert cfg.version == 1
     assert cfg.project_name == "my_project"
+
