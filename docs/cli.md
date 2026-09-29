@@ -26,7 +26,7 @@ The CLI provides the following subcommands:
 ## 2. Global Conventions & Defaults
 
 * **Zero-Config Fallback**: If no `fitness_functions.yaml` is present, tff automatically infers standard architectural layer conventions (`staging` &rarr; `intermediate` &rarr; `core` &rarr; `marts`) and runs all baseline rules.
-* **Auto-Discovery**: tff automatically detects the project engine (`dbt`, `SQLMesh`, or `Dataform`) by scanning configuration files in the target directory.
+* **Auto-Discovery**: tff automatically detects the project engine (`dbt`, `SQLMesh`, or `Dataform`) by inspecting configuration files (with content verification to eliminate false positives on generic `config.py` or `config.yaml`), falling back to `models/` syntax inspection, or respecting declarative `provider:` in `fitness_functions.yaml`.
 * **Parallel Execution**: AST parsing, duplicate CTE fingerprinting, and model rule checks execute across a worker pool in parallel (`--workers`, `TFF_WORKERS`, or `workers:` in config). Worker tasks are dynamically batched to minimize `ThreadPoolExecutor` scheduling overhead (configurable via `TFF_CHUNK_SIZE`).
 * **Persistent AST Caching**: Precomputed ASTs are persistently cached under `.tff_cache/ast` keyed by SQLGlot version, SQL dialect, and SQL SHA-256 hash for sub-second repeat runs. Disable with `--no-cache` or clear with `--clear-cache`.
 * **Local Run Logging**: Executions of `tff lint` and `tff health` automatically save run metrics to `.tff_logs/` in JSON format (retained for 60 days). Disable anytime with `--no-log` or `export TFF_NO_LOG=1`.

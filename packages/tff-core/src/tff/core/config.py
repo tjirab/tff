@@ -28,6 +28,9 @@ STARTER_CONFIG_YAML: str = """# ================================================
 # Documentation: https://github.com/tjirab/tff
 # =============================================================================
 
+# Pipeline engine provider (optional: auto, dbt, sqlmesh, dataform)
+# provider: dbt
+
 # Parallelism and caching options (optional)
 # workers: 4          # Number of worker processes (default: auto, capped at CPU count)
 # cache_ast: true     # Enable persistent AST caching in .tff_cache/ (default: true)
@@ -618,6 +621,7 @@ class FitnessFunctionsConfig(BaseModel):
     contract_groups_path: str = "linter_contract_groups.json"
     exclusions_path: str = "linter_exclusions.json"
     plugins: list[str] = Field(default_factory=list)
+    provider: str | None = None
     layers: LayersConfig = Field(default_factory=LayersConfig)
     checks: ChecksConfig = Field(default_factory=ChecksConfig)
     rules: RulesConfig = Field(default_factory=RulesConfig)
@@ -628,6 +632,18 @@ class FitnessFunctionsConfig(BaseModel):
     workers: int | None = None
     cache_ast: bool = True
     cache_dir: str = ".tff_cache"
+
+    @field_validator("provider", mode="before")
+    @classmethod
+    def _validate_provider(cls, v: Any) -> str | None:
+        if v is None:
+            return None
+        if not isinstance(v, str):
+            raise ValueError(f"Expected string for provider, got {type(v).__name__}")
+        val = v.strip().lower()
+        if not val or val == "auto":
+            return None
+        return val
 
     @field_validator("workers", mode="before")
     @classmethod

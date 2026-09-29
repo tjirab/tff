@@ -18,18 +18,22 @@ from tff.core.registry import CheckDefinition
 
 
 @pytest.mark.parametrize(
-    "marker,is_dir,expected",
+    "marker,is_dir,content,expected",
     [
-        ("dbt_project.yml", False, "dbt"),
-        ("config.py", False, "sqlmesh"),
-        ("config.yaml", False, "sqlmesh"),
-        ("config.yml", False, "sqlmesh"),
-        (".sqlmesh", True, "sqlmesh"),
+        ("dbt_project.yml", False, "", "dbt"),
+        ("config.py", False, "from sqlmesh.core.config import Config\nconfig = Config()", "sqlmesh"),
+        ("config.yaml", False, "gateways:\n  local:\n    connection:\n      type: duckdb", "sqlmesh"),
+        ("config.yml", False, "model_defaults:\n  dialect: duckdb", "sqlmesh"),
+        ("sqlmesh.yaml", False, "", "sqlmesh"),
+        ("sqlmesh.yml", False, "", "sqlmesh"),
+        (".sqlmesh", True, "", "sqlmesh"),
     ],
 )
-def test_detect_provider_success(tmp_path: Path, marker: str, is_dir: bool, expected: str):
+def test_detect_provider_success(tmp_path: Path, marker: str, is_dir: bool, content: str, expected: str):
     if is_dir:
         (tmp_path / marker).mkdir()
+    elif content:
+        (tmp_path / marker).write_text(content)
     else:
         (tmp_path / marker).touch()
     assert _detect_provider(tmp_path) == expected
@@ -37,7 +41,9 @@ def test_detect_provider_success(tmp_path: Path, marker: str, is_dir: bool, expe
 
 def test_detect_provider_conflict(tmp_path: Path):
     (tmp_path / "dbt_project.yml").touch()
-    (tmp_path / "config.py").touch()
+    (tmp_path / "config.py").write_text(
+        "from sqlmesh.core.config import Config\nconfig = Config()"
+    )
     with pytest.raises(
         ValueError, match="Both dbt and SQLMesh configuration files were detected"
     ):
@@ -871,7 +877,9 @@ def test_cli_main_lint_with_fix_sqlmesh(tmp_path: Path):
     from tff.core.model import ModelRepresentation
     
     # Create config.py to auto-detect provider as SQLMesh
-    (tmp_path / "config.py").touch()
+    (tmp_path / "config.py").write_text(
+        "from sqlmesh.core.config import Config\nconfig = Config()"
+    )
     
     # Create a SQL file
     sql_file = tmp_path / "models/my_model.sql"
@@ -1527,8 +1535,12 @@ def test_cli_multi_project_lint(tmp_path: Path):
     r2 = tmp_path / "repo2"
     r1.mkdir()
     r2.mkdir()
-    (r1 / "config.py").touch()
-    (r2 / "config.yaml").touch()
+    (r1 / "config.py").write_text(
+        "from sqlmesh.core.config import Config\nconfig = Config()"
+    )
+    (r2 / "config.yaml").write_text(
+        "gateways:\n  local:\n    connection:\n      type: duckdb"
+    )
 
     mock_adapter = MagicMock()
     mock_adapter.provider_name = "sqlmesh"
@@ -1551,7 +1563,9 @@ def test_cli_multi_project_conflicting_providers(tmp_path: Path, capsys):
     r2 = tmp_path / "repo2"
     r1.mkdir()
     r2.mkdir()
-    (r1 / "config.py").touch()
+    (r1 / "config.py").write_text(
+        "from sqlmesh.core.config import Config\nconfig = Config()"
+    )
     (r2 / "dbt_project.yml").touch()
 
     exit_code = main(["lint", "-p", str(r1), "-p", str(r2)])
@@ -1565,8 +1579,12 @@ def test_cli_multi_project_health(tmp_path: Path):
     r2 = tmp_path / "repo2"
     r1.mkdir()
     r2.mkdir()
-    (r1 / "config.py").touch()
-    (r2 / "config.yaml").touch()
+    (r1 / "config.py").write_text(
+        "from sqlmesh.core.config import Config\nconfig = Config()"
+    )
+    (r2 / "config.yaml").write_text(
+        "gateways:\n  local:\n    connection:\n      type: duckdb"
+    )
 
     mock_adapter = MagicMock()
     mock_adapter.provider_name = "sqlmesh"
@@ -1605,8 +1623,12 @@ def test_cli_project_list_attribute(tmp_path: Path):
     r2 = tmp_path / "repo2"
     r1.mkdir()
     r2.mkdir()
-    (r1 / "config.py").touch()
-    (r2 / "config.py").touch()
+    (r1 / "config.py").write_text(
+        "from sqlmesh.core.config import Config\nconfig = Config()"
+    )
+    (r2 / "config.py").write_text(
+        "from sqlmesh.core.config import Config\nconfig = Config()"
+    )
 
     with patch("argparse.ArgumentParser.parse_args") as mock_parse_args:
         mock_args = MagicMock()

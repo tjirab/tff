@@ -30,6 +30,7 @@ For enterprise DAGs consisting of hundreds or thousands of transformation models
 
 ```yaml
 # Root configuration options:
+provider: dbt           # Optional: explicitly set pipeline provider (dbt, sqlmesh, dataform)
 workers: 4              # Optional: number of worker processes (default: auto, capped at CPU count)
 cache_ast: true         # Optional: toggle persistent AST caching (default: true)
 cache_dir: ".tff_cache" # Optional: persistent cache directory (default: ".tff_cache")

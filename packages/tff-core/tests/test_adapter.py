@@ -103,7 +103,9 @@ def test_detect_provider(tmp_path: Path):
     assert detect_provider(tmp_path) == "dbt"
 
     # dbt + sqlmesh (ambiguous)
-    (tmp_path / "config.py").touch()
+    (tmp_path / "config.py").write_text(
+        "import sqlmesh\nfrom sqlmesh.core.config import Config\nconfig = Config()"
+    )
     with pytest.raises(ValueError, match="Both dbt and SQLMesh"):
         detect_provider(tmp_path)
 
@@ -115,9 +117,19 @@ def test_detect_provider(tmp_path: Path):
     (tmp_path / "config.py").unlink()
 
     # sqlmesh alternatives
-    for sig in (".sqlmesh", "config.yaml", "config.yml"):
+    (tmp_path / ".sqlmesh").mkdir()
+    assert detect_provider(tmp_path) == "sqlmesh"
+    (tmp_path / ".sqlmesh").rmdir()
+
+    for sig in ("sqlmesh.yaml", "sqlmesh.yml"):
         p = tmp_path / sig
         p.touch()
+        assert detect_provider(tmp_path) == "sqlmesh"
+        p.unlink()
+
+    for sig in ("config.yaml", "config.yml"):
+        p = tmp_path / sig
+        p.write_text("gateways:\n  local:\n    connection:\n      type: duckdb")
         assert detect_provider(tmp_path) == "sqlmesh"
         p.unlink()
 
@@ -130,7 +142,7 @@ def test_detect_provider(tmp_path: Path):
     assert detect_provider(tmp_path) == "dataform"
 
     # multiple detected (e.g. dataform and sqlmesh)
-    (tmp_path / "config.yaml").touch()
+    (tmp_path / "config.yaml").write_text("gateways:\n  local:\n    connection:\n      type: duckdb")
     with pytest.raises(ValueError, match="Multiple pipeline configuration files"):
         detect_provider(tmp_path)
 
@@ -186,7 +198,9 @@ def test_sqlmesh_adapter(tmp_path: Path):
     assert adapter.provider_name == "sqlmesh"
 
     assert not adapter.is_applicable(tmp_path)
-    (tmp_path / "config.py").touch()
+    (tmp_path / "config.py").write_text(
+        "from sqlmesh.core.config import Config\nconfig = Config()"
+    )
     assert adapter.is_applicable(tmp_path)
 
     with (
@@ -592,8 +606,12 @@ def test_detect_provider_multiple_roots(tmp_path: Path):
     r2.mkdir()
 
     # Both SQLMesh
-    (r1 / "config.py").touch()
-    (r2 / "config.yaml").touch()
+    (r1 / "config.py").write_text(
+        "from sqlmesh.core.config import Config\nconfig = Config()"
+    )
+    (r2 / "config.yaml").write_text(
+        "gateways:\n  local:\n    connection:\n      type: duckdb"
+    )
     assert detect_provider([r1, r2]) == "sqlmesh"
 
     # Conflicting: r1 is SQLMesh, r2 has dbt_project.yml
@@ -605,7 +623,7 @@ def test_detect_provider_multiple_roots(tmp_path: Path):
     # Empty roots fallback to cwd
     with patch("tff.core.adapter._detect_provider_single", return_value="sqlmesh") as mock_single:
         assert detect_provider([]) == "sqlmesh"
-        mock_single.assert_called_once_with(Path.cwd())
+        mock_single.assert_called_once_with(Path.cwd(), config_path=None)
 
 
 def test_sqlmesh_adapter_multiple_roots(tmp_path: Path):
