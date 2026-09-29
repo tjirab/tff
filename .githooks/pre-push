@@ -1,6 +1,11 @@
 #!/bin/bash
 # Pre-push hook to enforce lint checks, security audits, tests, and 100% diff coverage.
 
+# Clear git hook environment variables so subcommands/tests execute cleanly
+for var in $(git rev-parse --local-env-vars 2>/dev/null); do
+    unset "$var"
+done
+
 echo "============================================="
 echo "Running pre-push validation checks..."
 echo "============================================="
