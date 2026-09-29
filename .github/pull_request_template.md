@@ -1,15 +1,24 @@
-## 🚀 What changed?
+## Summary
 
-<!-- Describe the specific changes made in this PR here -->
+<!-- Concise description of the changes introduced by this pull request. -->
 
-## 🤔 Why is this change needed?
+## Motivation & Context
 
-<!-- Explain the motivation, problem solved, or feature enabled here -->
+<!-- Problem statement, architectural justification, or feature driver. -->
 
-## 🔗 Related Issues (Optional)
+## Structural Changes
 
-<!-- Link to related issues if applicable: #123 -->
+<!-- Itemized list of functional, architectural, and structural modifications. -->
+- 
 
-## ✅ Next Steps / Checklist (Optional)
+## Verification & Quality Gates
 
-<!-- Any necessary cleanup, testing, or follow-up actions -->
+<!-- Validation checklist enforcing automated testing, linter checks, and diff coverage. -->
+- [ ] Automated Test Suite: `uv run pytest`
+- [ ] Linter & Formatter: `uv run ruff check .`
+- [ ] Diff Test Coverage (100%): `uv run diff-cover coverage.xml --compare-branch=origin/main --fail-under=100`
+
+## Traceability
+
+<!-- Link related issues or architectural decisions (e.g. Closes #123). -->
+- Closes #
