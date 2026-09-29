@@ -600,3 +600,95 @@ def test_load_fitness_config_multiple_project_roots(tmp_path: Path) -> None:
     cfg3 = load_fitness_config([r3, r4])
     assert cfg3._config_file_found is False
     assert cfg3._project_root == r3.resolve()
+
+
+def test_unrecognized_rule_config_is_disallowed(tmp_path: Path) -> None:
+    yaml_path = tmp_path / "fitness_functions.yaml"
+    # User misspelled skip_layers as skipped_layers
+    yaml_path.write_text(
+        """
+rules:
+  ban_select_star:
+    enabled: true
+    skipped_layers: ["a_layer"]
+""",
+        encoding="utf-8",
+    )
+    with pytest.raises(ValidationError) as exc_info:
+        load_fitness_config(tmp_path)
+    errors = exc_info.value.errors()
+    assert any(
+        "skipped_layers" in err["loc"] or "skipped_layers" in str(err)
+        for err in errors
+    )
+
+
+def test_unrecognized_top_level_config_is_disallowed(tmp_path: Path) -> None:
+    yaml_path = tmp_path / "fitness_functions.yaml"
+    yaml_path.write_text(
+        """
+workrs: 4
+invalid_option: true
+""",
+        encoding="utf-8",
+    )
+    with pytest.raises(ValidationError) as exc_info:
+        load_fitness_config(tmp_path)
+    errors = exc_info.value.errors()
+    locs = [err["loc"][0] for err in errors]
+    assert "workrs" in locs or "invalid_option" in locs
+
+
+def test_unrecognized_layers_config_is_disallowed(tmp_path: Path) -> None:
+    yaml_path = tmp_path / "fitness_functions.yaml"
+    yaml_path.write_text(
+        """
+layers:
+  ordered: [staging, core]
+""",
+        encoding="utf-8",
+    )
+    with pytest.raises(ValidationError):
+        load_fitness_config(tmp_path)
+
+
+def test_unrecognized_check_config_is_disallowed(tmp_path: Path) -> None:
+    yaml_path = tmp_path / "fitness_functions.yaml"
+    yaml_path.write_text(
+        """
+checks:
+  layer_integrity:
+    enabled: true
+    unrecognized_option: 123
+""",
+        encoding="utf-8",
+    )
+    with pytest.raises(ValidationError):
+        load_fitness_config(tmp_path)
+
+
+def test_invalid_type_directly_under_rules_or_checks() -> None:
+    # A list directly under rules (e.g. accidentally unindented skipped_layers)
+    with pytest.raises(ValidationError, match="Invalid configuration for rule 'skipped_layers'"):
+        FitnessFunctionsConfig.model_validate({
+            "rules": {
+                "skipped_layers": ["a_layer"]
+            }
+        })
+
+    # A list directly under checks
+    with pytest.raises(ValidationError, match="Invalid configuration for check 'skipped_layers'"):
+        FitnessFunctionsConfig.model_validate({
+            "checks": {
+                "skipped_layers": ["a_layer"]
+            }
+        })
+
+
+def test_version_and_project_name_top_level() -> None:
+    cfg = FitnessFunctionsConfig.model_validate({
+        "version": 1,
+        "project_name": "my_project",
+    })
+    assert cfg.version == 1
+    assert cfg.project_name == "my_project"

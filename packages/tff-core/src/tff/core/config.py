@@ -145,14 +145,18 @@ rules:
 
 
 class LayersConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     order: list[str] = Field(default_factory=lambda: list(DEFAULT_LAYER_ORDER))
 
 
 class CheckEnabled(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     enabled: bool = True
+    severity: str | None = None
 
 
 class LayerFilterConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     enabled: bool = True
     severity: str | None = None
     skip_layers: list[str] = Field(default_factory=list)
@@ -241,6 +245,7 @@ class JoinTypeParityCheckConfig(LayerFilterConfig):
 
 
 class CustomExclusionRule(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     source_layer: str | None = None
     source_domain: str | None = None
     source_tag: str | None = None
@@ -254,6 +259,7 @@ class CustomExclusionRule(BaseModel):
 
 
 class AllowedExceptionRule(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     model: str
     dependency: str
 
@@ -264,6 +270,7 @@ class CustomExclusionsCheckConfig(LayerFilterConfig):
 
 
 class ColumnParityMember(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     file: str
     substitutions: dict[str, str] = Field(default_factory=dict)
 
@@ -274,6 +281,7 @@ class ColumnParityMember(BaseModel):
 
 
 class ColumnParityGroup(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     models_dir: str = ""
     reference: str
     members: list[ColumnParityMember] = Field(default_factory=list)
@@ -295,11 +303,13 @@ class ColumnParityGroup(BaseModel):
 
 
 class DimensionParityTarget(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     file: str
     exclude_columns: list[str] = Field(default_factory=list)
 
 
 class DimensionParityGroup(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     models_dir: str = ""
     left: DimensionParityTarget
     right: DimensionParityTarget
@@ -313,6 +323,7 @@ class DimensionParityGroup(BaseModel):
 
 
 class ContractGroupsConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     column_parity_groups: list[ColumnParityGroup] = Field(default_factory=list)
     dimension_parity_groups: list[DimensionParityGroup] = Field(default_factory=list)
 
@@ -347,6 +358,18 @@ class ChecksConfig(BaseModel):
     join_type_parity: JoinTypeParityCheckConfig = Field(
         default_factory=JoinTypeParityCheckConfig
     )
+
+    @model_validator(mode="before")
+    @classmethod
+    def _validate_check_entries(cls, data: Any) -> Any:
+        if isinstance(data, dict):
+            known = set(cls.model_fields.keys())
+            for k, v in data.items():
+                if k not in known and not isinstance(v, (dict, bool)):
+                    raise ValueError(
+                        f"Invalid configuration for check '{k}': expected a dictionary of options or boolean, got {type(v).__name__}"
+                    )
+        return data
 
 
 class ClassificationMacrosRuleConfig(LayerFilterConfig):
@@ -408,6 +431,7 @@ class ColumnNamesRuleConfig(LayerFilterConfig):
 
 
 class ColumnTypeRuleEntry(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     name: str
     pattern: str
     data_type: str
@@ -471,13 +495,27 @@ class RulesConfig(BaseModel):
         default_factory=EnvironmentAgnosticReferencesRuleConfig
     )
 
+    @model_validator(mode="before")
+    @classmethod
+    def _validate_rule_entries(cls, data: Any) -> Any:
+        if isinstance(data, dict):
+            known = set(cls.model_fields.keys())
+            for k, v in data.items():
+                if k not in known and not isinstance(v, (dict, bool)):
+                    raise ValueError(
+                        f"Invalid configuration for rule '{k}': expected a dictionary of options or boolean, got {type(v).__name__}"
+                    )
+        return data
+
 
 class HealthCheckPenaltyConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     error: float | None = Field(default=None, ge=0.0)
     warning: float | None = Field(default=None, ge=0.0)
 
 
 class HealthPenaltiesConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     error: float = Field(default=1.0, ge=0.0)
     warning: float = Field(default=0.5, ge=0.0)
     project_error: float = Field(default=100.0, ge=0.0)
@@ -547,6 +585,7 @@ class HealthPenaltiesConfig(BaseModel):
 
 
 class HealthConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     weights: dict[str, float] = Field(default_factory=dict)
     category_weights: dict[str, float] = Field(default_factory=dict)
     penalties: HealthPenaltiesConfig = Field(default_factory=HealthPenaltiesConfig)
@@ -570,9 +609,11 @@ class HealthConfig(BaseModel):
 
 
 class FitnessFunctionsConfig(BaseModel):
-    model_config = ConfigDict(extra="allow")
+    model_config = ConfigDict(extra="forbid")
     _project_root: Path = PrivateAttr(default_factory=Path.cwd)
     _config_file_found: bool = PrivateAttr(default=True)
+    version: int | str | None = None
+    project_name: str | None = None
     contract_groups_path: str = "linter_contract_groups.json"
     exclusions_path: str = "linter_exclusions.json"
     plugins: list[str] = Field(default_factory=list)
