@@ -11,6 +11,7 @@
 **Catch illegal upstream joins, layer violations, and duplicate transformation logic in CI.**
 
 [![PyPI version](https://img.shields.io/pypi/v/tff-core.svg?logo=pypi)](https://pypi.org/project/tff-core/)
+[![Downloads](https://img.shields.io/pypi/dm/tff-core.svg)](https://pypi.org/project/tff-core/)
 [![Python versions](https://img.shields.io/pypi/pyversions/tff-core.svg?logo=python)](https://pypi.org/project/tff-core/)
 [![Documentation Status](https://readthedocs.org/projects/tff/badge/?version=latest)](https://tff.readthedocs.io/en/latest/?badge=latest)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
