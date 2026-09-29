@@ -581,5 +581,67 @@ def test_dbt_dependency_empty_original_file_path_runs_environment_agnostic_refer
     assert "prod_db" in env_findings[0].message
 
 
+def test_dbt_duplicate_ctes_with_macro_ignored(tmp_path: Path):
+    target_dir = tmp_path / "target"
+    target_dir.mkdir(parents=True, exist_ok=True)
+    manifest_file = target_dir / "manifest.json"
+
+    compiled_sql = """
+    WITH shared_cte AS (
+        SELECT id, name, COUNT(*) OVER (PARTITION BY id) as cnt
+        FROM raw_data
+        WHERE active = 1
+    )
+    SELECT * FROM shared_cte
+    """
+
+    manifest_data = {
+        "nodes": {
+            "model.my_project.model_a": {
+                "resource_type": "model",
+                "name": "model_a",
+                "original_file_path": "models/model_a.sql",
+                "raw_code": "WITH shared_cte AS ( {{ my_macro() }} ) SELECT * FROM shared_cte",
+                "compiled_code": compiled_sql,
+                "columns": {},
+                "depends_on": {
+                    "nodes": [],
+                    "macros": ["macro.my_project.my_macro"],
+                },
+            },
+            "model.my_project.model_b": {
+                "resource_type": "model",
+                "name": "model_b",
+                "original_file_path": "models/model_b.sql",
+                "raw_code": "WITH user_cte AS ( {{ my_macro() }} ) SELECT id FROM user_cte",
+                "compiled_code": compiled_sql,
+                "columns": {},
+                "depends_on": {
+                    "nodes": [],
+                    "macros": ["macro.my_project.my_macro"],
+                },
+            },
+        },
+        "sources": {},
+        "metadata": {
+            "adapter_type": "duckdb",
+        },
+    }
+    manifest_file.write_text(json.dumps(manifest_data), encoding="utf-8")
+
+    models = load_dbt_models(tmp_path)
+    assert models["model.my_project.model_a"].raw_code is not None
+    assert models["model.my_project.model_a"].meta.get("macro_dependencies") == ["macro.my_project.my_macro"]
+
+    config = FitnessFunctionsConfig()
+    config.checks.duplicate_ctes.enabled = True
+    config.checks.duplicate_ctes.min_ast_nodes = 8
+
+    from tff.core.checks.duplicate_ctes import collect_duplicate_cte_findings
+    findings = collect_duplicate_cte_findings(models, config)
+    assert len(findings) == 0
+
+
+
 
 

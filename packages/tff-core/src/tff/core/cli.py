@@ -121,9 +121,11 @@ def render_cli_error(error: TffError | Exception, console: Console | None = None
 
 
 
-def _detect_provider(project_root: Path | Sequence[Path]) -> str:
+def _detect_provider(
+    project_root: Path | Sequence[Path], config_path: str | Path | None = None
+) -> str:
     """Detect whether a project is dbt, SQLMesh, or Dataform."""
-    return detect_provider(project_root)
+    return detect_provider(project_root, config_path=config_path)
 
 
 def _get_runner(provider: str) -> Any:
@@ -1336,7 +1338,12 @@ def _main_impl(argv: list[str] | None = None) -> int:
         provider = args.provider
         if provider == "auto":
             try:
-                provider = _detect_provider(project_roots)
+                cfg_path = args.config if args.config != "fitness_functions.yaml" else None
+                provider = (
+                    _detect_provider(project_roots, config_path=cfg_path)
+                    if cfg_path
+                    else _detect_provider(project_roots)
+                )
             except Exception as e:
                 console.print(f"[red]Error detecting provider: {e}[/red]")
                 return 1
@@ -1613,7 +1620,11 @@ def _main_impl(argv: list[str] | None = None) -> int:
         provider = args.provider
         if provider == "auto":
             try:
-                provider = _detect_provider(project_roots)
+                cfg_path = getattr(args, "config", None)
+                if cfg_path and cfg_path != "fitness_functions.yaml":
+                    provider = _detect_provider(project_roots, config_path=cfg_path)
+                else:
+                    provider = _detect_provider(project_roots)
             except ValueError as e:
                 print(f"Error: {e}", file=sys.stderr)
                 return 1
@@ -1677,7 +1688,12 @@ def _main_impl(argv: list[str] | None = None) -> int:
         provider = args.provider
         if provider == "auto":
             try:
-                provider = _detect_provider(project_roots)
+                cfg_path = args.config if args.config != "fitness_functions.yaml" else None
+                provider = (
+                    _detect_provider(project_roots, config_path=cfg_path)
+                    if cfg_path
+                    else _detect_provider(project_roots)
+                )
                 logger.debug("Auto-detected provider: %s", provider)
             except ValueError as e:
                 logger.debug("Provider auto-detection error: %s", e)

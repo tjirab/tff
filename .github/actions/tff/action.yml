@@ -104,10 +104,53 @@ runs:
         elif [ "${{ inputs.provider }}" = "dataform" ]; then
           EXTRA="[dataform]"
         else
-          # Auto-detect if project has SQLMesh configuration
-          if [ -f "${{ inputs.project }}/.sqlmesh" ] || [ -f "${{ inputs.project }}/config.py" ] || [ -f "${{ inputs.project }}/config.yaml" ] || [ -f "${{ inputs.project }}/config.yml" ]; then
-            EXTRA="[sqlmesh]"
+          PROJ="${{ inputs.project }}"
+          CONF="${PROJ}/${{ inputs.config }}"
+          DETECTED_EXTRA=""
+
+          # 1. Check declarative provider in config file
+          if [ -f "${CONF}" ]; then
+            if grep -E '^\s*provider:\s*["'\'']?sqlmesh["'\'']?' "${CONF}" >/dev/null 2>&1; then
+              DETECTED_EXTRA="[sqlmesh]"
+            elif grep -E '^\s*provider:\s*["'\'']?dbt["'\'']?' "${CONF}" >/dev/null 2>&1; then
+              DETECTED_EXTRA="[dbt]"
+            elif grep -E '^\s*provider:\s*["'\'']?dataform["'\'']?' "${CONF}" >/dev/null 2>&1; then
+              DETECTED_EXTRA="[dataform]"
+            fi
           fi
+
+          # 2. Check unambiguous signature files
+          if [ -z "${DETECTED_EXTRA}" ]; then
+            if [ -d "${PROJ}/.sqlmesh" ] || [ -f "${PROJ}/.sqlmesh" ] || [ -f "${PROJ}/sqlmesh.yaml" ] || [ -f "${PROJ}/sqlmesh.yml" ]; then
+              DETECTED_EXTRA="[sqlmesh]"
+            elif [ -f "${PROJ}/dbt_project.yml" ]; then
+              DETECTED_EXTRA="[dbt]"
+            elif [ -f "${PROJ}/workflow_settings.yaml" ] || [ -f "${PROJ}/dataform.json" ]; then
+              DETECTED_EXTRA="[dataform]"
+            fi
+          fi
+
+          # 3. Content inspection for generic SQLMesh configuration files
+          if [ -z "${DETECTED_EXTRA}" ]; then
+            if [ -f "${PROJ}/config.py" ] && grep -E '(import\s+sqlmesh|from\s+sqlmesh|FitnessLoader)' "${PROJ}/config.py" >/dev/null 2>&1; then
+              DETECTED_EXTRA="[sqlmesh]"
+            elif [ -f "${PROJ}/config.yaml" ] && grep -E '^(gateways|model_defaults|default_gateway|physical_schema):' "${PROJ}/config.yaml" >/dev/null 2>&1; then
+              DETECTED_EXTRA="[sqlmesh]"
+            elif [ -f "${PROJ}/config.yml" ] && grep -E '^(gateways|model_defaults|default_gateway|physical_schema):' "${PROJ}/config.yml" >/dev/null 2>&1; then
+              DETECTED_EXTRA="[sqlmesh]"
+            fi
+          fi
+
+          # 4. Fallback to model syntax inspection under models/
+          if [ -z "${DETECTED_EXTRA}" ] && [ -d "${PROJ}/models" ]; then
+            if grep -rnE '^\s*MODEL\s*\(' "${PROJ}/models" >/dev/null 2>&1; then
+              DETECTED_EXTRA="[sqlmesh]"
+            elif grep -rnE '\{\{\s*(config|ref|source)\s*\(' "${PROJ}/models" >/dev/null 2>&1; then
+              DETECTED_EXTRA="[dbt]"
+            fi
+          fi
+
+          EXTRA="${DETECTED_EXTRA}"
         fi
 
         PKG="tff-core${EXTRA}"

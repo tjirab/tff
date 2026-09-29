@@ -157,6 +157,8 @@ def load_dbt_models(
 
         audits = model_tests.get(unique_id, [])
         query = node.get("compiled_code") or node.get("raw_code")
+        raw_code = node.get("raw_code")
+        node_macros = node.get("depends_on", {}).get("macros", [])
 
         mapped_models[unique_id] = ModelRepresentation(
             name=name,
@@ -171,10 +173,11 @@ def load_dbt_models(
             grains=grains,
             audits=audits,
             query=query,
+            raw_code=raw_code,
             materialized=materialized,
             expression=None,
             tags=node.get("tags") or [],
-            meta={**config_meta, **meta},
+            meta={**config_meta, **meta, "macro_dependencies": node_macros},
             provider="dbt",
         )
 

@@ -3,9 +3,12 @@
 from __future__ import annotations
 
 import importlib
+import re
 from abc import ABC, abstractmethod
 from pathlib import Path
 from typing import TYPE_CHECKING, Callable, Sequence
+
+import yaml
 
 
 def normalize_project_roots(project_root: Path | Sequence[Path | str] | str) -> list[Path]:
@@ -203,18 +206,182 @@ def get_adapter(provider: str) -> PipelineAdapter:
     raise ValueError(f"Unknown provider: {provider}")
 
 
-def _detect_provider_single(project_root: Path) -> str:
+SQLMESH_YAML_KEYS: set[str] = {
+    "gateways",
+    "model_defaults",
+    "default_gateway",
+    "physical_schema",
+    "gateway",
+    "pinned_environments",
+}
+
+
+def _is_sqlmesh_python_config(path: Path, has_dbt_project: bool = False) -> bool:
+    """Check if a config.py file is actually a SQLMesh configuration."""
+    try:
+        content = path.read_text(encoding="utf-8", errors="ignore")
+    except OSError:
+        return False
+
+    # Definite indicators: imports or references to sqlmesh
+    if re.search(r"\b(import\s+sqlmesh|from\s+sqlmesh)\b", content):
+        return True
+    if "FitnessLoader" in content:
+        return True
+
+    # Check for Config( constructor
+    if re.search(r"\bConfig\s*\(", content):
+        # If a dbt_project.yml is present, avoid false positives from generic python config files
+        # by requiring SQLMesh-specific terms.
+        if has_dbt_project:
+            sqlmesh_terms = (
+                "gateways",
+                "model_defaults",
+                "default_gateway",
+                "physical_schema",
+                "sqlmesh",
+                "DuckDBConnectionConfig",
+                "Gateway",
+            )
+            return any(term in content for term in sqlmesh_terms)
+        return True
+
+    return False
+
+
+def _is_sqlmesh_yaml_config(path: Path) -> bool:
+    """Check if a config.yaml or config.yml file has characteristic SQLMesh top-level keys."""
+    try:
+        content = path.read_text(encoding="utf-8", errors="ignore")
+        data = yaml.safe_load(content)
+        if isinstance(data, dict):
+            return any(k in data for k in SQLMESH_YAML_KEYS)
+    except Exception:
+        return False
+    return False
+
+
+def is_sqlmesh_project(project_root: Path, has_dbt_project: bool = False) -> bool:
+    """Check if project_root contains SQLMesh configuration."""
+    # 1. Unambiguous SQLMesh signature files or directories
+    if (project_root / ".sqlmesh").exists():
+        return True
+    if (project_root / "sqlmesh.yaml").is_file() or (
+        project_root / "sqlmesh.yml"
+    ).is_file():
+        return True
+
+    # 2. Generic configuration files requiring content inspection
+    config_py = project_root / "config.py"
+    if config_py.is_file() and _is_sqlmesh_python_config(
+        config_py, has_dbt_project=has_dbt_project
+    ):
+        return True
+
+    for yaml_name in ("config.yaml", "config.yml"):
+        config_yaml = project_root / yaml_name
+        if config_yaml.is_file() and _is_sqlmesh_yaml_config(config_yaml):
+            return True
+
+    return False
+
+
+def _detect_provider_from_models(project_root: Path) -> str | None:
+    """Disambiguate or detect provider by inspecting files under models/."""
+    models_dir = project_root / "models"
+    if not models_dir.is_dir():
+        return None
+
+    sqlmesh_score = 0
+    dbt_score = 0
+    checked_files = 0
+    max_files = 30
+
+    candidate_files: list[Path] = []
+    try:
+        for ext in ("*.sql", "*.py"):
+            candidate_files.extend(models_dir.rglob(ext))
+    except OSError:
+        return None
+
+    for file_path in candidate_files:
+        if not file_path.is_file():
+            continue
+        checked_files += 1
+        if checked_files > max_files:
+            break
+
+        try:
+            content = file_path.read_text(encoding="utf-8", errors="ignore")
+        except OSError:
+            continue
+
+        # SQLMesh indicators: MODEL statement or @model decorator
+        is_sqlmesh_model = bool(
+            re.search(r"(?:^|\s)MODEL\s*\(", content, re.IGNORECASE)
+            or re.search(r"@model\b", content)
+            or re.search(r"\bfrom\s+sqlmesh\.core\.model\s+import\s+model\b", content)
+        )
+
+        # dbt indicators: Jinja config(), ref(), or source()
+        is_dbt_model = bool(
+            re.search(r"\{\{\s*(config|ref|source)\s*\(", content)
+        )
+
+        if is_sqlmesh_model and not is_dbt_model:
+            sqlmesh_score += 1
+        elif is_dbt_model and not is_sqlmesh_model:
+            dbt_score += 1
+
+    if sqlmesh_score > 0 and dbt_score == 0:
+        return "sqlmesh"
+    if dbt_score > 0 and sqlmesh_score == 0:
+        return "dbt"
+    return None
+
+
+def _get_declared_provider(
+    project_root: Path, config_path: str | Path | None = None
+) -> str | None:
+    """Read declared provider from fitness_functions.yaml or specified config path."""
+    candidate_paths: list[Path] = []
+    if config_path is not None:
+        p = Path(config_path)
+        candidate_paths.append(p if p.is_absolute() else project_root / p)
+    else:
+        candidate_paths.append(project_root / "fitness_functions.yaml")
+        candidate_paths.append(project_root / "fitness_functions.yml")
+
+    for path in candidate_paths:
+        if path.is_file():
+            try:
+                content = path.read_text(encoding="utf-8", errors="ignore")
+                data = yaml.safe_load(content)
+                if isinstance(data, dict):
+                    prov = data.get("provider")
+                    if isinstance(prov, str):
+                        prov = prov.strip().lower()
+                        if prov and prov != "auto":
+                            return prov
+            except Exception:
+                pass
+    return None
+
+
+def _detect_provider_single(
+    project_root: Path, config_path: str | Path | None = None
+) -> str:
     """Detect whether a single project root is dbt, SQLMesh, Dataform, or a custom registered adapter."""
+    # 0. Check for explicitly declared provider in fitness_functions.yaml
+    declared = _get_declared_provider(project_root, config_path=config_path)
+    if declared is not None:
+        return declared
+
     # Check for dbt signature file
     is_dbt = (project_root / "dbt_project.yml").exists()
 
-    # Check for SQLMesh signature files
-    is_sqlmesh = (
-        (project_root / ".sqlmesh").exists()
-        or (project_root / "config.py").exists()
-        or (project_root / "config.yaml").exists()
-        or (project_root / "config.yml").exists()
-    )
+    # Check for SQLMesh signature files (with asymmetric dbt awareness)
+    is_sqlmesh = is_sqlmesh_project(project_root, has_dbt_project=is_dbt)
 
     # Check for Dataform signature files
     is_dataform = (project_root / "workflow_settings.yaml").exists() or (
@@ -244,6 +411,9 @@ def _detect_provider_single(project_root: Path) -> str:
             continue
 
     if is_dbt and is_sqlmesh and not is_dataform and len(detected) == 2:
+        model_prov = _detect_provider_from_models(project_root)
+        if model_prov in ("dbt", "sqlmesh"):
+            return model_prov
         raise ValueError(
             f"Both dbt and SQLMesh configuration files were detected in the project root ({project_root}).\n"
             "Please specify the provider explicitly using the --provider option (e.g. '--provider dbt' or '--provider sqlmesh')."
@@ -257,19 +427,26 @@ def _detect_provider_single(project_root: Path) -> str:
     if len(detected) == 1:
         return detected[0]
 
+    # Fallback to model syntax inspection when no configuration files were detected
+    model_prov = _detect_provider_from_models(project_root)
+    if model_prov is not None:
+        return model_prov
+
     raise ValueError(
         f"Could not detect project type for {project_root} (neither dbt_project.yml, SQLMesh config, nor Dataform config was found).\n"
         "Please run this command from your project root, or specify the provider explicitly using the --provider option."
     )
 
 
-def detect_provider(project_root: Path | Sequence[Path]) -> str:
+def detect_provider(
+    project_root: Path | Sequence[Path], config_path: str | Path | None = None
+) -> str:
     """Detect whether a project root (or set of project roots) is dbt, SQLMesh, Dataform, or a custom registered adapter."""
     roots = normalize_project_roots(project_root)
     if not roots:
-        return _detect_provider_single(Path.cwd())
+        return _detect_provider_single(Path.cwd(), config_path=config_path)
 
-    providers = [_detect_provider_single(r) for r in roots]
+    providers = [_detect_provider_single(r, config_path=config_path) for r in roots]
     unique_providers = list(dict.fromkeys(providers))
     if len(unique_providers) > 1:
         names = ", ".join(unique_providers)

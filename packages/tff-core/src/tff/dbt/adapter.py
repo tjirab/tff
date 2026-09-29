@@ -21,7 +21,11 @@ class DBTAdapter(PipelineAdapter):
         return "dbt"
 
     def is_applicable(self, project_root: Path) -> bool:
-        return (project_root / "dbt_project.yml").exists()
+        if (project_root / "dbt_project.yml").exists():
+            return True
+        from tff.core.adapter import _detect_provider_from_models
+
+        return _detect_provider_from_models(project_root) == "dbt"
 
     def load_models(
         self,
