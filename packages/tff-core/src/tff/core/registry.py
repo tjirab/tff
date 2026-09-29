@@ -887,7 +887,7 @@ def create_default_registry() -> CheckRegistry:
             description="Identifies Connascence of Value (CoV) by flagging business literal values (strings, numbers) duplicated across multiple models.",
             why_it_matters="When multiple models share hardcoded business constants, changing the value in one place requires synchronized updates across all models, leading to silent discrepancies if any are missed.",
             how_to_fix="1. Evaluate the value in an upstream staging model and expose a boolean flag.\n2. Encapsulate into a macro or project variable.\n3. Create a seed mapping table for multi-attribute lookups.",
-            configuration_example="checks:\n  connascence_of_value:\n    enabled: true\n    min_occurrences: 2\n    ignored_values: ['0', '1', '']",
+            configuration_example="checks:\n  connascence_of_value:\n    enabled: true\n    min_occurrences: 2\n    min_length: 3\n    ignored_values: ['0', '1', '']",
             providers=("dbt", "sqlmesh", "dataform"),
             is_fixable=False,
         )

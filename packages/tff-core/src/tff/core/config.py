@@ -72,6 +72,7 @@ checks:
     enabled: true
     severity: warning
     min_occurrences: 2
+    min_length: 0
     ignored_values: ["0", "1", ""]
     ignored_punctuation: ["|", " ", "-", "_", "/", ":"]
 
@@ -187,10 +188,18 @@ class DuplicateCtesCheckConfig(LayerFilterConfig):
 class ConnascenceOfValueCheckConfig(LayerFilterConfig):
     severity: str = "warning"
     min_occurrences: int = 2
+    min_length: int = Field(default=0, ge=0)
+    min_string_length: int | None = Field(default=None, ge=0)
     ignored_values: list[str] = Field(default_factory=lambda: ["0", "1", ""])
     ignored_punctuation: list[str] = Field(
         default_factory=lambda: ["|", " ", "-", "_", "/", ":"]
     )
+
+    @model_validator(mode="after")
+    def resolve_min_length(self) -> ConnascenceOfValueCheckConfig:
+        if self.min_string_length is not None and self.min_length == 0:
+            self.min_length = self.min_string_length
+        return self
 
 
 class JoinTypeParityCheckConfig(LayerFilterConfig):

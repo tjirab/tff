@@ -445,3 +445,104 @@ def test_cov_does_not_rewrite_email_or_regex_at_symbols():
         assert "__sqlmesh_macro__" not in f.message
         assert "Literal 'support@company.com'" in f.message
 
+
+def test_cov_min_length_ignores_tiny_string_literals():
+    config = FitnessFunctionsConfig()
+    config.checks.connascence_of_value.enabled = True
+    config.checks.connascence_of_value.min_occurrences = 2
+    config.checks.connascence_of_value.min_length = 3
+    # Clear ignored_values to verify min_length alone ignores '0', '-1', '', '3'
+    config.checks.connascence_of_value.ignored_values = []
+
+    model1 = ModelRepresentation(
+        name="model1",
+        path="models/marts/model1.sql",
+        dialect="postgres",
+        query="SELECT * FROM {{ ref('stg_a') }} WHERE code = '0' AND status = '-1' AND flag = '' AND typ = '3' AND category = 'active'",
+    )
+    model2 = ModelRepresentation(
+        name="model2",
+        path="models/marts/model2.sql",
+        dialect="postgres",
+        query="SELECT * FROM {{ ref('stg_b') }} WHERE code = '0' AND status = '-1' AND flag = '' AND typ = '3' AND category = 'active'",
+    )
+
+    models = {"model1": model1, "model2": model2}
+    findings = collect_connascence_of_value_findings(models, config)
+
+    # Only 'active' (len 6 >= 3) should trigger findings; '0', '-1', '', '3' are ignored
+    assert len(findings) == 2
+    for f in findings:
+        assert "Literal 'active'" in f.message
+        assert "Literal '0'" not in f.message
+        assert "Literal '-1'" not in f.message
+        assert "Literal ''" not in f.message
+        assert "Literal '3'" not in f.message
+
+
+def test_cov_min_length_does_not_ignore_numbers():
+    config = FitnessFunctionsConfig()
+    config.checks.connascence_of_value.enabled = True
+    config.checks.connascence_of_value.min_occurrences = 2
+    config.checks.connascence_of_value.min_length = 5
+    config.checks.connascence_of_value.ignored_values = []
+
+    model1 = ModelRepresentation(
+        name="model1",
+        path="models/marts/model1.sql",
+        dialect="postgres",
+        query="SELECT * FROM {{ ref('stg_a') }} WHERE id = 42 AND str_val = 'hi'",
+    )
+    model2 = ModelRepresentation(
+        name="model2",
+        path="models/marts/model2.sql",
+        dialect="postgres",
+        query="SELECT * FROM {{ ref('stg_b') }} WHERE id = 42 AND str_val = 'hi'",
+    )
+
+    models = {"model1": model1, "model2": model2}
+    findings = collect_connascence_of_value_findings(models, config)
+
+    # 42 is a numeric literal so min_length does not ignore it; 'hi' is string len 2 < 5 so it is ignored
+    assert len(findings) == 2
+    for f in findings:
+        assert "Literal '42'" in f.message
+        assert "Literal 'hi'" not in f.message
+
+
+def test_cov_min_string_length_alias():
+    config = FitnessFunctionsConfig.model_validate({
+        "checks": {
+            "connascence_of_value": {
+                "enabled": True,
+                "min_occurrences": 2,
+                "min_string_length": 4,
+                "ignored_values": [],
+            }
+        }
+    })
+    assert config.checks.connascence_of_value.min_length == 4
+
+    model1 = ModelRepresentation(
+        name="model1",
+        path="models/marts/model1.sql",
+        dialect="postgres",
+        query="SELECT * FROM {{ ref('stg_a') }} WHERE val = 'abc' AND cat = 'good'",
+    )
+    model2 = ModelRepresentation(
+        name="model2",
+        path="models/marts/model2.sql",
+        dialect="postgres",
+        query="SELECT * FROM {{ ref('stg_b') }} WHERE val = 'abc' AND cat = 'good'",
+    )
+
+    models = {"model1": model1, "model2": model2}
+    findings = collect_connascence_of_value_findings(models, config)
+
+    # 'abc' (len 3 < 4) ignored; 'good' (len 4 >= 4) flagged
+    assert len(findings) == 2
+    for f in findings:
+        assert "Literal 'good'" in f.message
+        assert "Literal 'abc'" not in f.message
+
+
