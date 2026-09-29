@@ -1,38 +1,36 @@
-# tff Terminal Demos (VHS by Charm)
+# Terminal Demos (VHS Recording Suite)
 
-This directory contains automated terminal recording scripts (.tape files) powered by [VHS by Charm](https://github.com/charmbracelet/vhs) to generate high-fidelity, Catppuccin Mocha-themed animated demo GIFs for `README.md` and documentation.
+Automated terminal session scripts (`.tape` definitions) powered by [VHS](https://github.com/charmbracelet/vhs) for generating deterministic documentation assets.
 
-## Demo Tapes
+## Specifications & Artifacts
 
-| Tape File | Output Asset | Description |
+| Tape Definition | Target Asset | Functional Scope |
 | :--- | :--- | :--- |
-| [`demo-check-dbt.tape`](demo-check-dbt.tape) | [`docs/assets/demo.gif`](../docs/assets/demo.gif) | Hero demo: running `tff check` on `examples/minimal-dbt-project` with zero-config default conventions in architectural audit ledger layout. |
-| [`demo-sqlmesh.tape`](demo-sqlmesh.tape) | [`docs/assets/demo-sqlmesh.gif`](../docs/assets/demo-sqlmesh.gif) | Demonstrates architectural audit ledger, duplicate CTE detection (Connascence of Algorithm), layer integrity enforcement, and anti-pattern bans on `examples/minimal-sqlmesh-project`. |
-| [`demo-health.tape`](demo-health.tape) | [`docs/assets/demo-health.gif`](../docs/assets/demo-health.gif) | Demonstrates project fitness scoring, dimension distribution bars, domain breakdown, and prioritized action advice on `examples/minimal-sqlmesh-project`. |
+| [`demo-check-dbt.tape`](demo-check-dbt.tape) | [`docs/assets/demo.gif`](../docs/assets/demo.gif) | Primary demo: executing `tff check` on `examples/minimal-dbt-project` under default layer conventions. |
+| [`demo-sqlmesh.tape`](demo-sqlmesh.tape) | [`docs/assets/demo-sqlmesh.gif`](../docs/assets/demo-sqlmesh.gif) | Demonstrates duplicate CTE identification (Connascence of Algorithm) and layer integrity enforcement. |
+| [`demo-health.tape`](demo-health.tape) | [`docs/assets/demo-health.gif`](../docs/assets/demo-health.gif) | Visualizes project health index calculations, penalty driver distributions, and category progress bars. |
 
 ## Prerequisites
 
-Install VHS and its recording dependencies:
+Install the VHS recording toolchain:
 
 ```bash
 brew install vhs ffmpeg ttyd
 ```
 
-## Generating Demos (Ad-hoc)
+## Execution
 
-Demo generation is maintained as an ad-hoc script rather than automated in CI/CD pipelines to keep CI/CD runs fast, lightweight, and deterministic.
+Demo compilation is decoupled from CI pipelines to preserve build determinism and execution speed.
 
-To re-record and compile all demo GIFs locally:
+### Generate All Demo Assets
 
 ```bash
 make demos
-# or via scripts:
+# or direct script invocation:
 ./scripts/generate-demos.sh
-# or directly:
-./demos/generate_demos.sh
 ```
 
-To run a specific demo target:
+### Generate Targeted Assets
 
 ```bash
 ./scripts/generate-demos.sh dbt
@@ -40,9 +38,8 @@ To run a specific demo target:
 ./scripts/generate-demos.sh health
 ```
 
-Or run an individual tape file directly with VHS:
+### Single Tape Compilation
 
 ```bash
 vhs demos/demo-check-dbt.tape
 ```
-

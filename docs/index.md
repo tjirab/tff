@@ -50,7 +50,7 @@ FAIL — 4 errors block merge. Run `tff --fix` for auto-correctable rules.
 
 ---
 
-## ⚡ 30-Second Evaluation (Zero Config)
+## Evaluation (Zero Configuration)
 
 Run `tff` inside any existing transformation repository without creating any configuration file. `tff` immediately infers default architectural conventions (`staging` → `intermediate` → `core` → `marts`):
 
@@ -138,14 +138,15 @@ For full CLI options and flags, see the [CLI Reference](cli.md).
 
 ## Documentation Navigation
 
-* 📐 [SQLMesh Integration Guide](sqlmesh.md)
-* ⚡ [dbt Integration Guide](dbt.md)
-* ☁️ [Dataform Integration Guide](dataform.md)
-* 💻 [CLI Reference Guide](cli.md)
-* 🔍 [Rules & Checks Reference](rules_and_checks.md)
-* 🤖 [CI/CD & GitHub Actions Guide](ci_cd.md)
-* 🧩 [Extending tff Guide (Custom Rules, Checks & Adapters)](extending_tff.md)
-* 📊 [Case Study: GitLab dbt Audit (2,200+ models)](case_study_gitlab.md)
-* 🔌 [API Reference - Adapters](api/adapters.md)
-* 📜 [API Reference - Rules & Checks](api/rules.md)
-* 🏗️ [Architecture & Contributor Guide](contributing.md)
+- [SQLMesh Integration Guide](sqlmesh.md)
+- [dbt Integration Guide](dbt.md)
+- [Dataform Integration Guide](dataform.md)
+- [CLI Reference Guide](cli.md)
+- [Rules & Checks Reference](rules_and_checks.md)
+- [Style Guide & Design System](style_guide.md)
+- [CI/CD & GitHub Actions Guide](ci_cd.md)
+- [Extending tff Guide (Custom Rules, Checks & Adapters)](extending_tff.md)
+- [Case Study: GitLab dbt Audit (2,200+ models)](case_study_gitlab.md)
+- [API Reference - Adapters](api/adapters.md)
+- [API Reference - Rules & Checks](api/rules.md)
+- [Architecture & Contributor Guide](contributing.md)

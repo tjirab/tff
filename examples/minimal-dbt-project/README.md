@@ -1,36 +1,41 @@
-# Minimal dbt Example Project (Zero-Config)
+# Minimal dbt Project (Zero Configuration)
 
-This example project demonstrates **Zero-Config Default Execution** with tff (Transformation Fitness Functions).
+Reference implementation demonstrating zero-configuration DAG auditing with `tff`.
 
-Notice that this project **intentionally does not include a `fitness_functions.yaml` file**.
+This directory omits `fitness_functions.yaml` to demonstrate default convention inference (`staging` → `intermediate` → `core` → `marts`).
 
-## Testing Zero-Config Execution
+## Execution
 
-When you run `tff` without an existing configuration file, it automatically falls back to standard modern data stack layer conventions (`staging -> intermediate -> core -> marts`) with all core rules enabled:
+Execute the architectural checks directly from this directory:
 
 ```bash
-# Run lint checks (from this directory)
-tff lint
+# Local invocation
+tff check
 
-# Or run via uvx without cloning/installing:
-uvx tff-core lint --project examples/minimal-dbt-project
+# Zero-installation invocation via uvx
+uvx --from "tff-core[dbt]" tff check --project .
 ```
 
-### Expected Output
+### Output Protocol
 
-1. An informational notice is printed to stderr indicating that default layer conventions are being used:
+1. An informational notice is emitted to standard error indicating automatic layer hierarchy inference:
    ```text
    Notice: No fitness_functions.yaml found. Running with default layer conventions (staging -> intermediate -> core -> marts).
    Run 'tff init' to generate a project configuration file.
    ```
-2. The lint checks execute and evaluate models across `staging`, `intermediate`, and `marts`.
+2. Structural rules evaluate model DAG relationships across `staging`, `intermediate`, and `marts`.
 
-## Scaffolding a Configuration File
+## Configuration Scaffolding
 
-A sample configuration is provided in `fitness_functions.yaml.example`. You can also generate an annotated starter file in this directory by running:
+To transition from zero-configuration defaults to explicit policy constraints:
 
 ```bash
+# Initialize a project configuration file
 tff init
 ```
 
-Once generated or copied from the example, you can customize layer hierarchies, rules, thresholds, and contracts specifically for your project.
+Or copy the provided sample template:
+
+```bash
+cp fitness_functions.yaml.example fitness_functions.yaml
+```

@@ -70,6 +70,7 @@ nav:
   - Reference:
       - CLI Commands: cli.md
       - Rules & Checks: rules_and_checks.md
+      - Style Guide: style_guide.md
   - API Reference:
       - Adapters: api/adapters.md
       - Exceptions: api/exceptions.md
