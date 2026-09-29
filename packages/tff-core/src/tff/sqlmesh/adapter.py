@@ -21,12 +21,11 @@ class SQLMeshAdapter(PipelineAdapter):
         return "sqlmesh"
 
     def is_applicable(self, project_root: Path) -> bool:
-        return (
-            (project_root / ".sqlmesh").exists()
-            or (project_root / "config.py").exists()
-            or (project_root / "config.yaml").exists()
-            or (project_root / "config.yml").exists()
-        )
+        from tff.core.adapter import _detect_provider_from_models, is_sqlmesh_project
+
+        if is_sqlmesh_project(project_root):
+            return True
+        return _detect_provider_from_models(project_root) == "sqlmesh"
 
     def load_models(
         self,
