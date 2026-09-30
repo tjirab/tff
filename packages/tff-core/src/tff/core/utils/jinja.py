@@ -151,10 +151,14 @@ def _strip_sqlmesh_macros(sql: str) -> str:
     if not spans:
         return sql
 
-    res = list(sql)
-    for start, end in reversed(spans):
-        res[start:end] = list(" __sqlmesh_macro__ ")
-    return "".join(res)
+    parts: list[str] = []
+    last_idx = 0
+    for start, end in spans:
+        parts.append(sql[last_idx:start])
+        parts.append(" __sqlmesh_macro__ ")
+        last_idx = end
+    parts.append(sql[last_idx:])
+    return "".join(parts)
 
 
 def clean_jinja_for_parsing(sql: str, provider: str | None = None) -> str:

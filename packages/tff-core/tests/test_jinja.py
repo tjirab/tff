@@ -151,3 +151,13 @@ def test_clean_sqlmesh_macros_escapes_and_edge_cases() -> None:
     assert "__sqlmesh_macro__" in cleaned
     assert "@my_macro" not in cleaned
 
+
+def test_clean_sqlmesh_multiple_macros() -> None:
+    sql = "@macro1() SELECT col, @macro2 FROM table WHERE x = @macro3(1, 2) AND y = 1"
+    cleaned = clean_jinja_for_parsing(sql)
+    assert "@macro1" not in cleaned
+    assert "@macro2" not in cleaned
+    assert "@macro3" not in cleaned
+    assert cleaned == " __sqlmesh_macro__  SELECT col,  __sqlmesh_macro__  FROM table WHERE x =  __sqlmesh_macro__  AND y = 1"
+
+
