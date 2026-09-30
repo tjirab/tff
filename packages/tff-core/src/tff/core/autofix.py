@@ -2,7 +2,11 @@
 
 from __future__ import annotations
 
+import io
+import os
 import re
+import shutil
+import tempfile
 from collections import defaultdict
 from collections.abc import Mapping, Sequence
 from pathlib import Path
@@ -18,6 +22,65 @@ if TYPE_CHECKING:
     from tff.core.config import FitnessFunctionsConfig
     from tff.core.model import ModelRepresentation
     from tff.core.report import LintFinding
+
+
+def atomic_write(
+    path: Path | str,
+    content: str,
+    encoding: str = "utf-8",
+) -> None:
+    """Atomically write text content to a destination file.
+
+    Writes to a temporary file in the destination's parent directory and performs
+    an atomic rename/replace to prevent file corruption during interruptions.
+    """
+    target = Path(path).resolve()
+    if target.is_dir():
+        raise IsADirectoryError(f"[Errno 21] Is a directory: '{target}'")
+    if target.exists() and not os.access(target, os.W_OK):
+        raise PermissionError(f"[Errno 13] Permission denied: '{target}'")
+
+    target.parent.mkdir(parents=True, exist_ok=True)
+
+    temp_path: Path | None = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            mode="w",
+            dir=target.parent,
+            prefix=f".{target.name}.",
+            suffix=".tmp",
+            encoding=encoding,
+            delete=False,
+        ) as tf:
+            tf.write(content)
+            tf.flush()
+            try:
+                os.fsync(tf.fileno())
+            except OSError:
+                pass
+            temp_path = Path(tf.name)
+
+        if target.exists():
+            try:
+                shutil.copymode(target, temp_path)
+            except OSError:
+                pass
+        else:
+            try:
+                current_umask = os.umask(0)
+                os.umask(current_umask)
+                os.chmod(temp_path, 0o666 & ~current_umask)
+            except OSError:
+                pass
+
+        temp_path.replace(target)
+    except Exception:
+        if temp_path is not None and temp_path.exists():
+            temp_path.unlink(missing_ok=True)
+        raise
+
+
+atomic_write_text = atomic_write
 
 
 def parse_model_block_args(block_text: str) -> list[tuple[str, str]]:
@@ -350,7 +413,7 @@ def fix_sqlmesh_metadata(
     new_sql = sql.replace(model_block_match.group(0), new_block, 1)
 
     try:
-        abs_path.write_text(new_sql, encoding="utf-8")
+        atomic_write(abs_path, new_sql)
         return f"Added missing metadata to MODEL block in {abs_path.name}"
     except Exception as e:
         return f"Failed to write SQLMesh metadata for {abs_path.name}: {e}"
@@ -417,8 +480,9 @@ def fix_dbt_metadata(
 
             if modified:
                 try:
-                    with open(yf, "w", encoding="utf-8") as f:
-                        yaml_rt.dump(data, f)
+                    stream = io.StringIO()
+                    yaml_rt.dump(data, stream)
+                    atomic_write(yf, stream.getvalue())
                     return f"Updated metadata for model {model_name} in {yf.name}"
                 except Exception as e:
                     return f"Failed to write dbt metadata to {yf.name}: {e}"
@@ -452,8 +516,9 @@ def fix_dbt_metadata(
     data["models"].append(model_entry)
 
     try:
-        with open(schema_path, "w", encoding="utf-8") as f:
-            yaml_rt.dump(data, f)
+        stream = io.StringIO()
+        yaml_rt.dump(data, stream)
+        atomic_write(schema_path, stream.getvalue())
         if is_new:
             return f"Scaffolded schema.yml for model {model_name}"
         return f"Appended metadata for model {model_name} to schema.yml"
@@ -651,8 +716,9 @@ def _sync_dbt_schema_yaml_model_name(dir_path: Path, old_name: str, new_name: st
 
         if modified:
             try:
-                with open(yf, "w", encoding="utf-8") as f:
-                    yaml_rt.dump(data, f)
+                stream = io.StringIO()
+                yaml_rt.dump(data, stream)
+                atomic_write(yf, stream.getvalue())
             except Exception:
                 pass
 
@@ -708,7 +774,7 @@ def fix_dataform_metadata(
             new_content = scaffold_str + "\n"
 
         try:
-            abs_path.write_text(new_content, encoding="utf-8")
+            atomic_write(abs_path, new_content)
             return f"Scaffolded config block in {abs_path.name}"
         except Exception as e:
             return f"Failed to write Dataform metadata for {abs_path.name}: {e}"
@@ -774,7 +840,7 @@ def fix_dataform_metadata(
     if not need_desc and not need_owner:
         new_content = content[:brace_start] + modified_config + content[brace_end + 1 :]
         try:
-            abs_path.write_text(new_content, encoding="utf-8")
+            atomic_write(abs_path, new_content)
             return f"Added missing metadata to config block in {abs_path.name}"
         except Exception as e:
             return f"Failed to write Dataform metadata for {abs_path.name}: {e}"
@@ -869,7 +935,7 @@ def fix_dataform_metadata(
 
     new_content = content[:brace_start] + modified_config + content[brace_end + 1 :]
     try:
-        abs_path.write_text(new_content, encoding="utf-8")
+        atomic_write(abs_path, new_content)
         return f"Added missing metadata to config block in {abs_path.name}"
     except Exception as e:
         return f"Failed to write Dataform metadata for {abs_path.name}: {e}"
@@ -1180,7 +1246,7 @@ def apply_autofixes(
                 sql = abs_path.read_text(encoding="utf-8")
                 fixed_sql = fix_positional_clauses(sql, dialect)
                 if fixed_sql != sql:
-                    abs_path.write_text(fixed_sql, encoding="utf-8")
+                    atomic_write(abs_path, fixed_sql)
                     applied_logs.append(
                         f"Fixed positional GROUP BY/ORDER BY in {abs_path.name}"
                     )
@@ -1207,7 +1273,7 @@ def apply_autofixes(
                 sql = abs_path.read_text(encoding="utf-8")
                 fixed_sql = lift_nested_subqueries(sql, dialect)
                 if fixed_sql != sql:
-                    abs_path.write_text(fixed_sql, encoding="utf-8")
+                    atomic_write(abs_path, fixed_sql)
                     applied_logs.append(
                         f"Refactored nested subqueries in final SELECT to CTEs in {abs_path.name}"
                     )
@@ -1243,7 +1309,7 @@ def apply_autofixes(
                 if warnings:
                     applied_logs.extend(warnings)
                 elif fixed_sql != sql:
-                    abs_path.write_text(fixed_sql, encoding="utf-8")
+                    atomic_write(abs_path, fixed_sql)
                     applied_logs.append(f"Expanded SELECT * in {abs_path.name}")
             except Exception as e:
                 applied_logs.append(
@@ -1327,7 +1393,7 @@ def apply_autofixes(
                         elif is_sqlmesh or re.search(r"\bMODEL\s*\(", content, re.IGNORECASE):
                             content = sync_sqlmesh_model_name(content, new_stem)
 
-                        abs_path.write_text(content, encoding="utf-8")
+                        atomic_write(abs_path, content)
                         _sync_dbt_schema_yaml_model_name(abs_path.parent, old_stem, new_stem)
                         abs_path.rename(target_path)
                         applied_logs.append(f"Renamed model file {old_name} -> {target_path.name}")
@@ -1359,7 +1425,7 @@ def apply_autofixes(
                     new_content = content
 
                 if new_content != content:
-                    abs_path.write_text(new_content, encoding="utf-8")
+                    atomic_write(abs_path, new_content)
                     applied_logs.append(
                         f"Synchronized model name to '{abs_path.stem}' in {abs_path.name}"
                     )

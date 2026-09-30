@@ -4,6 +4,8 @@ from unittest.mock import MagicMock, patch
 from tff.core.model import ModelRepresentation
 from tff.core.report import LintFinding
 from tff.core.autofix import (
+    atomic_write,
+    atomic_write_text,
     parse_model_block_args,
     fix_positional_clauses,
     fix_sqlmesh_metadata,
@@ -1800,7 +1802,7 @@ def test_apply_autofixes_rename_and_sync_error_handling(tmp_path: Path):
             message="Model name differs.",
         )
     ]
-    with patch.object(Path, "write_text", side_effect=OSError("Permission denied")):
+    with patch("tff.core.autofix.atomic_write", side_effect=OSError("Permission denied")):
         logs_sync = apply_autofixes(tmp_path, "sqlmesh", findings_sync, models)
         assert any("Failed to synchronize model name in ad_performance.sql" in log for log in logs_sync)
 
@@ -1878,8 +1880,96 @@ def test_apply_autofixes_filename_equals_modelname_plain_sql(tmp_path: Path):
     assert logs == []
 
 
+def test_atomic_write_new_file(tmp_path: Path):
+    target = tmp_path / "new_file.sql"
+    atomic_write(target, "SELECT 42;")
+    assert target.exists()
+    assert target.read_text(encoding="utf-8") == "SELECT 42;"
 
 
+def test_atomic_write_creates_parent_directories(tmp_path: Path):
+    target = tmp_path / "deeply" / "nested" / "dir" / "file.sql"
+    atomic_write(target, "SELECT 'nested';")
+    assert target.exists()
+    assert target.read_text(encoding="utf-8") == "SELECT 'nested';"
 
 
+def test_atomic_write_overwrites_existing_file(tmp_path: Path):
+    target = tmp_path / "existing.sql"
+    target.write_text("OLD CONTENT", encoding="utf-8")
+    atomic_write(target, "NEW CONTENT")
+    assert target.read_text(encoding="utf-8") == "NEW CONTENT"
 
+
+def test_atomic_write_preserves_file_mode(tmp_path: Path):
+    target = tmp_path / "executable.sh"
+    target.write_text("#!/bin/sh\necho hi\n", encoding="utf-8")
+    target.chmod(0o755)
+
+    atomic_write(target, "#!/bin/sh\necho updated\n")
+    assert target.read_text(encoding="utf-8") == "#!/bin/sh\necho updated\n"
+    assert target.stat().st_mode & 0o777 == 0o755
+
+
+def test_atomic_write_raises_on_directory(tmp_path: Path):
+    dir_path = tmp_path / "a_dir"
+    dir_path.mkdir()
+    import pytest
+    with pytest.raises(IsADirectoryError):
+        atomic_write(dir_path, "content")
+
+
+def test_atomic_write_raises_on_readonly_file(tmp_path: Path):
+    target = tmp_path / "readonly.sql"
+    target.write_text("SELECT 1;", encoding="utf-8")
+    target.chmod(0o444)
+    import pytest
+    try:
+        with pytest.raises(PermissionError):
+            atomic_write(target, "SELECT 2;")
+    finally:
+        target.chmod(0o644)
+
+
+def test_atomic_write_cleans_up_temp_on_failure(tmp_path: Path):
+    target = tmp_path / "fail_write.sql"
+    target.write_text("ORIGINAL", encoding="utf-8")
+
+    import pytest
+    with patch("pathlib.Path.replace", side_effect=OSError("Simulated replace failure")):
+        with pytest.raises(OSError, match="Simulated replace failure"):
+            atomic_write(target, "NEW DATA")
+
+    # Original file is intact
+    assert target.read_text(encoding="utf-8") == "ORIGINAL"
+    # No temporary files left behind
+    temp_files = list(tmp_path.glob("*.tmp"))
+    assert temp_files == []
+
+
+def test_atomic_write_text_alias(tmp_path: Path):
+    target = tmp_path / "alias_test.sql"
+    atomic_write_text(target, "SELECT 'alias';")
+    assert target.read_text(encoding="utf-8") == "SELECT 'alias';"
+
+
+def test_atomic_write_fsync_os_error(tmp_path: Path):
+    target = tmp_path / "fsync_err.sql"
+    with patch("os.fsync", side_effect=OSError("fsync error")):
+        atomic_write(target, "SELECT 1;")
+    assert target.read_text(encoding="utf-8") == "SELECT 1;"
+
+
+def test_atomic_write_copymode_os_error(tmp_path: Path):
+    target = tmp_path / "copymode_err.sql"
+    target.write_text("OLD", encoding="utf-8")
+    with patch("shutil.copymode", side_effect=OSError("copymode error")):
+        atomic_write(target, "NEW")
+    assert target.read_text(encoding="utf-8") == "NEW"
+
+
+def test_atomic_write_chmod_os_error(tmp_path: Path):
+    target = tmp_path / "chmod_err.sql"
+    with patch("os.chmod", side_effect=OSError("chmod error")):
+        atomic_write(target, "SELECT 1;")
+    assert target.read_text(encoding="utf-8") == "SELECT 1;"
