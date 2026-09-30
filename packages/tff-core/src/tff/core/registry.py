@@ -658,7 +658,7 @@ def create_default_registry() -> CheckRegistry:
             how_to_fix="Rename the SQL file to match the model name or update the model configuration name to match the file stem.",
             configuration_example="rules:\n  filename_equals_modelname:\n    enabled: true",
             providers=("dbt", "sqlmesh", "dataform"),
-            is_fixable=False,
+            is_fixable=True,
         )
     )
     reg.register(
@@ -698,7 +698,7 @@ def create_default_registry() -> CheckRegistry:
             how_to_fix="Prefix the model file name with the name of its enclosing subdirectory (e.g. rename ad_performance.sql to marketing_ad_performance.sql).",
             configuration_example="rules:\n  mart_naming:\n    enabled: true\n    layer_name: marts\n    rule: prefix_with_subdirectory",
             providers=("dbt", "sqlmesh", "dataform"),
-            is_fixable=False,
+            is_fixable=True,
         )
     )
     reg.register(

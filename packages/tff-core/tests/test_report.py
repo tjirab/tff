@@ -717,6 +717,10 @@ def test_format_connascence_tag_helper(category: str, expected_tag: str) -> None
     [
         ("nopositionalgroupbyororderby", "pos", True),
         ("nomissingdescription", "desc", True),
+        ("martmodelnamingconvention", "mart", True),
+        ("mart_naming", "mart", True),
+        ("filenameequalsmodelname", "name", True),
+        ("filename_equals_modelname", "name", True),
         ("sqlcomplexity", "nested subquery in final SELECT", True),
         ("sqlcomplexity", "too many CTEs", False),
         ("banselectstar", "select *", True),

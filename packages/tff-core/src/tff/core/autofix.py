@@ -15,6 +15,7 @@ from tff.core.report import normalize_model_name
 
 if TYPE_CHECKING:
     from tff.core.adapter import PipelineAdapter
+    from tff.core.config import FitnessFunctionsConfig
     from tff.core.model import ModelRepresentation
     from tff.core.report import LintFinding
 
@@ -500,6 +501,162 @@ def _find_matching_brace(text: str, open_brace_idx: int) -> int:
     return -1
 
 
+def _find_matching_paren(text: str, open_paren_idx: int) -> int:
+    """Find the index of the matching closing parenthesis ')' for the open parenthesis at open_paren_idx."""
+    if open_paren_idx < 0 or open_paren_idx >= len(text) or text[open_paren_idx] != "(":
+        return -1
+    depth = 0
+    in_quote = None
+    i = open_paren_idx
+    length = len(text)
+    while i < length:
+        ch = text[i]
+        if in_quote:
+            if ch == "\\" and i + 1 < length:
+                i += 2
+                continue
+            if ch == in_quote:
+                in_quote = None
+        elif ch in ('"', "'", "`"):
+            in_quote = ch
+        elif ch == "-" and i + 1 < length and text[i + 1] == "-":
+            nl = text.find("\n", i)
+            if nl == -1:
+                break
+            i = nl
+            continue
+        elif ch == "/" and i + 1 < length and text[i + 1] == "*":
+            end_c = text.find("*/", i + 2)
+            if end_c == -1:
+                break
+            i = end_c + 2
+            continue
+        elif ch == "(":
+            depth += 1
+        elif ch == ")":
+            depth -= 1
+            if depth == 0:
+                return i
+        i += 1
+    return -1
+
+
+def sync_sqlmesh_model_name(sql: str, new_name_stem: str) -> str:
+    """Update the model identifier in a SQLMesh MODEL(...) block to match new_name_stem.
+    Preserves schema qualification (e.g. `schema.model` -> `schema.<new_name_stem>`)
+    and quotes (e.g. `"schema"."model"` -> `"schema"."<new_name_stem>"`).
+    """
+    model_match = re.search(r"\bMODEL\s*\(", sql, re.IGNORECASE)
+    if not model_match:
+        return sql
+
+    open_paren = model_match.end() - 1
+    close_paren = _find_matching_paren(sql, open_paren)
+    if close_paren == -1:
+        return sql
+
+    block_content = sql[open_paren + 1 : close_paren]
+
+    name_match = re.search(
+        r"(\bname(?:\s*:\s*|\s+))([^\s,);]+)",
+        block_content,
+        re.IGNORECASE,
+    )
+    if name_match:
+        full_ident = name_match.group(2)
+        parts = full_ident.split(".")
+        last_part = parts[-1]
+
+        quote = ""
+        for q in ('"', "'", "`"):
+            if last_part.startswith(q) and last_part.endswith(q) and len(last_part) >= 2:
+                quote = q
+                break
+
+        new_last_part = f"{quote}{new_name_stem}{quote}"
+        new_parts = parts[:-1] + [new_last_part]
+        new_ident = ".".join(new_parts)
+
+        if new_ident == full_ident:
+            return sql
+
+        new_block_content = (
+            block_content[: name_match.start(2)]
+            + new_ident
+            + block_content[name_match.end(2) :]
+        )
+        return sql[: open_paren + 1] + new_block_content + sql[close_paren :]
+    else:
+        indent = "  "
+        new_block_content = f"\n{indent}name {new_name_stem}," + block_content
+        return sql[: open_paren + 1] + new_block_content + sql[close_paren :]
+
+
+def sync_dataform_model_name(content: str, new_name_stem: str) -> str:
+    """Update the name property inside Dataform config { ... } to match new_name_stem."""
+    match = re.search(r"^\s*config\s*\{", content, re.MULTILINE | re.IGNORECASE)
+    if not match:
+        match = re.search(r"\bconfig\s*\{", content, re.IGNORECASE)
+    if not match:
+        return content
+
+    brace_start = match.end() - 1
+    brace_end = _find_matching_brace(content, brace_start)
+    if brace_end == -1:
+        return content
+
+    config_str = content[brace_start : brace_end + 1]
+
+    name_match = re.search(r'(\bname\s*:\s*)(["\']?)([\w.-]+)\2', config_str)
+    if name_match:
+        prefix = name_match.group(1)
+        quote = name_match.group(2) or '"'
+        old_val = name_match.group(3)
+        if old_val == new_name_stem:
+            return content
+        replacement = f"{prefix}{quote}{new_name_stem}{quote}"
+        new_config = (
+            config_str[: name_match.start()]
+            + replacement
+            + config_str[name_match.end() :]
+        )
+        return content[:brace_start] + new_config + content[brace_end + 1 :]
+
+    return content
+
+
+def _sync_dbt_schema_yaml_model_name(dir_path: Path, old_name: str, new_name: str) -> None:
+    """Update model name in schema.yml / YAML files in dir_path if present."""
+    yaml_rt = _get_roundtrip_yaml()
+    yaml_files = list(dir_path.glob("*.yml")) + list(dir_path.glob("*.yaml"))
+    for yf in yaml_files:
+        try:
+            with open(yf, encoding="utf-8") as f:
+                data = yaml_rt.load(f)
+        except Exception:
+            continue
+
+        if (
+            not isinstance(data, (dict, Mapping))
+            or "models" not in data
+            or not isinstance(data["models"], (list, Sequence))
+        ):
+            continue
+
+        modified = False
+        for m in data["models"]:
+            if isinstance(m, (dict, Mapping)) and m.get("name") == old_name:
+                m["name"] = new_name
+                modified = True
+
+        if modified:
+            try:
+                with open(yf, "w", encoding="utf-8") as f:
+                    yaml_rt.dump(data, f)
+            except Exception:
+                pass
+
+
 def fix_dataform_metadata(
     abs_path: Path,
     missing_owner: bool,
@@ -973,6 +1130,7 @@ def apply_autofixes(
     provider: str | PipelineAdapter,
     findings: list[LintFinding],
     models: dict[str, ModelRepresentation],
+    config: FitnessFunctionsConfig | None = None,
 ) -> list[str]:
     """Identify auto-fixable violations from findings and apply modifications to source files."""
     from tff.core.adapter import get_adapter, normalize_project_roots
@@ -1118,5 +1276,96 @@ def apply_autofixes(
                 )
                 if log:
                     applied_logs.append(log)
+
+        # 4. Fix mart naming conventions (mart_naming / martmodelnamingconvention)
+        mart_findings = [
+            f
+            for f in file_findings
+            if f.check in ("martmodelnamingconvention", "mart_naming")
+        ]
+        renamed = False
+        if mart_findings and abs_path.suffix in (".sql", ".sqlx"):
+            mart_name = None
+            if config and hasattr(config, "rules") and hasattr(config.rules, "mart_naming"):
+                layer_name = config.rules.mart_naming.layer_name
+                if layer_name in abs_path.parts:
+                    idx = abs_path.parts.index(layer_name)
+                    if idx + 1 < len(abs_path.parts):
+                        mart_name = abs_path.parts[idx + 1]
+
+            if not mart_name and "marts" in abs_path.parts:
+                idx = abs_path.parts.index("marts")
+                if idx + 1 < len(abs_path.parts):
+                    mart_name = abs_path.parts[idx + 1]
+
+            if not mart_name:
+                for mf in mart_findings:
+                    m = re.search(r"in mart ['\"]([^'\"]+)['\"]", mf.message)
+                    if m:
+                        mart_name = m.group(1)
+                        break
+
+            if mart_name and not abs_path.stem.startswith(f"{mart_name}_"):
+                target_name = f"{mart_name}_{abs_path.name}"
+                target_path = abs_path.parent / target_name
+                if target_path.exists():
+                    applied_logs.append(
+                        f"Skipped renaming {abs_path.name}: destination {target_path.name} already exists"
+                    )
+                else:
+                    new_stem = target_path.stem
+                    old_stem = abs_path.stem
+                    old_name = abs_path.name
+                    provider_name = getattr(adapter, "provider_name", str(provider)).lower()
+                    is_sqlmesh = provider_name == "sqlmesh"
+                    is_dataform = provider_name == "dataform" or abs_path.suffix == ".sqlx"
+
+                    try:
+                        content = abs_path.read_text(encoding="utf-8")
+                        if is_dataform:
+                            content = sync_dataform_model_name(content, new_stem)
+                        elif is_sqlmesh or re.search(r"\bMODEL\s*\(", content, re.IGNORECASE):
+                            content = sync_sqlmesh_model_name(content, new_stem)
+
+                        abs_path.write_text(content, encoding="utf-8")
+                        _sync_dbt_schema_yaml_model_name(abs_path.parent, old_stem, new_stem)
+                        abs_path.rename(target_path)
+                        applied_logs.append(f"Renamed model file {old_name} -> {target_path.name}")
+                        abs_path = target_path
+                        renamed = True
+                    except Exception as e:
+                        applied_logs.append(
+                            f"Failed to rename {old_name} -> {target_path.name}: {e}"
+                        )
+
+        # 5. Fix filename and model name synchronization (filename_equals_modelname)
+        name_sync_findings = [
+            f
+            for f in file_findings
+            if f.check in ("filenameequalsmodelname", "filename_equals_modelname")
+        ]
+        if name_sync_findings and not renamed and abs_path.suffix in (".sql", ".sqlx"):
+            provider_name = getattr(adapter, "provider_name", str(provider)).lower()
+            is_sqlmesh = provider_name == "sqlmesh"
+            is_dataform = provider_name == "dataform" or abs_path.suffix == ".sqlx"
+
+            try:
+                content = abs_path.read_text(encoding="utf-8")
+                if is_dataform:
+                    new_content = sync_dataform_model_name(content, abs_path.stem)
+                elif is_sqlmesh or re.search(r"\bMODEL\s*\(", content, re.IGNORECASE):
+                    new_content = sync_sqlmesh_model_name(content, abs_path.stem)
+                else:
+                    new_content = content
+
+                if new_content != content:
+                    abs_path.write_text(new_content, encoding="utf-8")
+                    applied_logs.append(
+                        f"Synchronized model name to '{abs_path.stem}' in {abs_path.name}"
+                    )
+            except Exception as e:
+                applied_logs.append(
+                    f"Failed to synchronize model name in {abs_path.name}: {e}"
+                )
 
     return applied_logs
