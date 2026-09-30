@@ -1,5 +1,27 @@
 # Changelog
 
+## [0.24.0](https://github.com/tjirab/tff/compare/tff-core-v0.23.0...tff-core-v0.24.0) (2026-09-30)
+
+
+### Features
+
+* **autofix:** auto-fix mart naming and model name sync ([#345](https://github.com/tjirab/tff/issues/345)) ([3bd1b23](https://github.com/tjirab/tff/commit/3bd1b23337b66d2b5b5137d69a3d2cbec8bc021a))
+* **autofix:** schema-aware SELECT * expansion for SQLMesh and cataloged models ([#346](https://github.com/tjirab/tff/issues/346)) ([6854a81](https://github.com/tjirab/tff/commit/6854a8148b2694a054bef5c4a14c1b35db96eff2))
+* **core:** improve provider auto-detection accuracy and eliminate false-positive SQLMesh detection ([#337](https://github.com/tjirab/tff/issues/337)) ([3431014](https://github.com/tjirab/tff/commit/3431014506f079b6ad218f7e84427fc7777383db))
+* **cov:** ignore tiny string literals with configurable min_length ([#334](https://github.com/tjirab/tff/issues/334)) ([#339](https://github.com/tjirab/tff/issues/339)) ([a3aedac](https://github.com/tjirab/tff/commit/a3aedac1325a140ca7c44c8ce353327a7ec883e4))
+* **rules:** split no_positional_group_by_or_order_by check ([#349](https://github.com/tjirab/tff/issues/349)) ([06159ee](https://github.com/tjirab/tff/commit/06159ee4fbc1efb4d1305b4711ba10bcc32420b5))
+
+
+### Bug Fixes
+
+* **config:** disallow unrecognized configuration keys in fitness_functions.yaml ([#338](https://github.com/tjirab/tff/issues/338)) ([51bd325](https://github.com/tjirab/tff/commit/51bd325c45caef38207fbb2ef28febac27eae67e))
+* **core:** ignore duplicate CTEs originating from shared macros ([#335](https://github.com/tjirab/tff/issues/335)) ([fb58bab](https://github.com/tjirab/tff/commit/fb58bab8f1a9f7383eca61d100a658585ca018e7))
+
+
+### Performance Improvements
+
+* **core:** optimize string assembly in _strip_sqlmesh_macros using chunk concatenation ([#348](https://github.com/tjirab/tff/issues/348)) ([d4588e9](https://github.com/tjirab/tff/commit/d4588e95bd0a1eadea512b4a395d395d9724eaa9))
+
 ## [0.23.0](https://github.com/tjirab/tff/compare/tff-core-v0.22.0...tff-core-v0.23.0) (2026-09-28)
 
 
