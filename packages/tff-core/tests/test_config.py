@@ -1,6 +1,7 @@
 """Tests for fitness_functions.yaml loading and merging."""
 
 from pathlib import Path
+from typing import get_args
 
 import pytest
 from pydantic import ValidationError
@@ -9,7 +10,10 @@ from tff.core.config import (
     DEFAULT_LAYER_ORDER,
     MISSING_CONFIG_NOTICE,
     STARTER_CONFIG_YAML,
+    CheckEnabled,
     FitnessFunctionsConfig,
+    LayerFilterConfig,
+    Severity,
     init_fitness_config,
     load_fitness_config,
     resolve_project_path,
@@ -721,4 +725,164 @@ def test_version_and_project_name_top_level() -> None:
     })
     assert cfg.version == 1
     assert cfg.project_name == "my_project"
+
+
+def test_severity_valid_values() -> None:
+    assert get_args(Severity) == ("error", "warning")
+
+    # LayerFilterConfig default is None
+    lfc = LayerFilterConfig()
+    assert lfc.severity is None
+
+    # CheckEnabled default is None
+    ce = CheckEnabled()
+    assert ce.severity is None
+
+    # LayerFilterConfig with explicit valid severities
+    assert LayerFilterConfig(severity="error").severity == "error"
+    assert LayerFilterConfig(severity="warning").severity == "warning"
+    assert LayerFilterConfig(severity=None).severity is None
+
+    # CheckEnabled with explicit valid severities
+    assert CheckEnabled(severity="error").severity == "error"
+    assert CheckEnabled(severity="warning").severity == "warning"
+    assert CheckEnabled(severity=None).severity is None
+
+    # FitnessFunctionsConfig with standard rules and checks
+    cfg = FitnessFunctionsConfig.model_validate({
+        "rules": {
+            "ban_select_star": {"severity": "warning"},
+            "sql_complexity": {"severity": "error"},
+        },
+        "checks": {
+            "layer_integrity": {"severity": "warning"},
+            "duplicate_ctes": {"severity": "error"},
+            "join_type_parity": {"severity": "warning"},
+        },
+    })
+    assert cfg.rules.ban_select_star.severity == "warning"
+    assert cfg.rules.sql_complexity.severity == "error"
+    assert cfg.checks.layer_integrity.severity == "warning"
+    assert cfg.checks.duplicate_ctes.severity == "error"
+    assert cfg.checks.join_type_parity.severity == "warning"
+
+
+def test_severity_case_insensitive_normalization() -> None:
+    assert LayerFilterConfig(severity="ERROR").severity == "error"
+    assert LayerFilterConfig(severity="Warning").severity == "warning"
+    assert CheckEnabled(severity="WARNING").severity == "warning"
+    assert CheckEnabled(severity="Error").severity == "error"
+
+    cfg = FitnessFunctionsConfig.model_validate({
+        "rules": {
+            "ban_select_star": {"severity": "WARNING"},
+        },
+        "checks": {
+            "layer_integrity": {"severity": "ERROR"},
+        },
+    })
+    assert cfg.rules.ban_select_star.severity == "warning"
+    assert cfg.checks.layer_integrity.severity == "error"
+
+
+def test_severity_invalid_values_rejected() -> None:
+    for invalid in ("warn", "info", "fatal", "critical", "debug", ""):
+        with pytest.raises(ValidationError):
+            LayerFilterConfig(severity=invalid)  # type: ignore[arg-type]
+
+        with pytest.raises(ValidationError):
+            CheckEnabled(severity=invalid)  # type: ignore[arg-type]
+
+        with pytest.raises(ValidationError):
+            FitnessFunctionsConfig.model_validate({
+                "rules": {"ban_select_star": {"severity": invalid}}
+            })
+
+        with pytest.raises(ValidationError):
+            FitnessFunctionsConfig.model_validate({
+                "checks": {"layer_integrity": {"severity": invalid}}
+            })
+
+        with pytest.raises(ValidationError):
+            FitnessFunctionsConfig.model_validate({
+                "checks": {"duplicate_ctes": {"severity": invalid}}
+            })
+
+
+def test_severity_invalid_types_rejected() -> None:
+    for invalid in (123, True, ["error"], {"sev": "error"}):
+        with pytest.raises(ValidationError):
+            LayerFilterConfig(severity=invalid)  # type: ignore[arg-type]
+
+        with pytest.raises(ValidationError):
+            CheckEnabled(severity=invalid)  # type: ignore[arg-type]
+
+
+def test_custom_check_and_rule_severity_validation() -> None:
+    # Valid extra rule and check with severity
+    cfg = FitnessFunctionsConfig.model_validate({
+        "rules": {
+            "custom_rule_a": {"severity": "WARNING"},
+            "custom_rule_b": {"severity": "error"},
+            "custom_rule_c": {"severity": None},
+        },
+        "checks": {
+            "custom_check_x": {"severity": "ERROR"},
+            "custom_check_y": {"severity": "warning"},
+            "custom_check_z": {"severity": None},
+        },
+    })
+    assert cfg.rules.model_extra["custom_rule_a"]["severity"] == "warning"
+    assert cfg.rules.model_extra["custom_rule_b"]["severity"] == "error"
+    assert cfg.rules.model_extra["custom_rule_c"]["severity"] is None
+    assert cfg.checks.model_extra["custom_check_x"]["severity"] == "error"
+    assert cfg.checks.model_extra["custom_check_y"]["severity"] == "warning"
+    assert cfg.checks.model_extra["custom_check_z"]["severity"] is None
+
+    # Invalid extra rule severity
+    with pytest.raises(ValidationError, match="Invalid severity 'warn' for rule 'custom_rule_bad'"):
+        FitnessFunctionsConfig.model_validate({
+            "rules": {
+                "custom_rule_bad": {"severity": "warn"}
+            }
+        })
+
+    # Invalid extra check severity
+    with pytest.raises(ValidationError, match="Invalid severity 'info' for check 'custom_check_bad'"):
+        FitnessFunctionsConfig.model_validate({
+            "checks": {
+                "custom_check_bad": {"severity": "info"}
+            }
+        })
+
+
+def test_load_fitness_config_severity_yaml_and_error(tmp_path: Path) -> None:
+    valid_yaml = tmp_path / "fitness_functions.yaml"
+    valid_yaml.write_text(
+        """
+rules:
+  ban_select_star:
+    severity: warning
+checks:
+  duplicate_ctes:
+    severity: error
+""",
+        encoding="utf-8",
+    )
+    cfg = load_fitness_config(tmp_path)
+    assert cfg.rules.ban_select_star.severity == "warning"
+    assert cfg.checks.duplicate_ctes.severity == "error"
+
+    invalid_yaml = tmp_path / "fitness_functions.yaml"
+    invalid_yaml.write_text(
+        """
+rules:
+  ban_select_star:
+    severity: warn
+""",
+        encoding="utf-8",
+    )
+    with pytest.raises(ValidationError):
+        load_fitness_config(tmp_path)
+
 

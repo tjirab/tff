@@ -7,12 +7,10 @@ from typing import Any, Literal, Sequence
 
 from rich.console import Console
 from rich.text import Text
-
 from pathlib import Path
 
+from tff.core.config import Severity
 from tff.core.registry import registry
-
-Severity = Literal["error", "warning"]
 
 
 @dataclass(frozen=True)
