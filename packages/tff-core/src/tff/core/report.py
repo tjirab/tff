@@ -111,6 +111,8 @@ def _is_fixable_finding(f: LintFinding) -> bool:
         "nomissingdescription",
         "nomissingowner",
         "nomissingcolumns",
+        "banselectstar",
+        "ban_select_star",
     ):
         return True
     if f.check == "sqlcomplexity" and "nested subquery in final SELECT" in f.message:

@@ -492,6 +492,7 @@ For SQLMesh projects, these rules run dynamically inside SQLMesh (e.g., `sqlmesh
   ```
   * **SQLMesh Rule Name**: `banselectstar`
   * Default `skip_layers`: `["sources"]`
+  * **Auto-fix**: Supported via `tff lint --fix` when upstream relation schema or CTE projection is statically available in the project context. Uncataloged sources are gracefully skipped.
 
 ---
 
