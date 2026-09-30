@@ -8,7 +8,7 @@ tff runs two categories of quality guardrails: **Architectural Checks** and **Li
 
 tff includes a built-in auto-fixer that can automatically resolve simple violations. By running `tff lint --fix`, tff will modify your source files to fix the following issues:
 
-*   **[No Positional GROUP BY/ORDER BY](#no-positional-group-byorder-by-no_positional_group_by_or_order_by-auto-fixable)** (`nopositionalgroupbyororderby`): Rewrites integer positional references in `GROUP BY` and `ORDER BY` clauses to explicit column names or select aliases using AST modification.
+*   **[No Positional GROUP BY/ORDER BY](#no-positional-group-byorder-by-no_positional_group_by_or_order_by-auto-fixable)** (`nopositionalgroupby`, `nopositionalorderby`, `nopositionalgroupbyororderby`): Rewrites integer positional references in `GROUP BY` and `ORDER BY` clauses to explicit column names or select aliases using AST modification.
 *   **[Nested Subqueries in Final SELECT](#sql-complexity-sql_complexity)** (`sqlcomplexity`): Refactors inline subqueries in `FROM (SELECT ...) alias` and `JOIN (SELECT ...) alias` clauses of the final `SELECT` statement into named Common Table Expressions (`WITH alias AS (...)`).
 *   **Metadata (`nomissingowner`, `nomissingdescription`)**:
     *   **dbt**: Automatically appends or scaffolds `schema.yml` metadata configs with `"TODO: Add owner"` and `"TODO: Add description"` templates.
@@ -500,15 +500,31 @@ For SQLMesh projects, these rules run dynamically inside SQLMesh (e.g., `sqlmesh
 
 * **What it checks**:
   * Prevents using ordinal integers (e.g., `GROUP BY 1, 2` or `ORDER BY 1 DESC`) instead of explicit column name references.
+  * Can be configured together under `rules.no_positional_group_by_or_order_by`, or individually via `rules.no_positional_group_by` and `rules.no_positional_order_by`.
 * **How to configure**:
-  Defined under `rules.no_positional_group_by_or_order_by` in `fitness_functions.yaml`.
+  Defined under `rules.no_positional_group_by_or_order_by` or individual rule sections in `fitness_functions.yaml`.
   ```yaml
   rules:
+    # Option 1: Configure together with individual toggles
     no_positional_group_by_or_order_by:
+      enabled: true
+      group_by: true
+      order_by: true
+      skip_layers: [sources]
+
+    # Option 2: Configure separately
+    no_positional_group_by:
+      enabled: true
+      skip_layers: [sources]
+
+    no_positional_order_by:
       enabled: true
       skip_layers: [sources]
   ```
-  * **SQLMesh Rule Name**: `nopositionalgroupbyororderby`
+  * **Checks**:
+    * `no_positional_group_by` (`nopositionalgroupby`): flags positional `GROUP BY` references.
+    * `no_positional_order_by` (`nopositionalorderby`): flags positional `ORDER BY` references.
+    * `no_positional_group_by_or_order_by` (`nopositionalgroupbyororderby`): legacy umbrella check name.
   * Default `skip_layers`: `["sources"]`
 
 ---

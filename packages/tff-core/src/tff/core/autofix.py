@@ -151,7 +151,12 @@ def _unmask_macros(query: str, placeholders: dict[str, str]) -> str:
     return query
 
 
-def fix_positional_clauses(sql: str, dialect: str) -> str:
+def fix_positional_clauses(
+    sql: str,
+    dialect: str,
+    fix_group_by: bool = True,
+    fix_order_by: bool = True,
+) -> str:
     """Rewrite positional GROUP BY and ORDER BY integers to explicit columns."""
     resolved_dialect = _resolve_dialect(dialect)
 
@@ -173,37 +178,39 @@ def fix_positional_clauses(sql: str, dialect: str) -> str:
     for select in parsed.find_all(exp.Select):
         selects = select.selects
 
-        group = select.args.get("group")
-        if group:
-            new_group_expressions = []
-            for expr in group.expressions:
-                if isinstance(expr, exp.Literal) and expr.is_int:
-                    val = int(expr.this)
-                    if 1 <= val <= len(selects):
-                        select_expr = selects[val - 1]
-                        modified = True
-                        if isinstance(select_expr, exp.Alias):
-                            new_group_expressions.append(exp.column(select_expr.alias))
+        if fix_group_by:
+            group = select.args.get("group")
+            if group:
+                new_group_expressions = []
+                for expr in group.expressions:
+                    if isinstance(expr, exp.Literal) and expr.is_int:
+                        val = int(expr.this)
+                        if 1 <= val <= len(selects):
+                            select_expr = selects[val - 1]
+                            modified = True
+                            if isinstance(select_expr, exp.Alias):
+                                new_group_expressions.append(exp.column(select_expr.alias))
+                            else:
+                                new_group_expressions.append(select_expr.copy())
                         else:
-                            new_group_expressions.append(select_expr.copy())
+                            new_group_expressions.append(expr)
                     else:
                         new_group_expressions.append(expr)
-                else:
-                    new_group_expressions.append(expr)
-            group.set("expressions", new_group_expressions)
+                group.set("expressions", new_group_expressions)
 
-        order = select.args.get("order")
-        if order:
-            for ordered in order.expressions:
-                if isinstance(ordered.this, exp.Literal) and ordered.this.is_int:
-                    val = int(ordered.this.this)
-                    if 1 <= val <= len(selects):
-                        select_expr = selects[val - 1]
-                        modified = True
-                        if isinstance(select_expr, exp.Alias):
-                            ordered.set("this", exp.column(select_expr.alias))
-                        else:
-                            ordered.set("this", select_expr.copy())
+        if fix_order_by:
+            order = select.args.get("order")
+            if order:
+                for ordered in order.expressions:
+                    if isinstance(ordered.this, exp.Literal) and ordered.this.is_int:
+                        val = int(ordered.this.this)
+                        if 1 <= val <= len(selects):
+                            select_expr = selects[val - 1]
+                            modified = True
+                            if isinstance(select_expr, exp.Alias):
+                                ordered.set("this", exp.column(select_expr.alias))
+                            else:
+                                ordered.set("this", select_expr.copy())
 
     if not modified:
         return sql
@@ -1166,7 +1173,9 @@ def apply_autofixes(
 
         # 1. Fix positional group by / order by
         pos_findings = [
-            f for f in file_findings if f.check == "nopositionalgroupbyororderby"
+            f
+            for f in file_findings
+            if f.check in ("nopositionalgroupby", "nopositionalorderby", "nopositionalgroupbyororderby")
         ]
         if pos_findings and abs_path.suffix in (".sql", ".sqlx"):
             # Lookup dialect from models dictionary
@@ -1176,13 +1185,33 @@ def apply_autofixes(
                     dialect = model.dialect
                     break
 
+            fix_group = any(
+                f.check in ("nopositionalgroupby", "nopositionalgroupbyororderby")
+                for f in pos_findings
+            )
+            fix_order = any(
+                f.check in ("nopositionalorderby", "nopositionalgroupbyororderby")
+                for f in pos_findings
+            )
+
             try:
                 sql = abs_path.read_text(encoding="utf-8")
-                fixed_sql = fix_positional_clauses(sql, dialect)
+                fixed_sql = fix_positional_clauses(
+                    sql,
+                    dialect,
+                    fix_group_by=fix_group,
+                    fix_order_by=fix_order,
+                )
                 if fixed_sql != sql:
                     abs_path.write_text(fixed_sql, encoding="utf-8")
+                    if fix_group and fix_order:
+                        clause_label = "GROUP BY/ORDER BY"
+                    elif fix_group:
+                        clause_label = "GROUP BY"
+                    else:
+                        clause_label = "ORDER BY"
                     applied_logs.append(
-                        f"Fixed positional GROUP BY/ORDER BY in {abs_path.name}"
+                        f"Fixed positional {clause_label} in {abs_path.name}"
                     )
             except Exception as e:
                 applied_logs.append(

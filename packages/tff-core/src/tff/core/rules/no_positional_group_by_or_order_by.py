@@ -6,11 +6,20 @@ import sqlglot.expressions as exp
 
 from tff.core.model import ModelRepresentation
 from tff.core.rules.base import Rule, RuleViolation
+from tff.core.rules.no_positional_group_by import NoPositionalGroupBy
+from tff.core.rules.no_positional_order_by import NoPositionalOrderBy
 from tff.core.utils.paths import get_layer_from_path
+
+__all__ = [
+    "NoPositionalGroupBy",
+    "NoPositionalOrderBy",
+    "NoPositionalGroupByOrOrderBy",
+]
 
 
 class NoPositionalGroupByOrOrderBy(Rule):
     """Ensure GROUP BY and ORDER BY clauses reference column names, not positional integers."""
+
     name = "nopositionalgroupbyororderby"
 
     def check_model(self, model: ModelRepresentation) -> RuleViolation | None:
@@ -30,28 +39,30 @@ class NoPositionalGroupByOrOrderBy(Rule):
             return None
 
         violations = []
-        
-        group_by_count = 0
-        for group in parsed.find_all(exp.Group):
-            for expr in group.expressions:
-                if isinstance(expr, exp.Literal) and expr.is_int:
-                    group_by_count += 1
-        if group_by_count > 0:
-            suffix = "s" if group_by_count != 1 else ""
-            violations.append(
-                f"{group_by_count} positional GROUP BY reference{suffix} found. Use column name instead."
-            )
 
-        order_by_count = 0
-        for order in parsed.find_all(exp.Order):
-            for ordered in order.expressions:
-                if isinstance(ordered.this, exp.Literal) and ordered.this.is_int:
-                    order_by_count += 1
-        if order_by_count > 0:
-            suffix = "s" if order_by_count != 1 else ""
-            violations.append(
-                f"{order_by_count} positional ORDER BY reference{suffix} found. Use column name instead."
-            )
+        if rule_config.group_by:
+            group_by_count = 0
+            for group in parsed.find_all(exp.Group):
+                for expr in group.expressions:
+                    if isinstance(expr, exp.Literal) and expr.is_int:
+                        group_by_count += 1
+            if group_by_count > 0:
+                suffix = "s" if group_by_count != 1 else ""
+                violations.append(
+                    f"{group_by_count} positional GROUP BY reference{suffix} found. Use column name instead."
+                )
+
+        if rule_config.order_by:
+            order_by_count = 0
+            for order in parsed.find_all(exp.Order):
+                for ordered in order.expressions:
+                    if isinstance(ordered.this, exp.Literal) and ordered.this.is_int:
+                        order_by_count += 1
+            if order_by_count > 0:
+                suffix = "s" if order_by_count != 1 else ""
+                violations.append(
+                    f"{order_by_count} positional ORDER BY reference{suffix} found. Use column name instead."
+                )
 
         if violations:
             return self.violation(violations)

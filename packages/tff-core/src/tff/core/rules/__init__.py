@@ -12,6 +12,8 @@ from tff.core.rules.metadata import (
     NoMissingOwner,
     NoMissingUniqueValues,
 )
+from tff.core.rules.no_positional_group_by import NoPositionalGroupBy
+from tff.core.rules.no_positional_order_by import NoPositionalOrderBy
 from tff.core.rules.no_positional_group_by_or_order_by import (
     NoPositionalGroupByOrOrderBy,
 )
@@ -32,6 +34,8 @@ ALL_RULES = [
     NoMissingUniqueValues,
     FilenameEqualsModelname,
     BanSelectStar,
+    NoPositionalGroupBy,
+    NoPositionalOrderBy,
     NoPositionalGroupByOrOrderBy,
     EnvironmentAgnosticReferences,
 ]
@@ -50,6 +54,8 @@ __all__ = [
     "NoMissingUniqueValues",
     "FilenameEqualsModelname",
     "BanSelectStar",
+    "NoPositionalGroupBy",
+    "NoPositionalOrderBy",
     "NoPositionalGroupByOrOrderBy",
     "EnvironmentAgnosticReferences",
 ]

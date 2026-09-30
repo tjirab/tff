@@ -1877,6 +1877,63 @@ def test_apply_autofixes_filename_equals_modelname_plain_sql(tmp_path: Path):
     logs = apply_autofixes(tmp_path, "dbt", findings, models)
     assert logs == []
 
+def test_fix_positional_clauses_selective():
+    sql = "SELECT a, b FROM table GROUP BY 1, 2 ORDER BY 1 DESC"
+
+    # Only fix GROUP BY
+    fixed_group = fix_positional_clauses(sql, "ansi", fix_group_by=True, fix_order_by=False)
+    assert fixed_group == "SELECT a, b FROM table GROUP BY a, b ORDER BY 1 DESC"
+
+    # Only fix ORDER BY
+    fixed_order = fix_positional_clauses(sql, "ansi", fix_group_by=False, fix_order_by=True)
+    assert fixed_order == "SELECT a, b FROM table GROUP BY 1, 2 ORDER BY a DESC"
+
+    # Fix neither
+    fixed_none = fix_positional_clauses(sql, "ansi", fix_group_by=False, fix_order_by=False)
+    assert fixed_none == sql
+
+
+def test_apply_autofixes_individual_positional_checks(tmp_path: Path):
+    sql_file = tmp_path / "model.sql"
+    sql_file.write_text("SELECT a, b FROM table GROUP BY 1, 2 ORDER BY 1 DESC", encoding="utf-8")
+
+    models = {
+        "model": ModelRepresentation(
+            name="model",
+            path=str(sql_file),
+            dialect="ansi",
+        )
+    }
+
+    # 1. Autofix only nopositionalgroupby
+    findings_group = [
+        LintFinding(
+            check="nopositionalgroupby",
+            severity="error",
+            model="model",
+            path="model.sql",
+            message="2 positional GROUP BY references found",
+        )
+    ]
+    logs_group = apply_autofixes(tmp_path, "dbt", findings_group, models)
+    assert len(logs_group) == 1
+    assert "Fixed positional GROUP BY in model.sql" in logs_group[0]
+    assert sql_file.read_text(encoding="utf-8") == "SELECT a, b FROM table GROUP BY a, b ORDER BY 1 DESC"
+
+    # 2. Autofix only nopositionalorderby
+    findings_order = [
+        LintFinding(
+            check="nopositionalorderby",
+            severity="error",
+            model="model",
+            path="model.sql",
+            message="1 positional ORDER BY reference found",
+        )
+    ]
+    logs_order = apply_autofixes(tmp_path, "dbt", findings_order, models)
+    assert len(logs_order) == 1
+    assert "Fixed positional ORDER BY in model.sql" in logs_order[0]
+    assert sql_file.read_text(encoding="utf-8") == "SELECT a, b FROM table GROUP BY a, b ORDER BY a DESC"
 
 
 

@@ -140,6 +140,76 @@ rules:
     assert rule_config.should_run("derived") is False
 
 
+def test_split_positional_config_parsing(tmp_path: Path) -> None:
+    # 1. Test separate rule definitions in YAML
+    yaml_path = tmp_path / "fitness_functions.yaml"
+    yaml_path.write_text(
+        """
+rules:
+  no_positional_group_by:
+    enabled: false
+  no_positional_order_by:
+    enabled: true
+    skip_layers: [sources, staging]
+""",
+        encoding="utf-8",
+    )
+    config = load_fitness_config(tmp_path)
+    assert config.rules.no_positional_group_by.enabled is False
+    assert config.rules.no_positional_order_by.enabled is True
+    assert config.rules.no_positional_order_by.skip_layers == ["sources", "staging"]
+    assert config.rules.no_positional_group_by_or_order_by.group_by is False
+    assert config.rules.no_positional_group_by_or_order_by.order_by is True
+
+    # 2. Test parent rule with individual toggles
+    yaml_path.write_text(
+        """
+rules:
+  no_positional_group_by_or_order_by:
+    enabled: true
+    group_by: false
+    order_by: true
+    skip_layers: [staging]
+""",
+        encoding="utf-8",
+    )
+    config2 = load_fitness_config(tmp_path)
+    assert config2.rules.no_positional_group_by_or_order_by.group_by is False
+    assert config2.rules.no_positional_group_by_or_order_by.order_by is True
+    assert config2.rules.no_positional_group_by.enabled is False
+    assert config2.rules.no_positional_order_by.enabled is True
+    assert config2.rules.no_positional_group_by.skip_layers == ["staging"]
+    assert config2.rules.no_positional_order_by.skip_layers == ["staging"]
+
+    # 3. Test boolean disabled parent
+    yaml_path.write_text(
+        """
+rules:
+  no_positional_group_by_or_order_by: false
+""",
+        encoding="utf-8",
+    )
+    config3 = load_fitness_config(tmp_path)
+    assert config3.rules.no_positional_group_by_or_order_by.enabled is False
+    assert config3.rules.no_positional_group_by.enabled is False
+    assert config3.rules.no_positional_order_by.enabled is False
+
+
+def test_split_positional_config_severity(tmp_path: Path) -> None:
+    yaml_path = tmp_path / "fitness_functions.yaml"
+    yaml_path.write_text(
+        """
+rules:
+  no_positional_group_by_or_order_by:
+    severity: warning
+""",
+        encoding="utf-8",
+    )
+    config = load_fitness_config(tmp_path)
+    assert config.rules.no_positional_group_by.severity == "warning"
+    assert config.rules.no_positional_order_by.severity == "warning"
+
+
 def test_environment_agnostic_references_config_parsing(tmp_path: Path) -> None:
     yaml_path = tmp_path / "fitness_functions.yaml"
     yaml_path.write_text(

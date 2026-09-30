@@ -454,6 +454,12 @@ class CheckRegistry:
             elif norm == "sqlmesh":
                 # Container key for SQLMesh linter
                 continue
+            elif norm in ("nopositionalgroupbyororderby", "no_positional_group_by_or_order_by"):
+                for pos_id in ("no_positional_group_by", "no_positional_order_by"):
+                    c = self.get(pos_id)
+                    if c and c.id not in seen:
+                        seen.add(c.id)
+                        resolved.append(c)
             else:
                 check_def = self.get(name)
                 if check_def is not None:
@@ -808,6 +814,54 @@ def create_default_registry() -> CheckRegistry:
     # 3. Connascence of Position (CoP)
     reg.register(
         CheckDefinition(
+            id="no_positional_group_by",
+            label="No positional GROUP BY",
+            category="Connascence of Position (CoP)",
+            scope="model",
+            aliases=("nopositionalgroupby",),
+            finding_check_id="nopositionalgroupby",
+            rule_module="tff.core.rules.no_positional_group_by",
+            rule_class_name="NoPositionalGroupBy",
+            is_enabled_fn=lambda cfg, p: bool(
+                cfg.rules.no_positional_group_by.enabled
+                and cfg.rules.no_positional_group_by_or_order_by.enabled
+                and cfg.rules.no_positional_group_by_or_order_by.group_by
+            ),
+            docs_url=f"{docs_base}no-positional-group-by-no_positional_group_by-auto-fixable",
+            description="Prevents using ordinal integers (e.g. GROUP BY 1, 2) instead of explicit column name references.",
+            why_it_matters="Positional grouping introduces Connascence of Position (CoP). Modifying the SELECT list order unintentionally alters grouping semantics without syntax errors.",
+            how_to_fix="Replace positional integers with explicit column names or aliases, or run 'tff lint --fix' to rewrite them automatically.",
+            configuration_example="rules:\n  no_positional_group_by:\n    enabled: true\n    skip_layers: [sources]",
+            providers=("dbt", "sqlmesh", "dataform"),
+            is_fixable=True,
+        )
+    )
+    reg.register(
+        CheckDefinition(
+            id="no_positional_order_by",
+            label="No positional ORDER BY",
+            category="Connascence of Position (CoP)",
+            scope="model",
+            aliases=("nopositionalorderby",),
+            finding_check_id="nopositionalorderby",
+            rule_module="tff.core.rules.no_positional_order_by",
+            rule_class_name="NoPositionalOrderBy",
+            is_enabled_fn=lambda cfg, p: bool(
+                cfg.rules.no_positional_order_by.enabled
+                and cfg.rules.no_positional_group_by_or_order_by.enabled
+                and cfg.rules.no_positional_group_by_or_order_by.order_by
+            ),
+            docs_url=f"{docs_base}no-positional-order-by-no_positional_order_by-auto-fixable",
+            description="Prevents using ordinal integers (e.g. ORDER BY 1 DESC) instead of explicit column name references.",
+            why_it_matters="Positional sorting introduces Connascence of Position (CoP). Modifying the SELECT list order unintentionally alters ordering semantics without syntax errors.",
+            how_to_fix="Replace positional integers with explicit column names or aliases, or run 'tff lint --fix' to rewrite them automatically.",
+            configuration_example="rules:\n  no_positional_order_by:\n    enabled: true\n    skip_layers: [sources]",
+            providers=("dbt", "sqlmesh", "dataform"),
+            is_fixable=True,
+        )
+    )
+    reg.register(
+        CheckDefinition(
             id="no_positional_group_by_or_order_by",
             label="No positional GROUP BY or ORDER BY",
             category="Connascence of Position (CoP)",
@@ -816,9 +870,7 @@ def create_default_registry() -> CheckRegistry:
             finding_check_id="nopositionalgroupbyororderby",
             rule_module="tff.core.rules.no_positional_group_by_or_order_by",
             rule_class_name="NoPositionalGroupByOrOrderBy",
-            is_enabled_fn=lambda cfg, p: bool(
-                cfg.rules.no_positional_group_by_or_order_by.enabled
-            ),
+            is_enabled_fn=lambda cfg, p: False,
             docs_url=f"{docs_base}no-positional-group-byorder-by-no_positional_group_by_or_order_by-auto-fixable",
             description="Prevents using ordinal integers (e.g. GROUP BY 1, 2 or ORDER BY 1 DESC) instead of explicit column name references.",
             why_it_matters="Positional grouping introduces Connascence of Position (CoP). Modifying the SELECT list order unintentionally alters grouping and sorting semantics without syntax errors.",
