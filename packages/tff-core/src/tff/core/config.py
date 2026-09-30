@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any, Sequence
+from typing import Any, Literal, Sequence
 
 import yaml
 from pydantic import (
@@ -15,6 +15,8 @@ from pydantic import (
     model_validator,
 )
 
+
+Severity = Literal["error", "warning"]
 
 DEFAULT_LAYER_ORDER: list[str] = ["staging", "intermediate", "core", "marts"]
 
@@ -156,15 +158,29 @@ class LayersConfig(BaseModel):
 class CheckEnabled(BaseModel):
     model_config = ConfigDict(extra="forbid")
     enabled: bool = True
-    severity: str | None = None
+    severity: Severity | None = None
+
+    @field_validator("severity", mode="before")
+    @classmethod
+    def _validate_severity(cls, v: Any) -> Any:
+        if isinstance(v, str):
+            return v.lower()
+        return v
 
 
 class LayerFilterConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
     enabled: bool = True
-    severity: str | None = None
+    severity: Severity | None = None
     skip_layers: list[str] = Field(default_factory=list)
     only_layers: list[str] | None = None
+
+    @field_validator("severity", mode="before")
+    @classmethod
+    def _validate_severity(cls, v: Any) -> Any:
+        if isinstance(v, str):
+            return v.lower()
+        return v
 
     def should_run(self, layer: str | None) -> bool:
         if not self.enabled:
@@ -188,13 +204,13 @@ class MaterializationDepthCheckConfig(LayerFilterConfig):
 
 
 class DuplicateCtesCheckConfig(LayerFilterConfig):
-    severity: str = "warning"
+    severity: Severity = "warning"
     min_ast_nodes: int = 12
     ignore_macros: bool = True
 
 
 class ConnascenceOfValueCheckConfig(LayerFilterConfig):
-    severity: str = "warning"
+    severity: Severity = "warning"
     min_occurrences: int = 2
     min_length: int = Field(default=0, ge=0)
     min_string_length: int | None = Field(default=None, ge=0)
@@ -211,7 +227,7 @@ class ConnascenceOfValueCheckConfig(LayerFilterConfig):
 
 
 class JoinTypeParityCheckConfig(LayerFilterConfig):
-    severity: str = "error"
+    severity: Severity = "error"
     equivalent_types: dict[str, list[str]] = Field(
         default_factory=lambda: {
             "text": ["text", "varchar", "string", "char", "nvarchar", "bpchar", "nchar"],
@@ -378,10 +394,19 @@ class ChecksConfig(BaseModel):
         if isinstance(data, dict):
             known = set(cls.model_fields.keys())
             for k, v in data.items():
-                if k not in known and not isinstance(v, (dict, bool)):
-                    raise ValueError(
-                        f"Invalid configuration for check '{k}': expected a dictionary of options or boolean, got {type(v).__name__}"
-                    )
+                if k not in known:
+                    if not isinstance(v, (dict, bool)):
+                        raise ValueError(
+                            f"Invalid configuration for check '{k}': expected a dictionary of options or boolean, got {type(v).__name__}"
+                        )
+                    if isinstance(v, dict) and "severity" in v and v["severity"] is not None:
+                        sev = v["severity"]
+                        sev_norm = sev.lower() if isinstance(sev, str) else sev
+                        if sev_norm not in ("error", "warning"):
+                            raise ValueError(
+                                f"Invalid severity '{sev}' for check '{k}': expected 'error' or 'warning'"
+                            )
+                        v["severity"] = sev_norm
         return data
 
 
@@ -514,10 +539,19 @@ class RulesConfig(BaseModel):
         if isinstance(data, dict):
             known = set(cls.model_fields.keys())
             for k, v in data.items():
-                if k not in known and not isinstance(v, (dict, bool)):
-                    raise ValueError(
-                        f"Invalid configuration for rule '{k}': expected a dictionary of options or boolean, got {type(v).__name__}"
-                    )
+                if k not in known:
+                    if not isinstance(v, (dict, bool)):
+                        raise ValueError(
+                            f"Invalid configuration for rule '{k}': expected a dictionary of options or boolean, got {type(v).__name__}"
+                        )
+                    if isinstance(v, dict) and "severity" in v and v["severity"] is not None:
+                        sev = v["severity"]
+                        sev_norm = sev.lower() if isinstance(sev, str) else sev
+                        if sev_norm not in ("error", "warning"):
+                            raise ValueError(
+                                f"Invalid severity '{sev}' for rule '{k}': expected 'error' or 'warning'"
+                            )
+                        v["severity"] = sev_norm
         return data
 
 
