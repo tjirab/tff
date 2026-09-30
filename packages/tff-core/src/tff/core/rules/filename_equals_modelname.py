@@ -12,6 +12,7 @@ from tff.core.utils.paths import get_layer_from_path
 class FilenameEqualsModelname(Rule):
     """The filename should equal the model name."""
     name = "filenameequalsmodelname"
+    is_fixable = True
 
     def check_model(self, model: ModelRepresentation) -> RuleViolation | None:
         rule_config = self.config.rules.filename_equals_modelname

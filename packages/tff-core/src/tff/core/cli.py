@@ -1905,12 +1905,17 @@ def _main_impl(argv: list[str] | None = None) -> int:
             if models:
                 from tff.core.autofix import apply_autofixes
 
-                fix_logs = apply_autofixes(project_roots, adapter, findings, models)
+                fix_logs = apply_autofixes(project_roots, adapter, findings, models, config=config)
                 if fix_logs:
                     if not args.json:
                         console = Console(stderr=True)
                         for log in fix_logs:
-                            console.print(f"[green]✓[/green] {log}")
+                            console.print(f"[green]✓[/green] {log}", highlight=False)
+                        if any("Renamed model file" in log for log in fix_logs):
+                            console.print(
+                                "[yellow]Note: Model file(s) renamed. Please verify downstream ref() references to renamed models.[/yellow]",
+                                highlight=False,
+                            )
                     # Re-run checks to get the final state of the files (pass models_arg=None so adapter reloads from disk)
                     try:
                         rerun_start = time.perf_counter()

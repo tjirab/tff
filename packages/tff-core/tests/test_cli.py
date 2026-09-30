@@ -1,5 +1,6 @@
 import json
 import os
+import re
 import sys
 from pathlib import Path
 from unittest.mock import MagicMock, patch
@@ -1923,6 +1924,58 @@ def test_cli_lint_autofix_interactive_spinner(tmp_path: Path):
         assert mock_adapter.run_checks.call_count == 2
         assert mock_render.call_count == 1
         assert mock_render.call_args[1]["duration"] is not None
+
+
+def test_cli_autofix_rename_prints_downstream_ref_note(tmp_path: Path, capsys):
+    from tff.core.model import ModelRepresentation
+    from tff.core.report import LintFinding
+
+    finding = LintFinding(
+        model="ad_performance",
+        check="martmodelnamingconvention",
+        severity="error",
+        message="Model must be prefixed.",
+        path="models/marts/marketing/ad_performance.sql",
+    )
+    model = ModelRepresentation(
+        name="ad_performance",
+        path=str(tmp_path / "models/marts/marketing/ad_performance.sql"),
+        dialect="duckdb",
+        is_symbolic=False,
+        is_external=False,
+        columns_to_types={},
+        depends_on=set(),
+        description=None,
+        owner=None,
+        grains=[],
+        audits=[],
+        materialized="table",
+        expression=None,
+        tags=[],
+        meta={},
+        provider="dbt",
+    )
+
+    mock_adapter = MagicMock()
+    mock_adapter.provider_name = "dbt"
+    mock_adapter.run_checks.side_effect = [
+        ([finding], 1, ["martmodelnamingconvention"]),
+        ([], 1, ["martmodelnamingconvention"]),
+    ]
+    mock_adapter.load_models.return_value = {"ad_performance": model}
+
+    rename_log = "Renamed model file ad_performance.sql -> marketing_ad_performance.sql"
+    with patch("tff.core.cli._get_adapter", return_value=mock_adapter), \
+         patch("tff.core.cli._detect_provider", return_value="dbt"), \
+         patch("tff.core.autofix.apply_autofixes", return_value=[rename_log]), \
+         patch("tff.core.cli.render_lint_report", return_value=True):
+        exit_code = main(["lint", "--project", str(tmp_path), "--fix"])
+        assert exit_code == 0
+        captured = capsys.readouterr()
+        clean_err = re.sub(r"\x1b\[[0-9;]*[a-zA-Z]", "", captured.err)
+        assert "Renamed model file ad_performance.sql -> marketing_ad_performance.sql" in clean_err
+        assert "Please verify downstream ref() references to renamed models" in " ".join(clean_err.split())
+
 
 
 @pytest.mark.parametrize(

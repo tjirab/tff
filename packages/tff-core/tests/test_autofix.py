@@ -10,6 +10,10 @@ from tff.core.autofix import (
     fix_dbt_metadata,
     fix_dataform_metadata,
     _find_matching_brace,
+    _find_matching_paren,
+    sync_sqlmesh_model_name,
+    sync_dataform_model_name,
+    _sync_dbt_schema_yaml_model_name,
     apply_autofixes,
     lift_nested_subqueries,
     expand_select_star,
@@ -1368,6 +1372,510 @@ def test_apply_autofixes_banselectstar_missing_model_name(tmp_path: Path):
     logs = apply_autofixes(tmp_path, "sqlmesh", findings, models)
     assert any("Expanded SELECT * in no_name_model.sql" in log for log in logs)
     assert sql_file.read_text(encoding="utf-8") == "SELECT id FROM upstream"
+
+
+def test_find_matching_paren():
+    assert _find_matching_paren("MODEL ()", 6) == 7
+    assert _find_matching_paren("MODEL (grain (a, b))", 6) == 19
+    assert _find_matching_paren("MODEL (name 'foo)')", 6) == 18
+    assert _find_matching_paren('MODEL (name "foo)")', 6) == 18
+    assert _find_matching_paren("MODEL (name `foo)`)", 6) == 18
+    assert _find_matching_paren("MODEL (\n-- comment (skip)\nname x\n)", 6) == 33
+    assert _find_matching_paren("MODEL (/* comment (skip) */ name x)", 6) == 34
+    assert _find_matching_paren('MODEL (name "a\\"b")', 6) == 18
+    assert _find_matching_paren("MODEL (-- unclosed comment", 6) == -1
+    assert _find_matching_paren("MODEL (/* unclosed block", 6) == -1
+    assert _find_matching_paren("MODEL (", 6) == -1
+    assert _find_matching_paren("MODEL ()", -1) == -1
+    assert _find_matching_paren("MODEL ()", 0) == -1
+
+
+def test_sync_sqlmesh_model_name():
+    # 1. Unqualified name
+    sql1 = "MODEL (name old_name);\nSELECT 1;"
+    assert sync_sqlmesh_model_name(sql1, "new_name") == "MODEL (name new_name);\nSELECT 1;"
+
+    # 2. Schema-qualified name
+    sql2 = "MODEL (name marketing.old_name);\nSELECT 1;"
+    assert sync_sqlmesh_model_name(sql2, "new_name") == "MODEL (name marketing.new_name);\nSELECT 1;"
+
+    # 3. Double-quoted identifier
+    sql3 = 'MODEL (name "marketing"."old_name");\nSELECT 1;'
+    assert sync_sqlmesh_model_name(sql3, "new_name") == 'MODEL (name "marketing"."new_name");\nSELECT 1;'
+
+    # 4. Single-quoted identifier
+    sql4 = "MODEL (name 'marketing'.'old_name');\nSELECT 1;"
+    assert sync_sqlmesh_model_name(sql4, "new_name") == "MODEL (name 'marketing'.'new_name');\nSELECT 1;"
+
+    # 5. Backtick identifier
+    sql5 = "MODEL (name `marketing`.`old_name`);\nSELECT 1;"
+    assert sync_sqlmesh_model_name(sql5, "new_name") == "MODEL (name `marketing`.`new_name`);\nSELECT 1;"
+
+    # 6. Multiline with other args and nested parens
+    sql6 = """MODEL (
+  name marketing.old_name,
+  kind FULL,
+  grain (id, sub_id)
+);
+SELECT 1;"""
+    expected6 = """MODEL (
+  name marketing.new_name,
+  kind FULL,
+  grain (id, sub_id)
+);
+SELECT 1;"""
+    assert sync_sqlmesh_model_name(sql6, "new_name") == expected6
+
+    # 7. No name parameter in MODEL block
+    sql7 = "MODEL (\n  kind FULL\n);\nSELECT 1;"
+    assert "name new_name," in sync_sqlmesh_model_name(sql7, "new_name")
+
+    # 8. No MODEL block
+    sql8 = "SELECT 1;"
+    assert sync_sqlmesh_model_name(sql8, "new_name") == "SELECT 1;"
+
+    # 9. Already matching
+    sql9 = "MODEL (name marketing.new_name);\nSELECT 1;"
+    assert sync_sqlmesh_model_name(sql9, "new_name") == sql9
+
+    # 10. Unclosed MODEL block
+    sql10 = "MODEL (name old_name"
+    assert sync_sqlmesh_model_name(sql10, "new_name") == sql10
+
+
+def test_sync_dataform_model_name():
+    # 1. Double quoted
+    df1 = 'config {\n  type: "view",\n  name: "old_name"\n}\nSELECT 1'
+    assert sync_dataform_model_name(df1, "new_name") == 'config {\n  type: "view",\n  name: "new_name"\n}\nSELECT 1'
+
+    # 2. Single quoted
+    df2 = "config {\n  name: 'old_name'\n}\nSELECT 1"
+    assert sync_dataform_model_name(df2, "new_name") == "config {\n  name: 'new_name'\n}\nSELECT 1"
+
+    # 3. Unquoted
+    df3 = "config {\n  name: old_name\n}\nSELECT 1"
+    assert sync_dataform_model_name(df3, "new_name") == 'config {\n  name: "new_name"\n}\nSELECT 1'
+
+    # 4. Already matching
+    df4 = 'config {\n  name: "new_name"\n}\nSELECT 1'
+    assert sync_dataform_model_name(df4, "new_name") == df4
+
+    # 5. No config block
+    df5 = "SELECT 1"
+    assert sync_dataform_model_name(df5, "new_name") == "SELECT 1"
+
+    # 6. No name parameter in config
+    df6 = 'config {\n  type: "view"\n}\nSELECT 1'
+    assert sync_dataform_model_name(df6, "new_name") == df6
+
+    # 7. Unclosed config block
+    df7 = 'config { name: "old_name"'
+    assert sync_dataform_model_name(df7, "new_name") == df7
+
+
+def test_apply_autofixes_mart_naming_sqlmesh(tmp_path: Path):
+    model_file = tmp_path / "models/marts/marketing/ad_performance.sql"
+    model_file.parent.mkdir(parents=True, exist_ok=True)
+    model_file.write_text(
+        "MODEL (\n  name marketing.ad_performance,\n  kind FULL\n);\nSELECT 1 AS id;",
+        encoding="utf-8",
+    )
+
+    findings = [
+        LintFinding(
+            check="martmodelnamingconvention",
+            severity="error",
+            model="marketing.ad_performance",
+            path="models/marts/marketing/ad_performance.sql",
+            message="Model 'ad_performance' in mart 'marketing' should start with 'marketing_'.",
+        )
+    ]
+    models = {
+        "marketing.ad_performance": ModelRepresentation(
+            name="marketing.ad_performance",
+            path=str(model_file),
+            dialect="duckdb",
+        )
+    }
+
+    logs = apply_autofixes(tmp_path, "sqlmesh", findings, models)
+    assert "Renamed model file ad_performance.sql -> marketing_ad_performance.sql" in logs
+
+    # Verify original file no longer exists and new file exists
+    assert not model_file.exists()
+    renamed_file = tmp_path / "models/marts/marketing/marketing_ad_performance.sql"
+    assert renamed_file.exists()
+
+    content = renamed_file.read_text(encoding="utf-8")
+    assert "name marketing.marketing_ad_performance" in content
+
+
+def test_apply_autofixes_mart_naming_dataform(tmp_path: Path):
+    sqlx_file = tmp_path / "definitions/marts/finance/revenue.sqlx"
+    sqlx_file.parent.mkdir(parents=True, exist_ok=True)
+    sqlx_file.write_text(
+        'config {\n  type: "table",\n  name: "revenue"\n}\nSELECT 100 AS amount',
+        encoding="utf-8",
+    )
+
+    findings = [
+        LintFinding(
+            check="mart_naming",
+            severity="error",
+            model="revenue",
+            path="definitions/marts/finance/revenue.sqlx",
+            message="Model 'revenue' in mart 'finance' should start with 'finance_'.",
+        )
+    ]
+    models = {
+        "revenue": ModelRepresentation(
+            name="revenue",
+            path=str(sqlx_file),
+            dialect="bigquery",
+        )
+    }
+
+    logs = apply_autofixes(tmp_path, "dataform", findings, models)
+    assert "Renamed model file revenue.sqlx -> finance_revenue.sqlx" in logs
+
+    assert not sqlx_file.exists()
+    renamed_file = tmp_path / "definitions/marts/finance/finance_revenue.sqlx"
+    assert renamed_file.exists()
+
+    content = renamed_file.read_text(encoding="utf-8")
+    assert 'name: "finance_revenue"' in content
+
+
+def test_apply_autofixes_mart_naming_dbt(tmp_path: Path):
+    model_file = tmp_path / "models/marts/core/customers.sql"
+    model_file.parent.mkdir(parents=True, exist_ok=True)
+    model_file.write_text("SELECT * FROM {{ ref('stg_customers') }}", encoding="utf-8")
+
+    schema_file = tmp_path / "models/marts/core/schema.yml"
+    schema_file.write_text(
+        yaml.safe_dump({
+            "version": 2,
+            "models": [{"name": "customers", "description": "Customer mart"}],
+        }),
+        encoding="utf-8",
+    )
+
+    findings = [
+        LintFinding(
+            check="martmodelnamingconvention",
+            severity="error",
+            model="customers",
+            path="models/marts/core/customers.sql",
+            message="Model 'customers' in mart 'core' should start with 'core_'.",
+        )
+    ]
+    models = {
+        "customers": ModelRepresentation(
+            name="customers",
+            path=str(model_file),
+            dialect="ansi",
+        )
+    }
+
+    logs = apply_autofixes(tmp_path, "dbt", findings, models)
+    assert "Renamed model file customers.sql -> core_customers.sql" in logs
+
+    assert not model_file.exists()
+    renamed_file = tmp_path / "models/marts/core/core_customers.sql"
+    assert renamed_file.exists()
+
+    schema_data = yaml.safe_load(schema_file.read_text(encoding="utf-8"))
+    assert schema_data["models"][0]["name"] == "core_customers"
+
+
+def test_apply_autofixes_mart_naming_destination_exists_non_destructive(tmp_path: Path):
+    model_file = tmp_path / "models/marts/marketing/ad_performance.sql"
+    model_file.parent.mkdir(parents=True, exist_ok=True)
+    model_file.write_text("SELECT 1 AS orig;", encoding="utf-8")
+
+    dest_file = tmp_path / "models/marts/marketing/marketing_ad_performance.sql"
+    dest_file.write_text("SELECT 2 AS existing;", encoding="utf-8")
+
+    findings = [
+        LintFinding(
+            check="martmodelnamingconvention",
+            severity="error",
+            model="ad_performance",
+            path="models/marts/marketing/ad_performance.sql",
+            message="Model 'ad_performance' in mart 'marketing' should start with 'marketing_'.",
+        )
+    ]
+    models = {
+        "ad_performance": ModelRepresentation(
+            name="ad_performance",
+            path=str(model_file),
+            dialect="ansi",
+        )
+    }
+
+    logs = apply_autofixes(tmp_path, "dbt", findings, models)
+    assert any("already exists" in log for log in logs)
+
+    # Both files must remain unchanged
+    assert model_file.exists()
+    assert model_file.read_text(encoding="utf-8") == "SELECT 1 AS orig;"
+    assert dest_file.exists()
+    assert dest_file.read_text(encoding="utf-8") == "SELECT 2 AS existing;"
+
+
+def test_apply_autofixes_mart_naming_with_custom_layer_name(tmp_path: Path):
+    from tff.core.config import FitnessFunctionsConfig
+
+    config = FitnessFunctionsConfig()
+    config.rules.mart_naming.layer_name = "data_marts"
+
+    model_file = tmp_path / "models/data_marts/ops/metrics.sql"
+    model_file.parent.mkdir(parents=True, exist_ok=True)
+    model_file.write_text("SELECT 1 AS m;", encoding="utf-8")
+
+    findings = [
+        LintFinding(
+            check="martmodelnamingconvention",
+            severity="error",
+            model="metrics",
+            path="models/data_marts/ops/metrics.sql",
+            message="Model 'metrics' in mart 'ops' should start with 'ops_'.",
+        )
+    ]
+    models = {
+        "metrics": ModelRepresentation(
+            name="metrics",
+            path=str(model_file),
+            dialect="ansi",
+        )
+    }
+
+    logs = apply_autofixes(tmp_path, "dbt", findings, models, config=config)
+    assert "Renamed model file metrics.sql -> ops_metrics.sql" in logs
+
+    assert not model_file.exists()
+    assert (tmp_path / "models/data_marts/ops/ops_metrics.sql").exists()
+
+
+def test_apply_autofixes_filename_equals_modelname_sqlmesh(tmp_path: Path):
+    model_file = tmp_path / "models/marts/marketing/marketing_ad_performance.sql"
+    model_file.parent.mkdir(parents=True, exist_ok=True)
+    model_file.write_text(
+        "MODEL (\n  name marketing.mismatched_name\n);\nSELECT 1;",
+        encoding="utf-8",
+    )
+
+    findings = [
+        LintFinding(
+            check="filenameequalsmodelname",
+            severity="error",
+            model="marketing.mismatched_name",
+            path="models/marts/marketing/marketing_ad_performance.sql",
+            message="Model name differs from filename.",
+        )
+    ]
+    models = {
+        "marketing.mismatched_name": ModelRepresentation(
+            name="marketing.mismatched_name",
+            path=str(model_file),
+            dialect="duckdb",
+        )
+    }
+
+    logs = apply_autofixes(tmp_path, "sqlmesh", findings, models)
+    assert "Synchronized model name to 'marketing_ad_performance' in marketing_ad_performance.sql" in logs
+
+    content = model_file.read_text(encoding="utf-8")
+    assert "name marketing.marketing_ad_performance" in content
+
+
+def test_apply_autofixes_filename_equals_modelname_dataform(tmp_path: Path):
+    sqlx_file = tmp_path / "definitions/marts/finance/finance_revenue.sqlx"
+    sqlx_file.parent.mkdir(parents=True, exist_ok=True)
+    sqlx_file.write_text(
+        'config {\n  type: "table",\n  name: "wrong_rev"\n}\nSELECT 1',
+        encoding="utf-8",
+    )
+
+    findings = [
+        LintFinding(
+            check="filename_equals_modelname",
+            severity="error",
+            model="wrong_rev",
+            path="definitions/marts/finance/finance_revenue.sqlx",
+            message="Model name differs from filename.",
+        )
+    ]
+    models = {
+        "wrong_rev": ModelRepresentation(
+            name="wrong_rev",
+            path=str(sqlx_file),
+            dialect="bigquery",
+        )
+    }
+
+    logs = apply_autofixes(tmp_path, "dataform", findings, models)
+    assert "Synchronized model name to 'finance_revenue' in finance_revenue.sqlx" in logs
+
+    content = sqlx_file.read_text(encoding="utf-8")
+    assert 'name: "finance_revenue"' in content
+
+
+def test_apply_autofixes_mart_and_filename_sync_combined(tmp_path: Path):
+    model_file = tmp_path / "models/marts/marketing/ad_performance.sql"
+    model_file.parent.mkdir(parents=True, exist_ok=True)
+    model_file.write_text(
+        "MODEL (\n  name marketing.arbitrary_name\n);\nSELECT 1;",
+        encoding="utf-8",
+    )
+
+    findings = [
+        LintFinding(
+            check="martmodelnamingconvention",
+            severity="error",
+            model="marketing.arbitrary_name",
+            path="models/marts/marketing/ad_performance.sql",
+            message="Model 'ad_performance' in mart 'marketing' should start with 'marketing_'.",
+        ),
+        LintFinding(
+            check="filenameequalsmodelname",
+            severity="error",
+            model="marketing.arbitrary_name",
+            path="models/marts/marketing/ad_performance.sql",
+            message="Model name differs from filename.",
+        ),
+    ]
+    models = {
+        "marketing.arbitrary_name": ModelRepresentation(
+            name="marketing.arbitrary_name",
+            path=str(model_file),
+            dialect="duckdb",
+        )
+    }
+
+    logs = apply_autofixes(tmp_path, "sqlmesh", findings, models)
+    assert "Renamed model file ad_performance.sql -> marketing_ad_performance.sql" in logs
+    # Should not duplicate logs
+    assert not any("Synchronized model name" in log for log in logs)
+
+    renamed_file = tmp_path / "models/marts/marketing/marketing_ad_performance.sql"
+    assert renamed_file.exists()
+    assert "name marketing.marketing_ad_performance" in renamed_file.read_text(encoding="utf-8")
+
+
+def test_apply_autofixes_rename_and_sync_error_handling(tmp_path: Path):
+    model_file = tmp_path / "models/marts/marketing/ad_performance.sql"
+    model_file.parent.mkdir(parents=True, exist_ok=True)
+    model_file.write_text("MODEL (name x); SELECT 1;", encoding="utf-8")
+
+    findings = [
+        LintFinding(
+            check="martmodelnamingconvention",
+            severity="error",
+            model="x",
+            path="models/marts/marketing/ad_performance.sql",
+            message="Model 'ad_performance' in mart 'marketing' should start with 'marketing_'.",
+        )
+    ]
+    models = {
+        "x": ModelRepresentation(
+            name="x",
+            path=str(model_file),
+            dialect="duckdb",
+        )
+    }
+
+    # Simulate error during rename
+    with patch.object(Path, "rename", side_effect=OSError("Disk write protected")):
+        logs = apply_autofixes(tmp_path, "sqlmesh", findings, models)
+        assert any("Failed to rename ad_performance.sql" in log for log in logs)
+
+    # Simulate error during sync
+    findings_sync = [
+        LintFinding(
+            check="filenameequalsmodelname",
+            severity="error",
+            model="x",
+            path="models/marts/marketing/ad_performance.sql",
+            message="Model name differs.",
+        )
+    ]
+    with patch.object(Path, "write_text", side_effect=OSError("Permission denied")):
+        logs_sync = apply_autofixes(tmp_path, "sqlmesh", findings_sync, models)
+        assert any("Failed to synchronize model name in ad_performance.sql" in log for log in logs_sync)
+
+
+def test_sync_dbt_schema_yaml_edge_cases(tmp_path: Path):
+    # 1. Broken YAML
+    (tmp_path / "broken.yml").write_text("bad: yaml: [", encoding="utf-8")
+    # 2. YAML without models
+    (tmp_path / "other.yml").write_text("version: 2\nsources: []", encoding="utf-8")
+    # 3. Normal schema file
+    schema_file = tmp_path / "schema.yml"
+    schema_file.write_text("version: 2\nmodels:\n  - name: old_m\n", encoding="utf-8")
+
+    # Should safely skip broken and non-models YAML, and update schema.yml
+    _sync_dbt_schema_yaml_model_name(tmp_path, "old_m", "new_m")
+    assert "name: new_m" in schema_file.read_text(encoding="utf-8")
+
+    # 4. Dump exception
+    with patch("ruamel.yaml.YAML.dump", side_effect=Exception("Dump error")):
+        _sync_dbt_schema_yaml_model_name(tmp_path, "new_m", "another_m")
+
+
+def test_apply_autofixes_mart_naming_message_fallback(tmp_path: Path):
+    # Path without "marts" in parts
+    model_file = tmp_path / "models/analytics/user_engagement.sql"
+    model_file.parent.mkdir(parents=True, exist_ok=True)
+    model_file.write_text("SELECT 1 AS engagement;", encoding="utf-8")
+
+    findings = [
+        LintFinding(
+            check="martmodelnamingconvention",
+            severity="error",
+            model="user_engagement",
+            path="models/analytics/user_engagement.sql",
+            message="Model 'user_engagement' in mart 'marketing' should start with 'marketing_'.",
+        )
+    ]
+    models = {
+        "user_engagement": ModelRepresentation(
+            name="user_engagement",
+            path=str(model_file),
+            dialect="ansi",
+        )
+    }
+
+    logs = apply_autofixes(tmp_path, "dbt", findings, models)
+    assert "Renamed model file user_engagement.sql -> marketing_user_engagement.sql" in logs
+    assert (tmp_path / "models/analytics/marketing_user_engagement.sql").exists()
+
+
+def test_apply_autofixes_filename_equals_modelname_plain_sql(tmp_path: Path):
+    model_file = tmp_path / "models/plain.sql"
+    model_file.parent.mkdir(parents=True, exist_ok=True)
+    model_file.write_text("SELECT 1 AS id;", encoding="utf-8")
+
+    findings = [
+        LintFinding(
+            check="filenameequalsmodelname",
+            severity="error",
+            model="plain",
+            path="models/plain.sql",
+            message="Model name mismatch.",
+        )
+    ]
+    models = {
+        "plain": ModelRepresentation(
+            name="plain",
+            path=str(model_file),
+            dialect="ansi",
+        )
+    }
+
+    # Calling for plain dbt without MODEL block triggers else branch (content unchanged)
+    logs = apply_autofixes(tmp_path, "dbt", findings, models)
+    assert logs == []
 
 
 

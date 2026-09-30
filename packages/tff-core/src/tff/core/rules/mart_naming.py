@@ -11,6 +11,7 @@ from tff.core.rules.base import Rule, RuleViolation
 class MartModelNamingConvention(Rule):
     """Models in a mart layer subdirectory should start with the subdirectory name."""
     name = "martmodelnamingconvention"
+    is_fixable = True
 
     def check_model(self, model: ModelRepresentation) -> RuleViolation | None:
         rule_config = self.config.rules.mart_naming
