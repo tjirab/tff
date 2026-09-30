@@ -60,6 +60,8 @@ def _make_config(
         "sql_complexity",
         "environment_agnostic_references",
         "metadata",
+        "no_positional_group_by",
+        "no_positional_order_by",
         "no_positional_group_by_or_order_by",
     ]
     checks_dict = {c: {"enabled": c in (enabled_checks or [])} for c in all_checks}
@@ -864,6 +866,10 @@ def test_cli_health_verbose_flag(tmp_path, monkeypatch) -> None:
         ("banselectstar", 2, "Replace 2 wildcard SELECT * queries"),
         ("layer_integrity", 1, "Fix 1 layer integrity violation"),
         ("layer_integrity", 2, "Fix 2 layer integrity violations"),
+        ("nopositionalgroupby", 1, "Replace 1 positional GROUP BY reference"),
+        ("nopositionalgroupby", 2, "Replace 2 positional GROUP BY references"),
+        ("nopositionalorderby", 1, "Replace 1 positional ORDER BY reference"),
+        ("nopositionalorderby", 2, "Replace 2 positional ORDER BY references"),
     ],
 )
 def test_get_action_phrase(check: str, count: int, expected: str) -> None:

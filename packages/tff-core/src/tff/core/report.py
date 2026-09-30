@@ -107,6 +107,8 @@ def _format_connascence_tag(category_str: str) -> str:
 
 def _is_fixable_finding(f: LintFinding) -> bool:
     if f.check in (
+        "nopositionalgroupby",
+        "nopositionalorderby",
         "nopositionalgroupbyororderby",
         "nomissingdescription",
         "nomissingowner",

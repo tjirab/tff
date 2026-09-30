@@ -498,8 +498,18 @@ class BanSelectStarRuleConfig(LayerFilterConfig):
     skip_layers: list[str] = Field(default_factory=lambda: ["sources"])
 
 
+class NoPositionalGroupByRuleConfig(LayerFilterConfig):
+    skip_layers: list[str] = Field(default_factory=lambda: ["sources"])
+
+
+class NoPositionalOrderByRuleConfig(LayerFilterConfig):
+    skip_layers: list[str] = Field(default_factory=lambda: ["sources"])
+
+
 class NoPositionalGroupByOrOrderByRuleConfig(LayerFilterConfig):
     skip_layers: list[str] = Field(default_factory=lambda: ["sources"])
+    group_by: bool = True
+    order_by: bool = True
 
 
 class EnvironmentAgnosticReferencesRuleConfig(LayerFilterConfig):
@@ -526,6 +536,12 @@ class RulesConfig(BaseModel):
     ban_select_star: BanSelectStarRuleConfig = Field(
         default_factory=BanSelectStarRuleConfig
     )
+    no_positional_group_by: NoPositionalGroupByRuleConfig = Field(
+        default_factory=NoPositionalGroupByRuleConfig
+    )
+    no_positional_order_by: NoPositionalOrderByRuleConfig = Field(
+        default_factory=NoPositionalOrderByRuleConfig
+    )
     no_positional_group_by_or_order_by: NoPositionalGroupByOrOrderByRuleConfig = Field(
         default_factory=NoPositionalGroupByOrOrderByRuleConfig
     )
@@ -537,6 +553,54 @@ class RulesConfig(BaseModel):
     @classmethod
     def _validate_rule_entries(cls, data: Any) -> Any:
         if isinstance(data, dict):
+            # Normalize boolean rule entries
+            for k in list(data.keys()):
+                if isinstance(data[k], bool):
+                    data[k] = {"enabled": data[k]}
+
+            # Synchronize positional group by and order by settings
+            if "no_positional_group_by_or_order_by" in data:
+                parent = data["no_positional_group_by_or_order_by"]
+                if isinstance(parent, dict):
+                    p_enabled = parent.get("enabled", True)
+                    p_group = parent.get("group_by", True)
+                    p_order = parent.get("order_by", True)
+                    p_skip = parent.get("skip_layers")
+                    p_only = parent.get("only_layers")
+                    p_sev = parent.get("severity")
+
+                    if "no_positional_group_by" not in data:
+                        grp_dict: dict[str, Any] = {"enabled": bool(p_enabled and p_group)}
+                        if p_skip is not None:
+                            grp_dict["skip_layers"] = p_skip
+                        if p_only is not None:
+                            grp_dict["only_layers"] = p_only
+                        if p_sev is not None:
+                            grp_dict["severity"] = p_sev
+                        data["no_positional_group_by"] = grp_dict
+
+                    if "no_positional_order_by" not in data:
+                        ord_dict: dict[str, Any] = {"enabled": bool(p_enabled and p_order)}
+                        if p_skip is not None:
+                            ord_dict["skip_layers"] = p_skip
+                        if p_only is not None:
+                            ord_dict["only_layers"] = p_only
+                        if p_sev is not None:
+                            ord_dict["severity"] = p_sev
+                        data["no_positional_order_by"] = ord_dict
+            elif "no_positional_group_by" in data or "no_positional_order_by" in data:
+                p_dict: dict[str, Any] = {}
+                if "no_positional_group_by" in data:
+                    g_val = data["no_positional_group_by"]
+                    if isinstance(g_val, dict) and "enabled" in g_val:
+                        p_dict["group_by"] = bool(g_val["enabled"])
+                if "no_positional_order_by" in data:
+                    o_val = data["no_positional_order_by"]
+                    if isinstance(o_val, dict) and "enabled" in o_val:
+                        p_dict["order_by"] = bool(o_val["enabled"])
+                if p_dict:
+                    data["no_positional_group_by_or_order_by"] = p_dict
+
             known = set(cls.model_fields.keys())
             for k, v in data.items():
                 if k not in known:

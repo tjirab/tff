@@ -1043,3 +1043,52 @@ def test_all_builtin_checks_have_rich_metadata() -> None:
         assert check.how_to_fix, f"{check.id} is missing how_to_fix"
         assert check.configuration_example, f"{check.id} is missing configuration_example"
         assert len(check.providers) > 0, f"{check.id} has no providers"
+
+
+def test_positional_checks_registry() -> None:
+    reg = create_default_registry()
+
+    # 1. Lookup by ID and aliases
+    check_group = reg.get("no_positional_group_by")
+    assert check_group is not None
+    assert check_group.id == "no_positional_group_by"
+    assert reg.get("nopositionalgroupby") is check_group
+
+    check_order = reg.get("no_positional_order_by")
+    assert check_order is not None
+    assert check_order.id == "no_positional_order_by"
+    assert reg.get("nopositionalorderby") is check_order
+
+    check_parent = reg.get("no_positional_group_by_or_order_by")
+    assert check_parent is not None
+    assert check_parent.id == "no_positional_group_by_or_order_by"
+    assert reg.get("nopositionalgroupbyororderby") is check_parent
+
+    # 2. Resolution of parent umbrella check resolves to both individual checks
+    config = FitnessFunctionsConfig()
+    resolved_parent = reg.resolve_checks(["no_positional_group_by_or_order_by"], config)
+    resolved_ids = [c.id for c in resolved_parent]
+    assert "no_positional_group_by" in resolved_ids
+    assert "no_positional_order_by" in resolved_ids
+    assert "no_positional_group_by_or_order_by" not in resolved_ids
+
+    # 3. Resolution of individual checks
+    resolved_grp = reg.resolve_checks(["no_positional_group_by"], config)
+    assert [c.id for c in resolved_grp] == ["no_positional_group_by"]
+
+    resolved_ord = reg.resolve_checks(["no_positional_order_by"], config)
+    assert [c.id for c in resolved_ord] == ["no_positional_order_by"]
+
+    # 4. is_enabled filtering
+    config.rules.no_positional_group_by_or_order_by.group_by = False
+    assert check_group.is_enabled(config) is False
+    assert check_order.is_enabled(config) is True
+
+    config.rules.no_positional_group_by_or_order_by.group_by = True
+    config.rules.no_positional_group_by_or_order_by.order_by = False
+    assert check_group.is_enabled(config) is True
+    assert check_order.is_enabled(config) is False
+
+    config.rules.no_positional_group_by.enabled = False
+    assert check_group.is_enabled(config) is False
+

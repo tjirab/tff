@@ -2022,6 +2022,16 @@ def test_cli_explain_fixable_check(capsys):
     assert "Auto-fix:   Yes (run 'tff lint --fix')" in captured.out
     assert "Severity:   Error (Default)" in captured.out
 
+    assert main(["explain", "no_positional_group_by"]) == 0
+    captured_grp = capsys.readouterr()
+    assert "Auto-fix:   Yes (run 'tff lint --fix')" in captured_grp.out
+    assert "no_positional_group_by" in captured_grp.out
+
+    assert main(["explain", "no_positional_order_by"]) == 0
+    captured_ord = capsys.readouterr()
+    assert "Auto-fix:   Yes (run 'tff lint --fix')" in captured_ord.out
+    assert "no_positional_order_by" in captured_ord.out
+
 
 @pytest.mark.parametrize(
     "query,expected_phrase",

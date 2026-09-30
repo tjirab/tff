@@ -306,6 +306,10 @@ SHORT_CHECK_LABELS: dict[str, str] = {
     "classification_macros": "macro",
     "sqlcomplexity": "complexity",
     "sql_complexity": "complexity",
+    "nopositionalgroupby": "group_pos",
+    "no_positional_group_by": "group_pos",
+    "nopositionalorderby": "order_pos",
+    "no_positional_order_by": "order_pos",
     "nopositionalgroupbyororderby": "position",
     "no_positional_group_by_or_order_by": "position",
     "schema_contracts": "contract",
@@ -329,6 +333,10 @@ def _get_action_phrase(check: str, count: int) -> str:
         return f"Add missing contract metadata to {count} model{'s' if count != 1 else ''}"
     if check == "join_type_parity":
         return f"Align data types across {count} JOIN condition{'s' if count != 1 else ''}"
+    if check in ("nopositionalgroupby", "no_positional_group_by"):
+        return f"Replace {count} positional GROUP BY reference{'s' if count != 1 else ''}"
+    if check in ("nopositionalorderby", "no_positional_order_by"):
+        return f"Replace {count} positional ORDER BY reference{'s' if count != 1 else ''}"
     return f"Resolve {count} {CHECK_LABELS.get(check, check)} defect{'s' if count != 1 else ''}"
 
 

@@ -83,6 +83,8 @@ When using SQLMesh's native linter (`sqlmesh lint`), rules are enabled under `li
 | `metadata.grain` | `nomissinggrain` | `NoMissingGrain` |
 | `filename_equals_modelname` | `filenameequalsmodelname` | `FilenameEqualsModelname` |
 | `ban_select_star` | `banselectstar` | `BanSelectStar` |
+| `no_positional_group_by` | `nopositionalgroupby` | `NoPositionalGroupBy` |
+| `no_positional_order_by` | `nopositionalorderby` | `NoPositionalOrderBy` |
 | `no_positional_group_by_or_order_by` | `nopositionalgroupbyororderby` | `NoPositionalGroupByOrOrderBy` |
 | `environment_agnostic_references` | `environmentagnosticreferences` | `EnvironmentAgnosticReferences` |
 
