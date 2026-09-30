@@ -13,7 +13,7 @@ from tff.core.adapter import normalize_project_roots
 from tff.core.config import FitnessFunctionsConfig, load_fitness_config
 from tff.core.model import ModelRepresentation
 from tff.core.registry import normalize_check_name, registry
-from tff.core.report import LintFinding, format_message, normalize_model_name
+from tff.core.report import LintFinding, Severity, format_message, normalize_model_name
 from tff.core.utils.paths import model_path_relative
 from tff.sqlmesh.loader import FitnessLoader, map_sqlmesh_model
 
@@ -83,22 +83,17 @@ def collect_sqlmesh_findings(
                 message = message[len(model_label) + 2 :]
 
             is_sql_complexity = rule_name == "sqlcomplexity"
-            messages = (
-                [part.strip() for part in message.split(";") if part.strip()]
-                if is_sql_complexity
-                else [message]
-            )
+            if is_sql_complexity:
+                from tff.core.rules.sql_complexity import split_complexity_message
 
-            for part in messages:
-                if is_sql_complexity:
-                    if part.startswith("WARN:"):
-                        part_severity = "warning"
-                    elif part.startswith("FAIL:"):
-                        part_severity = "error" if rule_severity == "error" else rule_severity
-                    else:
-                        part_severity = rule_severity
-                else:
-                    part_severity = rule_severity
+                parsed_parts = split_complexity_message(
+                    message, base_severity=rule_severity, model_name=model_label
+                )
+            else:
+                base_sev: Severity = "warning" if rule_severity == "warning" else "error"
+                parsed_parts = [(message, base_sev)]
+
+            for part, part_severity in parsed_parts:
 
                 v_line = None
                 v_col = None

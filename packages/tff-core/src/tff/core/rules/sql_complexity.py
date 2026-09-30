@@ -3,12 +3,16 @@
 from __future__ import annotations
 
 import re
+from typing import TYPE_CHECKING
 
 import sqlglot.expressions as exp
 from sqlglot import parse_one
 
 from tff.core.model import ModelRepresentation
 from tff.core.rules.base import Rule, RuleViolation
+
+if TYPE_CHECKING:
+    from tff.core.report import Severity
 
 MODEL_BLOCK_PATTERN = re.compile(r"^MODEL\s*\(.*?\)\s*;", re.DOTALL | re.IGNORECASE)
 
@@ -116,6 +120,37 @@ def format_violations(
     if messages:
         return [f"{model_name}: " + "; ".join(messages)]
     return []
+
+
+def split_complexity_message(
+    message: str,
+    base_severity: Severity | str = "error",
+    model_name: str | None = None,
+) -> list[tuple[str, Severity]]:
+    """Split a semicolon-delimited complexity violation message into (part, severity) pairs."""
+    if model_name:
+        prefix = f"{model_name}: "
+        if message.startswith(prefix):
+            message = message[len(prefix) :]
+    elif ": " in message and not (message.startswith("WARN:") or message.startswith("FAIL:")):
+        _, rest = message.split(": ", 1)
+        if rest.startswith("WARN:") or rest.startswith("FAIL:"):
+            message = rest
+
+    parts = [p.strip() for p in message.split(";") if p.strip()]
+    findings: list[tuple[str, Severity]] = []
+    for part in parts:
+        if part.startswith("WARN:"):
+            part_severity: Severity = "warning"
+        elif part.startswith("FAIL:"):
+            part_severity = "error" if base_severity == "error" else "warning"
+        else:
+            part_severity = "warning" if base_severity == "warning" else "error"
+        findings.append((part, part_severity))
+    return findings
+
+
+parse_complexity_findings = split_complexity_message
 
 
 class SqlComplexity(Rule):

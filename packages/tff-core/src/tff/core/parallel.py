@@ -196,13 +196,11 @@ def _extract_model_findings(
         model_label = f"{model.name}: "
         clean_msg = msg.removeprefix(model_label)
         if is_sql_complexity:
-            parts = [p.strip() for p in clean_msg.split(";") if p.strip()]
-            for part in parts:
-                part_severity = severity
-                if part.startswith("WARN:"):
-                    part_severity = "warning"
-                elif part.startswith("FAIL:"):
-                    part_severity = "error" if severity == "error" else severity
+            from tff.core.rules.sql_complexity import split_complexity_message
+
+            for part, part_severity in split_complexity_message(
+                clean_msg, base_severity=severity, model_name=model.name
+            ):
                 findings.append(
                     LintFinding(
                         check=finding_check,

@@ -1,7 +1,12 @@
 """Tests for SQL complexity analysis."""
 
 from pathlib import Path
-from tff.core.rules.sql_complexity import analyze_sql, format_violations
+from tff.core.rules.sql_complexity import (
+    analyze_sql,
+    format_violations,
+    parse_complexity_findings,
+    split_complexity_message,
+)
 
 
 def test_analyze_sql_counts_ctes() -> None:
@@ -41,6 +46,74 @@ def test_format_violations_nested_subquery() -> None:
     thresholds = {"line_count": [250, 400]}
     messages = format_violations(metrics, "schema.model", thresholds)
     assert any("WARN: nested subquery" in m for m in messages)
+
+
+def test_split_complexity_message_single_warn() -> None:
+    msg = "WARN: cte_count=9 (warn>8, fail>12)"
+    res = split_complexity_message(msg)
+    assert res == [("WARN: cte_count=9 (warn>8, fail>12)", "warning")]
+
+
+def test_split_complexity_message_single_fail() -> None:
+    msg = "FAIL: cte_count=13 (warn>8, fail>12)"
+    res = split_complexity_message(msg)
+    assert res == [("FAIL: cte_count=13 (warn>8, fail>12)", "error")]
+
+
+def test_split_complexity_message_multiple_mixed() -> None:
+    msg = (
+        "WARN: cte_count=9 (warn>8, fail>12); "
+        "FAIL: join_count=15 (warn>10, fail>14); "
+        "WARN: nested subquery in final SELECT — prefer CTEs per style guide"
+    )
+    res = split_complexity_message(msg)
+    assert res == [
+        ("WARN: cte_count=9 (warn>8, fail>12)", "warning"),
+        ("FAIL: join_count=15 (warn>10, fail>14)", "error"),
+        ("WARN: nested subquery in final SELECT — prefer CTEs per style guide", "warning"),
+    ]
+
+
+def test_split_complexity_message_severity_override() -> None:
+    msg = "WARN: cte_count=9 (warn>8, fail>12); FAIL: join_count=15 (warn>10, fail>14)"
+    res = split_complexity_message(msg, base_severity="warning")
+    assert res == [
+        ("WARN: cte_count=9 (warn>8, fail>12)", "warning"),
+        ("FAIL: join_count=15 (warn>10, fail>14)", "warning"),
+    ]
+
+
+def test_split_complexity_message_with_model_prefix() -> None:
+    msg = "core.my_model: WARN: cte_count=9 (warn>8, fail>12); FAIL: join_count=15 (warn>10, fail>14)"
+    # With explicit model_name
+    res_explicit = split_complexity_message(msg, model_name="core.my_model")
+    assert res_explicit == [
+        ("WARN: cte_count=9 (warn>8, fail>12)", "warning"),
+        ("FAIL: join_count=15 (warn>10, fail>14)", "error"),
+    ]
+    # Without explicit model_name (inferred prefix strip)
+    res_inferred = split_complexity_message(msg)
+    assert res_inferred == [
+        ("WARN: cte_count=9 (warn>8, fail>12)", "warning"),
+        ("FAIL: join_count=15 (warn>10, fail>14)", "error"),
+    ]
+
+
+def test_split_complexity_message_empty_or_whitespace() -> None:
+    assert split_complexity_message("") == []
+    assert split_complexity_message("   ;  ;  ") == []
+
+
+def test_split_complexity_message_unprefixed_part() -> None:
+    res_err = split_complexity_message("custom violation message", base_severity="error")
+    assert res_err == [("custom violation message", "error")]
+
+    res_warn = split_complexity_message("custom violation message", base_severity="warning")
+    assert res_warn == [("custom violation message", "warning")]
+
+
+def test_parse_complexity_findings_alias() -> None:
+    assert parse_complexity_findings is split_complexity_message
 
 
 def test_sql_complexity_rejects_warn_only() -> None:
