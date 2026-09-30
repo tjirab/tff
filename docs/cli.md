@@ -178,6 +178,7 @@ tff action [options]
 | `--repo OWNER/REPO` | String | (auto-detected) | GitHub repository full name (auto-inferred from `$GITHUB_REPOSITORY`). |
 | `--workers NUM` | Integer | (auto / CPU count) | Number of worker processes for parallel model loading and AST parsing. |
 | `--json` | Flag | `false` | Output final results as JSON to stdout. |
+| `--debug` | Flag | `false` | Enable verbose debug logging output to stderr. |
 
 ### Examples
 
@@ -211,6 +212,7 @@ tff docs [options]
 | `--manifest PATH` | File Path | (auto-discovered) | Path to precompiled manifest. |
 | `--workers NUM` | Integer | (auto / CPU count) | Number of worker processes for parallel model loading and AST parsing. |
 | `--no-log` | Flag | `false` | Disable writing execution logs. |
+| `--debug` | Flag | `false` | Enable verbose debug logging output to stderr. |
 
 ### Examples
 
@@ -238,6 +240,7 @@ tff init [options]
 | :--- | :--- | :--- | :--- |
 | `--project PATH` | Directory Path | `.` | Project root directory. |
 | `--force`, `-f` | Flag | `false` | Overwrite existing `fitness_functions.yaml` if one already exists. |
+| `--debug` | Flag | `false` | Enable verbose debug logging output to stderr. |
 
 ### Examples
 
@@ -266,6 +269,7 @@ tff stats [options]
 | `--project PATH`, `-p PATH` | Directory Path | `.` (current dir) | Project root directory (can be specified multiple times for multi-repo projects). |
 | `--days DAYS` | Integer | `7` | Number of days of historical execution logs to analyze. |
 | `--json` | Flag | `false` | Output stats summary as JSON to stdout. |
+| `--debug` | Flag | `false` | Enable verbose debug logging output to stderr. |
 
 ### Examples
 
@@ -297,6 +301,7 @@ tff info [options]
 | `--project PATH`, `-p PATH` | Directory Path | `.` (current dir) | Project root directory (can be specified multiple times for multi-repo projects). |
 | `--config PATH` | File Path | `fitness_functions.yaml` | Path to fitness functions config. |
 | `--provider` | `auto`, `dbt`, `sqlmesh`, `dataform` | `auto` | Pipeline engine provider. |
+| `--debug` | Flag | `false` | Enable verbose debug logging output to stderr. |
 
 ### Examples
 
@@ -335,6 +340,7 @@ tff rules
 | `rule` | String (optional) | (none) | Check ID, alias, or category abbreviation (e.g. `duplicate_ctes`, `ban_select_star`, `CoA`, `CoV`, `CoN`). |
 | `--all` | Flag | `false` | Display tabular catalog of all available checks and linter rules. |
 | `--json` | Flag | `false` | Output rule documentation or catalog in JSON format to stdout. |
+| `--debug` | Flag | `false` | Enable verbose debug logging output to stderr. |
 
 ### Examples
 
