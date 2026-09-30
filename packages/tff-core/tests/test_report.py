@@ -719,7 +719,9 @@ def test_format_connascence_tag_helper(category: str, expected_tag: str) -> None
         ("nomissingdescription", "desc", True),
         ("sqlcomplexity", "nested subquery in final SELECT", True),
         ("sqlcomplexity", "too many CTEs", False),
-        ("banselectstar", "select *", False),
+        ("banselectstar", "select *", True),
+        ("ban_select_star", "select *", True),
+        ("jointypeparity", "type mismatch", False),
     ],
 )
 def test_is_fixable_finding_helper(check: str, message: str, expected_fixable: bool) -> None:

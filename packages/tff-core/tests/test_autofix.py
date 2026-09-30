@@ -12,6 +12,7 @@ from tff.core.autofix import (
     _find_matching_brace,
     apply_autofixes,
     lift_nested_subqueries,
+    expand_select_star,
 )
 
 
@@ -946,6 +947,429 @@ def test_apply_autofixes_multiple_project_roots(tmp_path: Path):
         missing_owner=True,
         missing_description=False,
     )
+
+
+def test_expand_select_star_single_table_sqlmesh():
+    m_upstream = ModelRepresentation(
+        name="sqlmesh_example.upstream_model",
+        path="models/upstream.sql",
+        dialect="duckdb",
+        columns_to_types={"id": "INT", "customer_name": "TEXT", "created_at": "TIMESTAMP"},
+    )
+    models = {"sqlmesh_example.upstream_model": m_upstream}
+
+    sql = "MODEL (\n  name sqlmesh_example.my_model\n);\n\nSELECT * FROM sqlmesh_example.upstream_model"
+    fixed_sql, warnings = expand_select_star(sql, "duckdb", models, "my_model")
+    assert not warnings
+    assert fixed_sql == (
+        "MODEL (\n  name sqlmesh_example.my_model\n);\n\n"
+        "SELECT id, customer_name, created_at FROM sqlmesh_example.upstream_model"
+    )
+
+
+def test_expand_select_star_single_table_dbt_and_dataform():
+    m_orders = ModelRepresentation(
+        name="orders",
+        path="models/orders.sql",
+        dialect="duckdb",
+        columns_to_types={"order_id": "INT", "amount": "NUMERIC"},
+    )
+    models = {"orders": m_orders}
+
+    # dbt with jinja ref
+    sql_dbt = "SELECT * FROM {{ ref('orders') }}"
+    fixed_dbt, warnings_dbt = expand_select_star(sql_dbt, "duckdb", models, "stg_orders")
+    assert not warnings_dbt
+    assert fixed_dbt == "SELECT order_id, amount FROM {{ ref('orders') }}"
+
+    # Dataform config block and ${ref(...)}
+    sql_df = "config {\n  type: \"table\"\n}\n\nSELECT * FROM ${ref(\"orders\")}"
+    fixed_df, warnings_df = expand_select_star(sql_df, "bigquery", models, "stg_orders")
+    assert not warnings_df
+    assert fixed_df == "config {\n  type: \"table\"\n}\n\nSELECT order_id, amount FROM ${ref(\"orders\")}"
+
+
+def test_expand_select_star_cte_expansion():
+    # CTE with explicit projections
+    sql_cte = "WITH some_cte AS (SELECT 1 AS id, 'alice' AS name) SELECT * FROM some_cte"
+    fixed_cte, warnings_cte = expand_select_star(sql_cte, "ansi")
+    assert not warnings_cte
+    assert fixed_cte == "WITH some_cte AS (SELECT 1 AS id, 'alice' AS name) SELECT id, name FROM some_cte"
+
+    # CTE with alias column names
+    sql_alias_cols = "WITH some_cte(col_a, col_b) AS (SELECT 1, 2) SELECT * FROM some_cte"
+    fixed_alias, warnings_alias = expand_select_star(sql_alias_cols, "ansi")
+    assert not warnings_alias
+    assert fixed_alias == "WITH some_cte(col_a, col_b) AS (SELECT 1, 2) SELECT col_a, col_b FROM some_cte"
+
+
+def test_expand_select_star_multi_cte_cascade():
+    models = {
+        "raw_tbl": {"id": "INT", "val": "TEXT"},
+    }
+    sql = (
+        "WITH cte1 AS (SELECT * FROM raw_tbl), "
+        "cte2 AS (SELECT * FROM cte1) "
+        "SELECT * FROM cte2"
+    )
+    fixed, warnings = expand_select_star(sql, "ansi", models)
+    assert not warnings
+    assert fixed == (
+        "WITH cte1 AS (SELECT id, val FROM raw_tbl), "
+        "cte2 AS (SELECT id, val FROM cte1) "
+        "SELECT id, val FROM cte2"
+    )
+
+
+def test_expand_select_star_joined_tables():
+    models = {
+        "users": {"id": "INT", "username": "TEXT"},
+        "orders": {"id": "INT", "user_id": "INT", "total": "FLOAT"},
+    }
+
+    # Preserves table qualification for joined query
+    sql = "SELECT * FROM users u JOIN orders o ON u.id = o.user_id"
+    fixed, warnings = expand_select_star(sql, "ansi", models)
+    assert not warnings
+    assert fixed == "SELECT u.id, u.username, o.id, o.user_id, o.total FROM users AS u JOIN orders AS o ON u.id = o.user_id"
+
+    # Preserves table qualification without alias
+    sql_no_alias = "SELECT * FROM users JOIN orders ON users.id = orders.user_id"
+    fixed_no_alias, warnings_no_alias = expand_select_star(sql_no_alias, "ansi", models)
+    assert not warnings_no_alias
+    assert fixed_no_alias == (
+        "SELECT users.id, users.username, orders.id, orders.user_id, orders.total "
+        "FROM users JOIN orders ON users.id = orders.user_id"
+    )
+
+
+def test_expand_select_star_table_star_projections():
+    models = {
+        "t1": ["col1", "col2"],
+        "t2": ["col3", "col4"],
+    }
+    # Specific table qualification t1.*
+    sql = "SELECT t1.*, t2.col3 FROM t1 JOIN t2 ON t1.col1 = t2.col3"
+    fixed, warnings = expand_select_star(sql, "ansi", models)
+    assert not warnings
+    assert fixed == "SELECT t1.col1, t1.col2, t2.col3 FROM t1 JOIN t2 ON t1.col1 = t2.col3"
+
+    # Single table explicit qualification t.*
+    sql_single = "SELECT t.* FROM t1 AS t"
+    fixed_single, warnings_single = expand_select_star(sql_single, "ansi", models)
+    assert not warnings_single
+    assert fixed_single == "SELECT t.col1, t.col2 FROM t1 AS t"
+
+    # Specific table qualification with unknown table
+    sql_unknown = "SELECT t_missing.* FROM t1"
+    fixed_unknown, warnings_unknown = expand_select_star(sql_unknown, "ansi", models, "my_model")
+    assert fixed_unknown == sql_unknown
+    assert warnings_unknown == [
+        "Skipped SELECT * expansion for my_model: upstream schema for t_missing is not available statically"
+    ]
+
+
+def test_expand_select_star_uncataloged_fallback():
+    # 1. External uncataloged table
+    sql = "SELECT * FROM raw_external_table"
+    fixed, warnings = expand_select_star(sql, "ansi", {}, "my_model")
+    assert fixed == sql
+    assert warnings == [
+        "Skipped SELECT * expansion for my_model: upstream schema for raw_external_table is not available statically"
+    ]
+
+    # 2. Model exists in registry but has empty columns_to_types
+    empty_model = ModelRepresentation(
+        name="undocumented",
+        path="models/undoc.sql",
+        dialect="duckdb",
+        columns_to_types={},
+    )
+    sql2 = "SELECT * FROM undocumented"
+    fixed2, warnings2 = expand_select_star(sql2, "duckdb", {"undocumented": empty_model}, "my_model")
+    assert fixed2 == sql2
+    assert warnings2 == [
+        "Skipped SELECT * expansion for my_model: upstream schema for undocumented is not available statically"
+    ]
+
+    # 3. Joined query where one table is uncataloged
+    cataloged = ModelRepresentation(
+        name="cat_table",
+        path="models/cat.sql",
+        dialect="duckdb",
+        columns_to_types={"id": "INT"},
+    )
+    sql3 = "SELECT * FROM cat_table JOIN raw_source ON cat_table.id = raw_source.id"
+    fixed3, warnings3 = expand_select_star(sql3, "duckdb", {"cat_table": cataloged}, "reporting_model")
+    assert fixed3 == sql3
+    assert warnings3 == [
+        "Skipped SELECT * expansion for reporting_model: upstream schema for raw_source is not available statically"
+    ]
+
+    # 4. CTE referencing uncataloged source
+    sql4 = "WITH cte AS (SELECT * FROM raw_source) SELECT * FROM cte"
+    fixed4, warnings4 = expand_select_star(sql4, "duckdb", {}, "model_with_cte")
+    assert fixed4 == sql4
+    assert warnings4 == [
+        "Skipped SELECT * expansion for model_with_cte: upstream schema for raw_source is not available statically"
+    ]
+
+    # 5. SELECT * without sources
+    sql5 = "SELECT *"
+    fixed5, warnings5 = expand_select_star(sql5, "ansi", {})
+    assert fixed5 == sql5
+    assert warnings5 == [
+        "Skipped SELECT * expansion for model: upstream schema is not available statically"
+    ]
+
+
+def test_expand_select_star_preserves_count_and_syntax():
+    models = {"tbl": ["id", "val"]}
+
+    # COUNT(*) should remain untouched
+    sql_count = "SELECT COUNT(*) FROM tbl"
+    fixed_count, warnings_count = expand_select_star(sql_count, "ansi", models)
+    assert fixed_count == sql_count
+    assert not warnings_count
+
+    # COUNT(DISTINCT *) untouched
+    sql_distinct = "SELECT COUNT(DISTINCT *) FROM tbl"
+    fixed_distinct, warnings_distinct = expand_select_star(sql_distinct, "ansi", models)
+    assert fixed_distinct == sql_distinct
+    assert not warnings_distinct
+
+    # COUNT(*) with wildcard *
+    sql_combo = "SELECT COUNT(*), * FROM tbl"
+    fixed_combo, warnings_combo = expand_select_star(sql_combo, "ansi", models)
+    assert not warnings_combo
+    assert fixed_combo == "SELECT COUNT(*), id, val FROM tbl"
+
+    # Non-star expressions preserved around *
+    sql_expr = "SELECT 1 AS const, *, UPPER(val) AS upper_val FROM tbl"
+    fixed_expr, warnings_expr = expand_select_star(sql_expr, "ansi", models)
+    assert not warnings_expr
+    assert fixed_expr == "SELECT 1 AS const, id, val, UPPER(val) AS upper_val FROM tbl"
+
+
+def test_expand_select_star_edge_cases():
+    # Non-SELECT statement
+    sql_insert = "INSERT INTO tbl VALUES (1, 'a')"
+    fixed_insert, warnings_insert = expand_select_star(sql_insert, "ansi", {})
+    assert fixed_insert == sql_insert
+    assert not warnings_insert
+
+    # Invalid SQL syntax
+    sql_invalid = "SELECT FROM WHERE"
+    fixed_invalid, warnings_invalid = expand_select_star(sql_invalid, "ansi", {})
+    assert fixed_invalid == sql_invalid
+    assert not warnings_invalid
+
+    # Plain query without *
+    sql_plain = "SELECT id, val FROM tbl"
+    fixed_plain, warnings_plain = expand_select_star(sql_plain, "ansi", {})
+    assert fixed_plain == sql_plain
+    assert not warnings_plain
+
+    # Subquery in FROM
+    sql_subquery = "SELECT * FROM (SELECT 1 AS a, 2 AS b) sub"
+    fixed_subquery, warnings_subquery = expand_select_star(sql_subquery, "ansi", {})
+    assert not warnings_subquery
+    assert fixed_subquery == "SELECT a, b FROM (SELECT 1 AS a, 2 AS b) AS sub"
+
+
+def test_apply_autofixes_banselectstar(tmp_path: Path):
+    sql_file = tmp_path / "models/clean_model.sql"
+    sql_file.parent.mkdir(parents=True, exist_ok=True)
+    sql_file.write_text("SELECT * FROM upstream", encoding="utf-8")
+
+    findings = [
+        LintFinding(
+            check="banselectstar",
+            severity="error",
+            model="clean_model",
+            path="models/clean_model.sql",
+            message="clean_model: SELECT * is prohibited",
+        )
+    ]
+
+    models = {
+        "upstream": ModelRepresentation(
+            name="upstream",
+            path="models/upstream.sql",
+            dialect="duckdb",
+            columns_to_types={"id": "INT", "name": "TEXT"},
+        ),
+        "clean_model": ModelRepresentation(
+            name="clean_model",
+            path=str(sql_file),
+            dialect="duckdb",
+        ),
+    }
+
+    # 1. Successfully expanded
+    logs = apply_autofixes(tmp_path, "sqlmesh", findings, models)
+    assert any("Expanded SELECT * in clean_model.sql" in log for log in logs)
+    assert sql_file.read_text(encoding="utf-8") == "SELECT id, name FROM upstream"
+
+    # 2. Rerun when already fixed is a no-op
+    logs_noop = apply_autofixes(tmp_path, "sqlmesh", findings, models)
+    assert not any("Expanded SELECT *" in log for log in logs_noop)
+
+    # 3. Uncataloged source fallback skips modification
+    bad_file = tmp_path / "models/bad_model.sql"
+    bad_file.write_text("SELECT * FROM raw_external", encoding="utf-8")
+    bad_findings = [
+        LintFinding(
+            check="ban_select_star",
+            severity="error",
+            model="bad_model",
+            path="models/bad_model.sql",
+            message="SELECT * prohibited",
+        )
+    ]
+    models["bad_model"] = ModelRepresentation(
+        name="bad_model",
+        path=str(bad_file),
+        dialect="duckdb",
+    )
+    bad_logs = apply_autofixes(tmp_path, "sqlmesh", bad_findings, models)
+    assert bad_file.read_text(encoding="utf-8") == "SELECT * FROM raw_external"
+    assert any("Skipped SELECT * expansion for bad_model: upstream schema for raw_external is not available statically" in log for log in bad_logs)
+
+    # 4. Exception during write logs failure
+    sql_file.chmod(0o444)
+    try:
+        sql_file.chmod(0o644)
+        sql_file.write_text("SELECT * FROM upstream", encoding="utf-8")
+        sql_file.chmod(0o444)
+        fail_logs = apply_autofixes(tmp_path, "sqlmesh", findings, models)
+        assert any("Failed to expand SELECT * in clean_model.sql" in log for log in fail_logs)
+    finally:
+        sql_file.chmod(0o644)
+
+
+def test_expand_select_star_coverage_edge_cases():
+    # 1. Empty string parses to None
+    fixed_empty, warnings_empty = expand_select_star("")
+    assert fixed_empty == ""
+    assert not warnings_empty
+
+    # 2. Table macro placeholder not matching ref/source
+    sql_macro = "SELECT * FROM @custom_func()"
+    fixed_macro, warnings_macro = expand_select_star(sql_macro)
+    assert fixed_macro == sql_macro
+    assert warnings_macro == [
+        "Skipped SELECT * expansion for model: upstream schema for @custom_func() is not available statically"
+    ]
+
+    # 3. Model matched by v.name when dict key differs
+    m1 = ModelRepresentation(
+        name="orders",
+        path="m.sql",
+        dialect="ansi",
+        columns_to_types={"id": "INT"},
+    )
+    models1 = {"dict_key_differs": m1}
+    fixed_m1, warnings_m1 = expand_select_star("SELECT * FROM orders", "ansi", models1)
+    assert not warnings_m1
+    assert fixed_m1 == "SELECT id FROM orders"
+
+    # 4. Model matched by normalize_model_name
+    m2 = ModelRepresentation(
+        name="catalog.db.users",
+        path="u.sql",
+        dialect="ansi",
+        columns_to_types={"id": "INT"},
+    )
+    models2 = {"k": m2}
+    fixed_m2, warnings_m2 = expand_select_star("SELECT * FROM db.users", "ansi", models2)
+    assert not warnings_m2
+    assert fixed_m2 == "SELECT id FROM db.users"
+
+    # 4b. Model matched by short name when cand has only basename
+    m2b = ModelRepresentation(
+        name="some_schema.items",
+        path="i.sql",
+        dialect="ansi",
+        columns_to_types={"item_id": "INT"},
+    )
+    models2b = {"k": m2b}
+    fixed_m2b, warnings_m2b = expand_select_star("SELECT * FROM items", "ansi", models2b)
+    assert not warnings_m2b
+    assert fixed_m2b == "SELECT item_id FROM items"
+
+    # 5. Model lookup where entry is dict (v_name is None) and cand is unknown
+    models_dict = {"other": {"a": "int"}}
+    fixed_unk, warnings_unk = expand_select_star("SELECT * FROM missing_tbl", "ansi", models_dict)
+    assert fixed_unk == "SELECT * FROM missing_tbl"
+    assert warnings_unk == [
+        "Skipped SELECT * expansion for model: upstream schema for missing_tbl is not available statically"
+    ]
+
+    # 6. Specific table qualification on subquery: SELECT sub.* FROM (SELECT 1 AS a) sub
+    sql_sub_star = "SELECT sub.* FROM (SELECT 1 AS a) sub"
+    fixed_sub_star, warnings_sub_star = expand_select_star(sql_sub_star, "ansi")
+    assert not warnings_sub_star
+    assert fixed_sub_star == "SELECT sub.a FROM (SELECT 1 AS a) AS sub"
+
+    # 7. Specific table qualification t.* on table with empty schema
+    empty_m = ModelRepresentation(name="undoc", path="u.sql", dialect="ansi", columns_to_types={})
+    fixed_t_empty, warnings_t_empty = expand_select_star(
+        "SELECT t.* FROM undoc t", "ansi", {"undoc": empty_m}
+    )
+    assert fixed_t_empty == "SELECT t.* FROM undoc t"
+    assert warnings_t_empty == [
+        "Skipped SELECT * expansion for model: upstream schema for undoc is not available statically"
+    ]
+
+    # 8. Unnest source
+    fixed_unnest, warnings_unnest = expand_select_star("SELECT * FROM UNNEST([1, 2])", "duckdb")
+    assert fixed_unnest == "SELECT * FROM UNNEST([1, 2])"
+    assert warnings_unnest == [
+        "Skipped SELECT * expansion for model: upstream schema for unknown is not available statically"
+    ]
+
+    # 9. Star in WHERE predicate rather than SELECT projection (not modified)
+    fixed_pred, warnings_pred = expand_select_star("SELECT 1 FROM t WHERE x = *")
+    assert fixed_pred == "SELECT 1 FROM t WHERE x = *"
+    assert not warnings_pred
+
+
+def test_apply_autofixes_banselectstar_missing_model_name(tmp_path: Path):
+    sql_file = tmp_path / "models/no_name_model.sql"
+    sql_file.parent.mkdir(parents=True, exist_ok=True)
+    sql_file.write_text("SELECT * FROM upstream", encoding="utf-8")
+
+    # finding has model=None
+    findings = [
+        LintFinding(
+            check="banselectstar",
+            severity="error",
+            model=None,
+            path="models/no_name_model.sql",
+            message="SELECT * is prohibited",
+        )
+    ]
+
+    models = {
+        "upstream": ModelRepresentation(
+            name="upstream",
+            path="models/upstream.sql",
+            dialect="duckdb",
+            columns_to_types={"id": "INT"},
+        ),
+        "no_name_model": ModelRepresentation(
+            name="inferred_model_name",
+            path=str(sql_file),
+            dialect="duckdb",
+        ),
+    }
+
+    logs = apply_autofixes(tmp_path, "sqlmesh", findings, models)
+    assert any("Expanded SELECT * in no_name_model.sql" in log for log in logs)
+    assert sql_file.read_text(encoding="utf-8") == "SELECT id FROM upstream"
+
+
 
 
 

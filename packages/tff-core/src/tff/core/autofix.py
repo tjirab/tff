@@ -6,10 +6,12 @@ import re
 from collections import defaultdict
 from collections.abc import Mapping, Sequence
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 from ruamel.yaml import YAML
 import sqlglot
 from sqlglot import exp
+
+from tff.core.report import normalize_model_name
 
 if TYPE_CHECKING:
     from tff.core.adapter import PipelineAdapter
@@ -717,6 +719,255 @@ def fix_dataform_metadata(
 
 
 
+def expand_select_star(
+    sql: str,
+    dialect: str = "ansi",
+    models: Mapping[str, Any] | None = None,
+    model_name: str | None = None,
+) -> tuple[str, list[str]]:
+    """Expand SELECT * and table.* into explicit column projections when upstream schema is known.
+
+    Returns:
+        tuple[str, list[str]]: (modified_sql, list_of_warnings).
+        If any table's schema cannot be resolved statically, the original SQL is returned unmodified
+        along with a warning string.
+    """
+    resolved_dialect = _resolve_dialect(dialect)
+    model_block, query_part = _extract_model_or_config_block(sql)
+    temp_query, placeholders = _mask_macros(query_part)
+
+    try:
+        parsed = sqlglot.parse_one(temp_query, read=resolved_dialect)
+    except Exception:
+        return sql, []
+
+    # Check if any star exists that is not COUNT(*) or aggregate
+    has_star = False
+    for star in parsed.find_all(exp.Star):
+        if (
+            isinstance(star.parent, (exp.Count, exp.Distinct))
+            and star.find_ancestor(exp.Count) is not None
+        ):
+            continue
+        has_star = True
+        break
+    if not has_star:
+        return sql, []
+
+    def _extract_columns(entry: Any) -> list[str] | None:
+        if hasattr(entry, "columns_to_types") and entry.columns_to_types:
+            return list(entry.columns_to_types.keys())
+        if isinstance(entry, dict) and entry:
+            return list(entry.keys())
+        if isinstance(entry, (list, tuple, set)) and entry:
+            return list(entry)
+        return None
+
+    def _clean_table_display_name(raw_name: str) -> str:
+        if raw_name in placeholders:
+            ph_val = placeholders[raw_name]
+            m = re.search(
+                r"(?:ref|source)\s*\(\s*(?:['\"][^'\"]+['\"]\s*,\s*)?['\"]([^'\"]+)['\"]\s*\)",
+                ph_val,
+            )
+            if m:
+                return m.group(1)
+            return ph_val
+        return raw_name
+
+    def _get_model_columns(table_name: str, db: str | None = None) -> list[str] | None:
+        if not models:
+            return None
+        cand_names = [f"{db}.{table_name}", table_name] if db else [table_name]
+        if table_name in placeholders:
+            ph_val = placeholders[table_name]
+            m = re.search(
+                r"(?:ref|source)\s*\(\s*(?:['\"][^'\"]+['\"]\s*,\s*)?['\"]([^'\"]+)['\"]\s*\)",
+                ph_val,
+            )
+            if m:
+                cand_names.insert(0, m.group(1))
+
+        for cand in cand_names:
+            for k, v in models.items():
+                if k.lower() == cand.lower():
+                    cols = _extract_columns(v)
+                    if cols:
+                        return cols
+            for v in models.values():
+                v_name = getattr(v, "name", None)
+                if not v_name:
+                    continue
+                if v_name.lower() == cand.lower():
+                    cols = _extract_columns(v)
+                    if cols:
+                        return cols
+                if (
+                    normalize_model_name(v_name).lower()
+                    == normalize_model_name(cand).lower()
+                ):
+                    cols = _extract_columns(v)
+                    if cols:
+                        return cols
+                if v_name.split(".")[-1].lower() == cand.split(".")[-1].lower():
+                    cols = _extract_columns(v)
+                    if cols:
+                        return cols
+        return None
+
+    cte_schemas: dict[str, list[str]] = {}
+
+    def _get_source_columns(
+        src: exp.Expression,
+    ) -> tuple[list[str] | None, str, str]:
+        if isinstance(src, exp.Subquery):
+            alias = src.alias or ""
+            cols = (
+                [s.alias_or_name for s in src.this.selects]
+                if isinstance(src.this, exp.Select)
+                else None
+            )
+            return cols, alias or "subquery", alias or "subquery"
+        if isinstance(src, exp.Table):
+            t_name = src.name
+            t_alias = src.alias or ""
+            qualifier = t_alias or t_name
+            disp_name = _clean_table_display_name(t_name)
+            if t_name.lower() in cte_schemas:
+                return cte_schemas[t_name.lower()], qualifier, disp_name
+            cols = _get_model_columns(t_name, src.db or None)
+            return cols, qualifier, disp_name
+        return None, "", "unknown"
+
+    def _expand_select(select_node: exp.Select) -> str | None:
+        nonlocal modified
+        from_clause = select_node.args.get("from_") or select_node.args.get(
+            "from"
+        )
+        joins = select_node.args.get("joins") or []
+        sources = []
+        if from_clause and from_clause.this:
+            sources.append(from_clause.this)
+        for j in joins:
+            if j.this:
+                sources.append(j.this)
+
+        # Check if select has star to expand
+        has_sel_star = any(
+            isinstance(s, exp.Star)
+            or (isinstance(s, exp.Column) and isinstance(s.this, exp.Star))
+            for s in select_node.selects
+        )
+        if not has_sel_star:
+            return None
+
+        new_selects = []
+        for s in select_node.selects:
+            if isinstance(s, exp.Star):
+                if not sources:
+                    return (
+                        f"Skipped SELECT * expansion for {model_name or 'model'}: "
+                        "upstream schema is not available statically"
+                    )
+                if len(sources) == 1:
+                    cols, qual, disp = _get_source_columns(sources[0])
+                    if cols is None:
+                        return (
+                            f"Skipped SELECT * expansion for {model_name or 'model'}: "
+                            f"upstream schema for {disp} is not available statically"
+                        )
+                    new_selects.extend([exp.column(c) for c in cols])
+                else:
+                    for src in sources:
+                        cols, qual, disp = _get_source_columns(src)
+                        if cols is None:
+                            return (
+                                f"Skipped SELECT * expansion for {model_name or 'model'}: "
+                                f"upstream schema for {disp} is not available statically"
+                            )
+                        new_selects.extend(
+                            [exp.column(c, table=qual) for c in cols]
+                        )
+                modified = True
+            elif isinstance(s, exp.Column) and isinstance(s.this, exp.Star):
+                tbl_target = s.table
+                matched_src = None
+                for src in sources:
+                    if isinstance(src, exp.Table):
+                        if (
+                            src.alias and src.alias.lower() == tbl_target.lower()
+                        ) or (
+                            src.name and src.name.lower() == tbl_target.lower()
+                        ):
+                            matched_src = src
+                            break
+                    elif isinstance(src, exp.Subquery):
+                        if src.alias and src.alias.lower() == tbl_target.lower():
+                            matched_src = src
+                            break
+                if not matched_src:
+                    return (
+                        f"Skipped SELECT * expansion for {model_name or 'model'}: "
+                        f"upstream schema for {tbl_target} is not available statically"
+                    )
+                cols, qual, disp = _get_source_columns(matched_src)
+                if cols is None:
+                    return (
+                        f"Skipped SELECT * expansion for {model_name or 'model'}: "
+                        f"upstream schema for {disp} is not available statically"
+                    )
+                new_selects.extend(
+                    [exp.column(c, table=tbl_target) for c in cols]
+                )
+                modified = True
+            else:
+                new_selects.append(s)
+
+        select_node.set("expressions", new_selects)
+        return None
+
+    modified = False
+
+    # 1. Process CTEs in sequential order
+    with_clause = (
+        parsed
+        if isinstance(parsed, exp.With)
+        else (parsed.args.get("with_") or parsed.args.get("with"))
+    )
+    if with_clause:
+        for cte in with_clause.expressions:
+            for s_node in reversed(list(cte.this.find_all(exp.Select))):
+                err = _expand_select(s_node)
+                if err:
+                    return sql, [err]
+            if cte.args.get("alias") and cte.args["alias"].args.get("columns"):
+                cte_schemas[cte.alias.lower()] = [
+                    c.name
+                    for c in cte.args["alias"].args.get("columns", [])
+                ]
+            elif isinstance(cte.this, exp.Select):
+                cte_schemas[cte.alias.lower()] = [
+                    s.alias_or_name for s in cte.this.selects
+                ]
+
+    # 2. Process non-CTE selects bottom-up
+    for s_node in reversed(list(parsed.find_all(exp.Select))):
+        if s_node.find_ancestor(exp.CTE) is not None:
+            continue
+        err = _expand_select(s_node)
+        if err:
+            return sql, [err]
+
+    if not modified:
+        return sql, []
+
+    modified_query = parsed.sql(dialect=resolved_dialect)
+    modified_query = _unmask_macros(modified_query, placeholders)
+    if model_block:
+        return model_block + "\n\n" + modified_query, []
+    return modified_query, []
+
+
 def apply_autofixes(
     project_root: Path | Sequence[Path],
     provider: str | PipelineAdapter,
@@ -807,7 +1058,41 @@ def apply_autofixes(
                     f"Failed to refactor nested subqueries in {abs_path.name}: {e}"
                 )
 
-        # 3. Fix metadata issues (owner, description)
+        # 3. Fix SELECT * (banselectstar)
+        star_findings = [
+            f
+            for f in file_findings
+            if f.check in ("banselectstar", "ban_select_star")
+        ]
+        if star_findings and abs_path.suffix in (".sql", ".sqlx"):
+            dialect = "ansi"
+            model_name = file_findings[0].model if file_findings else None
+            for model in models.values():
+                if Path(model.path).resolve() == abs_path:
+                    dialect = model.dialect
+                    if not model_name:
+                        model_name = model.name
+                    break
+
+            try:
+                sql = abs_path.read_text(encoding="utf-8")
+                fixed_sql, warnings = expand_select_star(
+                    sql,
+                    dialect=dialect,
+                    models=models,
+                    model_name=model_name,
+                )
+                if warnings:
+                    applied_logs.extend(warnings)
+                elif fixed_sql != sql:
+                    abs_path.write_text(fixed_sql, encoding="utf-8")
+                    applied_logs.append(f"Expanded SELECT * in {abs_path.name}")
+            except Exception as e:
+                applied_logs.append(
+                    f"Failed to expand SELECT * in {abs_path.name}: {e}"
+                )
+
+        # 4. Fix metadata issues (owner, description)
         missing_owner = any(f.check == "nomissingowner" for f in file_findings)
         missing_description = any(
             f.check == "nomissingdescription" for f in file_findings

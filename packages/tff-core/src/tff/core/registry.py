@@ -635,10 +635,10 @@ def create_default_registry() -> CheckRegistry:
             docs_url=f"{docs_base}ban-select-ban_select_star",
             description="Disallows wildcard SELECT * statements in model queries. Requires explicit column naming to reduce model coupling. Aggregate expressions (e.g. COUNT(*)) are permitted.",
             why_it_matters="Using wildcard SELECT * creates implicit coupling (Connascence of Name) between models. Upstream schema changes or column additions propagate unexpectedly downstream, breaking contracts, invalidating views, or altering model schemas.",
-            how_to_fix="Explicitly list the required columns in the SELECT clause instead of using *.",
+            how_to_fix="Explicitly list the required columns in the SELECT clause instead of using *, or run 'tff lint --fix' to expand known upstream columns automatically.",
             configuration_example="rules:\n  ban_select_star:\n    enabled: true\n    skip_layers: [sources]",
             providers=("dbt", "sqlmesh", "dataform"),
-            is_fixable=False,
+            is_fixable=True,
         )
     )
     reg.register(
