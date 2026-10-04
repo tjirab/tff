@@ -117,7 +117,7 @@ def render_cli_error(error: TffError | Exception, console: Console | None = None
 
     hint = getattr(error, "hint", None)
     if hint:
-        console.print(f"  [dim]•[/dim] [bold blue]Hint:[/bold blue] {escape(hint)}")
+        console.print(f"  [dim]•[/dim] [bold blue]Hint:[/bold blue] {escape(str(hint))}")
 
 
 
