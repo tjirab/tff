@@ -18,7 +18,7 @@ dev = [
 docs = [
     { name = "mkdocs", specifier = ">=1.6.0" },
     { name = "mkdocs-material", specifier = ">=9.5.0" },
-    { name = "mkdocstrings", extras = ["python"], specifier = ">=0.28.0" },
+    { name = "mkdocstrings", extras = ["python"], specifier = ">=1.0.6" },
 ]
 
 [[package]]
@@ -1461,7 +1461,7 @@ wheels = [
 
 [[package]]
 name = "tff-core"
-version = "0.19.0"
+version = "0.20.0"
 source = { editable = "packages/tff-core" }
 dependencies = [
     { name = "pydantic" },
