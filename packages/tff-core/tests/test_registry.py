@@ -1092,3 +1092,95 @@ def test_positional_checks_registry() -> None:
     config.rules.no_positional_group_by.enabled = False
     assert check_group.is_enabled(config) is False
 
+
+def test_check_registry_run_checks_propagates_chunk_size_sequential() -> None:
+    from unittest.mock import MagicMock
+
+    reg = CheckRegistry()
+    mock_check = MagicMock(spec=CheckDefinition)
+    mock_check.id = "mock_rule"
+    mock_check.finding_id = "mock_rule"
+    mock_check.scope = "model"
+    mock_check.category = "Test"
+    mock_check.aliases = ()
+    mock_check.finding_check_id = None
+    mock_check.is_enabled.return_value = True
+    mock_check.run.return_value = []
+    reg.register(mock_check)
+
+    models = {
+        "m1": ModelRepresentation(name="m1", path="models/m1.sql", dialect="duckdb"),
+    }
+    cfg = FitnessFunctionsConfig(workers=1)
+    findings, executed = reg.run_checks(
+        models,
+        cfg,
+        checks=["mock_rule"],
+        max_workers=1,
+        chunk_size=7,
+    )
+    assert findings == []
+    assert executed == ["mock_rule"]
+    mock_check.run.assert_called_once_with(
+        models,
+        cfg,
+        max_workers=1,
+        scoped_models=None,
+        chunk_size=7,
+    )
+
+
+def test_check_registry_run_checks_propagates_chunk_size_parallel() -> None:
+    from unittest.mock import MagicMock
+
+    reg = CheckRegistry()
+    mock_c1 = MagicMock(spec=CheckDefinition)
+    mock_c1.id = "mock_rule_1"
+    mock_c1.finding_id = "mock_rule_1"
+    mock_c1.scope = "model"
+    mock_c1.category = "Test"
+    mock_c1.aliases = ()
+    mock_c1.finding_check_id = None
+    mock_c1.is_enabled.return_value = True
+    mock_c1.run.return_value = []
+
+    mock_c2 = MagicMock(spec=CheckDefinition)
+    mock_c2.id = "mock_rule_2"
+    mock_c2.finding_id = "mock_rule_2"
+    mock_c2.scope = "model"
+    mock_c2.category = "Test"
+    mock_c2.aliases = ()
+    mock_c2.finding_check_id = None
+    mock_c2.is_enabled.return_value = True
+    mock_c2.run.return_value = []
+
+    reg.register(mock_c1)
+    reg.register(mock_c2)
+
+    models = {
+        "m1": ModelRepresentation(name="m1", path="models/m1.sql", dialect="duckdb"),
+    }
+    cfg = FitnessFunctionsConfig(workers=2)
+    findings, executed = reg.run_checks(
+        models,
+        cfg,
+        checks=["mock_rule_1", "mock_rule_2"],
+        max_workers=2,
+        chunk_size=9,
+    )
+    assert findings == []
+    mock_c1.run.assert_called_once_with(
+        models,
+        cfg,
+        max_workers=1,
+        scoped_models=None,
+        chunk_size=9,
+    )
+    mock_c2.run.assert_called_once_with(
+        models,
+        cfg,
+        max_workers=1,
+        scoped_models=None,
+        chunk_size=9,
+    )
+

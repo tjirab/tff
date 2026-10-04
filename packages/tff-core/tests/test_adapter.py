@@ -354,8 +354,9 @@ def test_mock_runner_adapter_all_methods(tmp_path: Path):
         assert "m1" in dbt_adapter.load_models(tmp_path, dialect="duckdb")
     cfg = FitnessFunctionsConfig()
     assert dbt_adapter.run_checks(
-        tmp_path, cfg, dialect="duckdb", models={"m1": MagicMock()}, scoped_models={"m1"}
+        tmp_path, cfg, dialect="duckdb", models={"m1": MagicMock()}, scoped_models={"m1"}, chunk_size=5
     ) == ([], 3, ["rules"])
+    assert mock_runner.run_all_checks.call_args.kwargs.get("chunk_size") == 5
     with patch("tff.core.autofix.fix_dbt_metadata", return_value="fixed"):
         assert (
             dbt_adapter.apply_metadata_fix(

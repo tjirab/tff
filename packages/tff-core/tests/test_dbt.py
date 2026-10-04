@@ -642,6 +642,59 @@ def test_dbt_duplicate_ctes_with_macro_ignored(tmp_path: Path):
     assert len(findings) == 0
 
 
+def test_dbt_runner_and_adapter_propagate_chunk_size() -> None:
+    from unittest.mock import patch
+    from tff.core.model import ModelRepresentation
+    from tff.dbt.runner import collect_dbt_rules_findings, run_all_checks
+    from tff.dbt.adapter import DBTAdapter
+
+    models = {
+        "m1": ModelRepresentation(name="m1", path="models/m1.sql", dialect="duckdb"),
+    }
+    cfg = FitnessFunctionsConfig()
+
+    # 1. collect_dbt_rules_findings
+    with patch("tff.core.registry.CheckDefinition.run", return_value=[]) as mock_run:
+        res = collect_dbt_rules_findings(models, config=cfg, chunk_size=8)
+        assert res == []
+        if mock_run.called:
+            assert mock_run.call_args.kwargs.get("chunk_size") == 8
+
+    # 2. run_all_checks
+    with patch("tff.core.registry.CheckRegistry.run_checks", return_value=([], ["rules"])) as mock_registry_run:
+        findings, count, sel = run_all_checks(
+            models=models,
+            config=cfg,
+            chunk_size=12,
+        )
+        assert findings == []
+        assert sel == ["rules"]
+        mock_registry_run.assert_called_once_with(
+            models=models,
+            config=cfg,
+            checks=None,
+            provider="dbt",
+            max_workers=None,
+            scoped_models=None,
+            chunk_size=12,
+        )
+
+    # 3. DBTAdapter.run_checks
+    adapter = DBTAdapter()
+    with patch("tff.dbt.runner.run_all_checks", return_value=([], 1, ["rules"])) as mock_runner_all:
+        findings, count, sel = adapter.run_checks(
+            project_root=Path.cwd(),
+            config=cfg,
+            models=models,
+            chunk_size=15,
+        )
+        assert findings == []
+        assert count == 1
+        assert sel == ["rules"]
+        assert mock_runner_all.call_args.kwargs.get("chunk_size") == 15
+
+
+
 
 
 
