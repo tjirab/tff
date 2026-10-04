@@ -404,5 +404,87 @@ def test_setup_cli_logging():
     assert logging.getLogger().level == logging.ERROR
 
 
+def test_collect_stats_chronological_traversal_edge_cases(tmp_path: Path):
+    health_dir = tmp_path / ".tff_logs" / "health"
+    health_dir.mkdir(parents=True)
+    lint_dir = tmp_path / ".tff_logs" / "lint"
+    lint_dir.mkdir(parents=True)
+
+    import json
+    now = datetime.now()
+
+    # 4 days ago: run 1
+    t_4d = (now - timedelta(days=4)).astimezone()
+    with open(health_dir / "h_4d.log", "w", encoding="utf-8") as f:
+        json.dump({"timestamp": t_4d.isoformat(), "overall_score": 60.0, "models_checked": 5}, f)
+    with open(lint_dir / "l_4d.log", "w", encoding="utf-8") as f:
+        json.dump({"timestamp": t_4d.isoformat(), "errors_count": 5, "warnings_count": 10}, f)
+
+    # 2 days ago: run 1 (morning) and run 2 (evening)
+    t_2d_am = (now - timedelta(days=2, hours=8)).astimezone()
+    t_2d_pm = (now - timedelta(days=2, hours=2)).astimezone()
+    with open(health_dir / "h_2d_am.log", "w", encoding="utf-8") as f:
+        json.dump({"timestamp": t_2d_am.isoformat(), "overall_score": 75.0, "models_checked": 5}, f)
+    with open(health_dir / "h_2d_pm.log", "w", encoding="utf-8") as f:
+        json.dump({"timestamp": t_2d_pm.isoformat(), "overall_score": 85.0, "models_checked": 5}, f)
+    with open(lint_dir / "l_2d_am.log", "w", encoding="utf-8") as f:
+        json.dump({"timestamp": t_2d_am.isoformat(), "errors_count": 3, "warnings_count": 6}, f)
+    with open(lint_dir / "l_2d_pm.log", "w", encoding="utf-8") as f:
+        json.dump({"timestamp": t_2d_pm.isoformat(), "errors_count": 1, "warnings_count": 2}, f)
+
+    # Today: run 1, run 2, run 3
+    t_today_1 = (now - timedelta(hours=3)).astimezone()
+    t_today_2 = (now - timedelta(hours=1)).astimezone()
+    t_today_3 = now.astimezone()
+    with open(health_dir / "h_today_1.log", "w", encoding="utf-8") as f:
+        json.dump({"timestamp": t_today_1.isoformat(), "overall_score": 90.0, "models_checked": 5}, f)
+    with open(health_dir / "h_today_2.log", "w", encoding="utf-8") as f:
+        json.dump({"timestamp": t_today_2.isoformat(), "overall_score": 92.0, "models_checked": 5}, f)
+    with open(health_dir / "h_today_3.log", "w", encoding="utf-8") as f:
+        json.dump({"timestamp": t_today_3.isoformat(), "overall_score": 99.0, "models_checked": 5}, f)
+
+    with open(lint_dir / "l_today_1.log", "w", encoding="utf-8") as f:
+        json.dump({"timestamp": t_today_1.isoformat(), "errors_count": 1, "warnings_count": 1}, f)
+    with open(lint_dir / "l_today_2.log", "w", encoding="utf-8") as f:
+        json.dump({"timestamp": t_today_2.isoformat(), "errors_count": 0, "warnings_count": 1}, f)
+    with open(lint_dir / "l_today_3.log", "w", encoding="utf-8") as f:
+        json.dump({"timestamp": t_today_3.isoformat(), "errors_count": 0, "warnings_count": 0}, f)
+
+    # Request 6 days of history: days -5, -4, -3, -2, -1, 0
+    stats = collect_stats(tmp_path, days=6)
+    assert len(stats) == 6
+
+    # Day -5 (before any logs exist)
+    assert stats[0]["health_score"] is None
+    assert stats[0]["errors_count"] is None
+    assert stats[0]["warnings_count"] is None
+
+    # Day -4 (4d ago log)
+    assert stats[1]["health_score"] == 60.0
+    assert stats[1]["errors_count"] == 5
+    assert stats[1]["warnings_count"] == 10
+
+    # Day -3 (carried forward from 4d ago)
+    assert stats[2]["health_score"] == 60.0
+    assert stats[2]["errors_count"] == 5
+    assert stats[2]["warnings_count"] == 10
+
+    # Day -2 (latest from 2d ago: evening run)
+    assert stats[3]["health_score"] == 85.0
+    assert stats[3]["errors_count"] == 1
+    assert stats[3]["warnings_count"] == 2
+
+    # Day -1 (carried forward from 2d ago evening)
+    assert stats[4]["health_score"] == 85.0
+    assert stats[4]["errors_count"] == 1
+    assert stats[4]["warnings_count"] == 2
+
+    # Day 0 / today (latest of today: run 3)
+    assert stats[5]["health_score"] == 99.0
+    assert stats[5]["errors_count"] == 0
+    assert stats[5]["warnings_count"] == 0
+
+
+
 
 
