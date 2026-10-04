@@ -148,6 +148,32 @@ def test_render_cli_error_non_dict_details():
     assert "✖ Error: Error message" in buf.getvalue()
 
 
+def test_render_cli_error_non_string_hint():
+    """Non-string hints (e.g. int, Path) should be safely converted to string and rendered without TypeError."""
+    class CustomErrorWithIntHint(Exception):
+        hint = 404
+
+    buf1 = io.StringIO()
+    console1 = Console(file=buf1, force_terminal=False, no_color=True)
+    render_cli_error(CustomErrorWithIntHint("Resource not found"), console=console1)
+    assert "• Hint: 404" in buf1.getvalue()
+
+    class CustomErrorWithPathHint(Exception):
+        hint = Path("/path/to/[target_dir]/config.yml")
+
+    buf2 = io.StringIO()
+    console2 = Console(file=buf2, force_terminal=False, no_color=True)
+    render_cli_error(CustomErrorWithPathHint("Bad path"), console=console2)
+    assert "• Hint: /path/to/[target_dir]/config.yml" in buf2.getvalue()
+
+    err = TffError("Error with int hint", hint=12345)  # type: ignore[arg-type]
+    buf3 = io.StringIO()
+    console3 = Console(file=buf3, force_terminal=False, no_color=True)
+    render_cli_error(err, console=console3)
+    assert "• Hint: 12345" in buf3.getvalue()
+
+
+
 def test_is_debug_requested_variants(monkeypatch):
     """_is_debug_requested handles --debug in argv, sys.argv, and TFF_DEBUG."""
     # 1. Neither
