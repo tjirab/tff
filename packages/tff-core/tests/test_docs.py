@@ -328,3 +328,24 @@ def test_generate_docs_dashboard_multi_project(tmp_path: Path):
     assert res == r1 / "tff_report.html"
 
 
+def test_generate_docs_dashboard_chunk_size(tmp_path: Path):
+    from unittest.mock import patch
+    from tff.dbt.adapter import DBTAdapter
+
+    r = tmp_path / "repo"
+    r.mkdir()
+    (r / "dbt_project.yml").touch()
+    (r / "fitness_functions.yaml").touch()
+    (r / "target").mkdir()
+    (r / "target" / "manifest.json").write_text(
+        '{"metadata": {"adapter_type": "duckdb"}, "nodes": {}, "sources": {}}',
+        encoding="utf-8",
+    )
+
+    with patch.object(DBTAdapter, "run_checks", autospec=True, side_effect=DBTAdapter.run_checks) as spy_run_checks:
+        res = generate_docs_dashboard(r, chunk_size=8, no_log=True)
+        assert res.exists()
+        assert spy_run_checks.call_args.kwargs.get("chunk_size") == 8
+
+
+

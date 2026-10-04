@@ -422,6 +422,41 @@ def test_run_parallel_model_rule_env_var_chunk_size(monkeypatch: pytest.MonkeyPa
     assert len(findings_fallback) == 13
 
 
+def test_run_parallel_model_rule_config_chunk_size():
+    models = [
+        ModelRepresentation(
+            name=f"foo_{i}" if i % 2 == 0 else f"bar_{i}",
+            path=f"models/{i}.sql",
+            dialect="duckdb",
+        )
+        for i in range(25)
+    ]
+    # Valid config.chunk_size
+    cfg = FitnessFunctionsConfig(chunk_size=6)
+    findings = run_parallel_model_rule(
+        rule_cls=DummyBanFooRule,
+        models=models,
+        config=cfg,
+        severity="error",
+        check_name="dummy_ban_foo",
+        max_workers=2,
+    )
+    assert len(findings) == 13
+
+    # Invalid config.chunk_size (mocked/bypassed) handled gracefully
+    cfg_invalid = FitnessFunctionsConfig()
+    cfg_invalid.__dict__["chunk_size"] = "invalid"
+    findings_invalid = run_parallel_model_rule(
+        rule_cls=DummyBanFooRule,
+        models=models,
+        config=cfg_invalid,
+        severity="error",
+        check_name="dummy_ban_foo",
+        max_workers=2,
+    )
+    assert len(findings_invalid) == 13
+
+
 def test_run_parallel_model_rule_large_model_volume():
     """Verify high-volume model repository (>1000 models) chunking and correctness."""
     total_models = 1200

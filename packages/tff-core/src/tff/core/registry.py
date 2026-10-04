@@ -479,6 +479,7 @@ class CheckRegistry:
         provider: str = "dbt",
         max_workers: int | None = None,
         scoped_models: set[str] | None = None,
+        chunk_size: int | None = None,
     ) -> tuple[list[LintFinding], list[str]]:
         from tff.core.parallel import get_max_workers
 
@@ -497,7 +498,13 @@ class CheckRegistry:
             for check_def in resolved:
                 logger.debug("Executing check '%s' (scope=%s, category=%s)", check_def.id, check_def.scope, check_def.category)
                 try:
-                    res = check_def.run(models, config, max_workers=workers, scoped_models=scoped_models)
+                    res = check_def.run(
+                        models,
+                        config,
+                        max_workers=workers,
+                        scoped_models=scoped_models,
+                        chunk_size=chunk_size,
+                    )
                     logger.debug("Check '%s' produced %d finding(s)", check_def.id, len(res))
                     findings.extend(res)
                 except Exception as exc:
@@ -522,7 +529,13 @@ class CheckRegistry:
                 def _run_single(c: CheckDefinition) -> list[LintFinding]:
                     logger.debug("Executing check '%s' (scope=%s, category=%s)", c.id, c.scope, c.category)
                     try:
-                        res = c.run(models, config, max_workers=1, scoped_models=scoped_models)
+                        res = c.run(
+                            models,
+                            config,
+                            max_workers=1,
+                            scoped_models=scoped_models,
+                            chunk_size=chunk_size,
+                        )
                         logger.debug("Check '%s' produced %d finding(s)", c.id, len(res))
                         return res
                     except Exception as exc:

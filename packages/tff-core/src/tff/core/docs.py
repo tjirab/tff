@@ -23,6 +23,7 @@ def generate_docs_dashboard(
     manifest_path: str | Path | None = None,
     no_log: bool = False,
     workers: int | None = None,
+    chunk_size: int | None = None,
 ) -> Path:
     """Run checks, compile, and output a standalone interactive HTML dashboard."""
     from tff.core.adapter import normalize_project_roots
@@ -34,6 +35,8 @@ def generate_docs_dashboard(
     config = load_fitness_config(roots, config_path=config_path)
     if workers is not None:
         config.workers = workers
+    if chunk_size is not None:
+        config.chunk_size = chunk_size
 
     # 2. Get adapter
     if provider == "auto":
@@ -53,13 +56,23 @@ def generate_docs_dashboard(
     )
 
     # 4. Run all checks reusing preloaded models
-    findings, models_checked, executed_checks = adapter.run_checks(
-        project_root=roots,
-        config=config,
-        dialect=dialect,
-        manifest_path=manifest_path,
-        models=models,
-    )
+    run_kwargs: dict[str, Any] = {
+        "project_root": roots,
+        "config": config,
+        "dialect": dialect,
+        "manifest_path": manifest_path,
+        "models": models,
+    }
+    if chunk_size is not None:
+        import inspect
+
+        sig = inspect.signature(adapter.run_checks)
+        if "chunk_size" in sig.parameters or any(
+            p.kind == inspect.Parameter.VAR_KEYWORD for p in sig.parameters.values()
+        ):
+            run_kwargs["chunk_size"] = chunk_size
+
+    findings, models_checked, executed_checks = adapter.run_checks(**run_kwargs)
 
     # 5. Calculate scores and save health log
     scores = calculate_health_scores(findings, models_checked, config, provider)

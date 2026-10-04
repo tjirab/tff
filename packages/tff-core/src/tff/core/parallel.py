@@ -364,12 +364,19 @@ def run_parallel_model_rule(
     # Parallelize model rule execution using thread pool
     pool_size = min(workers, len(eligible_models))
     if chunk_size is None or chunk_size <= 0:
-        env_chunk = os.environ.get("TFF_CHUNK_SIZE")
-        if env_chunk:
+        cfg_chunk = getattr(config, "chunk_size", None) if config is not None else None
+        if cfg_chunk is not None:
             try:
-                chunk_size = max(1, int(env_chunk.strip()))
-            except ValueError:
+                chunk_size = max(1, int(cfg_chunk))
+            except (ValueError, TypeError):
                 chunk_size = None
+        else:
+            env_chunk = os.environ.get("TFF_CHUNK_SIZE")
+            if env_chunk:
+                try:
+                    chunk_size = max(1, int(env_chunk.strip()))
+                except ValueError:
+                    chunk_size = None
 
     if chunk_size is None or chunk_size <= 0:
         chunk_size = max(1, min(100, len(eligible_models) // (pool_size * 4)))

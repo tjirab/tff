@@ -956,3 +956,38 @@ rules:
         load_fitness_config(tmp_path)
 
 
+def test_fitness_functions_config_chunk_size(tmp_path: Path) -> None:
+    # 1. Default is None
+    cfg = FitnessFunctionsConfig()
+    assert cfg.chunk_size is None
+
+    # 2. Valid positive integer
+    cfg = FitnessFunctionsConfig(chunk_size=10)
+    assert cfg.chunk_size == 10
+
+    # 3. String numeric converts to int
+    cfg = FitnessFunctionsConfig.model_validate({"chunk_size": "25"})
+    assert cfg.chunk_size == 25
+
+    # 4. None explicitly set
+    cfg = FitnessFunctionsConfig(chunk_size=None)
+    assert cfg.chunk_size is None
+
+    # 5. Invalid values (< 1) raise ValidationError
+    with pytest.raises(ValidationError, match="chunk_size must be at least 1"):
+        FitnessFunctionsConfig(chunk_size=0)
+
+    with pytest.raises(ValidationError, match="chunk_size must be at least 1"):
+        FitnessFunctionsConfig(chunk_size=-5)
+
+    with pytest.raises(ValidationError):
+        FitnessFunctionsConfig.model_validate({"chunk_size": "invalid"})
+
+    # 6. Load from YAML
+    yaml_file = tmp_path / "fitness_functions.yaml"
+    yaml_file.write_text("chunk_size: 15\n", encoding="utf-8")
+    loaded = load_fitness_config(tmp_path)
+    assert loaded.chunk_size == 15
+
+
+

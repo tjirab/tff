@@ -737,6 +737,7 @@ class FitnessFunctionsConfig(BaseModel):
     exclusions: list[CustomExclusionRule] | None = None
     allowed_exceptions: list[AllowedExceptionRule] | None = None
     workers: int | None = None
+    chunk_size: int | None = None
     cache_ast: bool = True
     cache_dir: str = ".tff_cache"
 
@@ -760,6 +761,16 @@ class FitnessFunctionsConfig(BaseModel):
         val = int(v)
         if val < 1:
             raise ValueError(f"workers must be at least 1, got {val}")
+        return val
+
+    @field_validator("chunk_size", mode="before")
+    @classmethod
+    def _validate_chunk_size(cls, v: Any) -> int | None:
+        if v is None:
+            return None
+        val = int(v)
+        if val < 1:
+            raise ValueError(f"chunk_size must be at least 1, got {val}")
         return val
 
     @field_validator("plugins", mode="before")

@@ -2173,6 +2173,68 @@ def test_render_rules_table_direct_call():
     _render_rules_table([c])
 
 
+def test_cli_lint_and_health_chunk_size_flag(tmp_path: Path):
+    from unittest.mock import patch, MagicMock
+    from tff.core.config import FitnessFunctionsConfig
+
+    mock_adapter = MagicMock()
+    mock_adapter.run_checks.return_value = ([], 0, [])
+
+    with patch("tff.core.cli._get_adapter", return_value=mock_adapter), \
+         patch("tff.core.cli.load_fitness_config") as mock_load_cfg:
+        cfg = FitnessFunctionsConfig()
+        mock_load_cfg.return_value = cfg
+
+        # 1. lint with --chunk-size
+        exit_code = main([
+            "lint",
+            "--project", str(tmp_path),
+            "--provider", "dbt",
+            "--chunk-size", "10",
+        ])
+        assert exit_code == 0
+        assert cfg.chunk_size == 10
+        assert mock_adapter.run_checks.call_args.kwargs.get("chunk_size") == 10
+
+        # 2. health with --chunk-size
+        mock_adapter.run_checks.reset_mock()
+        exit_code_health = main([
+            "health",
+            "--project", str(tmp_path),
+            "--provider", "dbt",
+            "--chunk-size", "25",
+        ])
+        assert exit_code_health == 0
+        assert cfg.chunk_size == 25
+        assert mock_adapter.run_checks.call_args.kwargs.get("chunk_size") == 25
+
+
+def test_cli_docs_and_action_chunk_size_flag(tmp_path: Path):
+    from unittest.mock import patch
+
+    with patch("tff.core.docs.generate_docs_dashboard", return_value=Path("out.html")) as mock_docs:
+        exit_code = main([
+            "docs",
+            "--project", str(tmp_path),
+            "--provider", "dbt",
+            "--chunk-size", "15",
+        ])
+        assert exit_code == 0
+        assert mock_docs.call_args.kwargs.get("chunk_size") == 15
+
+    with patch("tff.core.action.execute_action", return_value=0) as mock_action:
+        exit_code = main([
+            "action",
+            "--project", str(tmp_path),
+            "--provider", "dbt",
+            "--chunk-size", "20",
+        ])
+        assert exit_code == 0
+        args_passed = mock_action.call_args[0][0]
+        assert args_passed.chunk_size == 20
+
+
+
 
 
 

@@ -147,6 +147,7 @@ def run_all_checks(
     checks: list[str] | None = None,
     models: dict[str, ModelRepresentation] | None = None,
     scoped_models: set[str] | None = None,
+    chunk_size: int | None = None,
 ) -> tuple[list[LintFinding], int, list[str]]:
     roots = normalize_project_roots(project_root or Path.cwd())
     primary_root = roots[0]
@@ -242,7 +243,14 @@ def run_all_checks(
                 for chk in checks:
                     c_def = registry.get(chk)
                     if c_def is not None and c_def.scope == "model":
-                        findings.extend(c_def.run(mapped_models, config, scoped_models=scoped_models))
+                        findings.extend(
+                            c_def.run(
+                                mapped_models,
+                                config,
+                                scoped_models=scoped_models,
+                                chunk_size=chunk_size,
+                            )
+                        )
 
         # Run DAG checks
         for chk in checks:

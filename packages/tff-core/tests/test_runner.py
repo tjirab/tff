@@ -165,3 +165,52 @@ def test_collect_sqlmesh_findings_coordinates():
     assert findings[0].end_line == 10
     assert findings[0].end_col == 15
 
+
+def test_sqlmesh_runner_and_adapter_propagate_chunk_size() -> None:
+    from unittest.mock import patch, MagicMock
+    from tff.core.config import FitnessFunctionsConfig
+    from tff.core.model import ModelRepresentation
+    from tff.core.registry import CheckDefinition
+    from tff.sqlmesh.adapter import SQLMeshAdapter
+
+    models = {
+        "m1": ModelRepresentation(name="m1", path="models/m1.sql", dialect="duckdb"),
+    }
+    cfg = FitnessFunctionsConfig()
+
+    # 1. run_all_checks passes chunk_size to c_def.run
+    mock_cdef = MagicMock(spec=CheckDefinition)
+    mock_cdef.id = "ban_select_star"
+    mock_cdef.scope = "model"
+    mock_cdef.run.return_value = []
+
+    with patch("tff.core.registry.CheckRegistry.get", return_value=mock_cdef):
+        findings, count, sel = run_all_checks(
+            models=models,
+            config=cfg,
+            checks=["ban_select_star"],
+            chunk_size=11,
+        )
+        assert findings == []
+        mock_cdef.run.assert_called_once_with(
+            models,
+            cfg,
+            scoped_models=None,
+            chunk_size=11,
+        )
+
+    # 2. SQLMeshAdapter.run_checks passes chunk_size to run_all_checks
+    adapter = SQLMeshAdapter()
+    with patch("tff.sqlmesh.runner.run_all_checks", return_value=([], 1, ["rules"])) as mock_run_all:
+        findings, count, sel = adapter.run_checks(
+            project_root=Path.cwd(),
+            config=cfg,
+            models=models,
+            chunk_size=13,
+        )
+        assert findings == []
+        assert count == 1
+        assert sel == ["rules"]
+        assert mock_run_all.call_args.kwargs.get("chunk_size") == 13
+
+

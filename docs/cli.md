@@ -64,7 +64,8 @@ tff lint [options]
 | `--json` | Flag | `false` | Shorthand for `--format json`. |
 | `--github-annotations` | Flag | (auto if CI) | Emit GitHub Actions workflow commands (`::error` / `::warning`) to stderr. |
 | `--junit-xml PATH` | File Path | (none) | Write JUnit XML test report for CI results tabs (GitLab, Azure DevOps, Bitbucket). |
-| `--workers NUM` | Integer | (auto / CPU count) | Number of worker processes for parallel model loading, AST parsing, and CTE analysis (or set `TFF_WORKERS`). Task chunk size for rule evaluation can be tuned via `TFF_CHUNK_SIZE`. |
+| `--workers NUM` | Integer | (auto / CPU count) | Number of worker processes for parallel model loading, AST parsing, and CTE analysis (or set `TFF_WORKERS`). Task chunk size for rule evaluation can be tuned via `--chunk-size` or `TFF_CHUNK_SIZE`. |
+| `--chunk-size NUM` | Integer | (dynamic / `TFF_CHUNK_SIZE`) | Chunk size of models per thread worker during parallel rule execution. |
 | `--staged` | Flag | `false` | Only evaluate models/files currently staged in git. |
 | `--since REF`, `--diff REF` | Git Ref String | (none) | Only evaluate models/files modified relative to git ref (e.g. `origin/main`, `HEAD~1`). |
 | `--no-cache` | Flag | `false` | Disable disk-based AST caching in `.tff_cache/`. |
@@ -120,6 +121,7 @@ tff health [options]
 | `--dialect DIALECT` | String | (auto-inferred) | SQL dialect of models. |
 | `--manifest PATH` | File Path | (auto-discovered) | Path to precompiled manifest. |
 | `--workers NUM` | Integer | (auto / CPU count) | Number of worker processes for parallel model loading and AST parsing. |
+| `--chunk-size NUM` | Integer | (dynamic / `TFF_CHUNK_SIZE`) | Chunk size of models per thread worker during parallel rule execution. |
 | `--staged` | Flag | `false` | Only evaluate models/files currently staged in git. |
 | `--since REF`, `--diff REF` | Git Ref String | (none) | Only evaluate models/files modified relative to git ref (e.g. `origin/main`, `HEAD~1`). |
 | `--no-cache` | Flag | `false` | Disable disk-based AST caching in `.tff_cache/`. |
@@ -177,6 +179,7 @@ tff action [options]
 | `--pr-number NUM` | Integer | (auto-detected) | Pull request number (auto-inferred from `$GITHUB_EVENT_PATH`). |
 | `--repo OWNER/REPO` | String | (auto-detected) | GitHub repository full name (auto-inferred from `$GITHUB_REPOSITORY`). |
 | `--workers NUM` | Integer | (auto / CPU count) | Number of worker processes for parallel model loading and AST parsing. |
+| `--chunk-size NUM` | Integer | (dynamic / `TFF_CHUNK_SIZE`) | Chunk size of models per thread worker during parallel rule execution. |
 | `--json` | Flag | `false` | Output final results as JSON to stdout. |
 | `--debug` | Flag | `false` | Enable verbose debug logging output to stderr. |
 
@@ -211,6 +214,7 @@ tff docs [options]
 | `--dialect DIALECT` | String | (auto-inferred) | SQL dialect of models. |
 | `--manifest PATH` | File Path | (auto-discovered) | Path to precompiled manifest. |
 | `--workers NUM` | Integer | (auto / CPU count) | Number of worker processes for parallel model loading and AST parsing. |
+| `--chunk-size NUM` | Integer | (dynamic / `TFF_CHUNK_SIZE`) | Chunk size of models per thread worker during parallel rule execution. |
 | `--no-log` | Flag | `false` | Disable writing execution logs. |
 | `--debug` | Flag | `false` | Enable verbose debug logging output to stderr. |
 
