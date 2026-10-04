@@ -162,6 +162,10 @@ def test_dbt_adapter(tmp_path: Path):
         assert "m" in models
         mock_load.assert_called_once_with(tmp_path, dialect="duckdb")
 
+        # Test passing manifest_path
+        adapter.load_models(tmp_path, dialect="duckdb", manifest_path="target/custom.json")
+        mock_load.assert_called_with(tmp_path, dialect="duckdb", manifest_path="target/custom.json")
+
     cfg = FitnessFunctionsConfig()
     with patch(
         "tff.dbt.runner.run_all_checks", return_value=([], 1, ["rules"])
@@ -697,5 +701,69 @@ def test_sqlmesh_runner_run_all_checks_multiple_roots(tmp_path: Path):
         run_all_checks(project_root=[r1, r2], config=cfg, checks=["sqlmesh"])
         _, kwargs = mock_context_cls.call_args
         assert kwargs["paths"] == [str(r1.resolve()), str(r2.resolve())]
+
+
+def test_dbt_adapter_multiple_roots(tmp_path: Path):
+    from tff.dbt.adapter import DBTAdapter
+
+    adapter = DBTAdapter()
+    r1 = tmp_path / "repo1"
+    r2 = tmp_path / "repo2"
+    r1.mkdir()
+    r2.mkdir()
+    (r1 / "dbt_project.yml").touch()
+    (r2 / "dbt_project.yml").touch()
+
+    # 1. Diagnostics with multiple roots
+    diag = adapter.get_diagnostic_files([r1, r2])
+    labels = [label for label, _ in diag]
+    assert "[repo1] dbt_project.yml" in labels
+    assert "[repo1] manifest.json" in labels
+    assert "[repo2] dbt_project.yml" in labels
+    assert "[repo2] manifest.json" in labels
+
+    # 2. load_models passes multiple roots to load_dbt_models
+    with patch("tff.dbt.manifest.load_dbt_models", return_value={"m": MagicMock()}) as mock_load:
+        models = adapter.load_models([r1, r2], dialect="duckdb")
+        assert "m" in models
+        mock_load.assert_called_once_with([r1.resolve(), r2.resolve()], dialect="duckdb")
+
+    # 3. run_checks forwards multiple roots to run_all_checks
+    cfg = MagicMock()
+    with patch("tff.dbt.runner.run_all_checks", return_value=([], 2, ["rules"])) as mock_run:
+        findings, count, sel = adapter.run_checks([r1, r2], cfg)
+        assert count == 2
+        mock_run.assert_called_once_with(
+            project_root=[r1.resolve(), r2.resolve()],
+            config=cfg,
+            checks=None,
+            dialect=None,
+            models=None,
+        )
+
+
+def test_dbt_runner_run_all_checks_multiple_roots(tmp_path: Path):
+    from tff.dbt.runner import run_all_checks
+
+    r1 = tmp_path / "repo1"
+    r2 = tmp_path / "repo2"
+    r1.mkdir()
+    r2.mkdir()
+
+    cfg = MagicMock()
+    cfg.workers = 1
+
+    with (
+        patch("tff.dbt.runner.load_dbt_models", return_value={}) as mock_load,
+        patch("tff.core.registry.registry.run_checks", return_value=([], ["rules"])),
+    ):
+        findings, count, sel = run_all_checks(project_root=[r1, r2], config=cfg)
+        assert count == 0
+        mock_load.assert_called_once_with(
+            [r1.resolve(), r2.resolve()],
+            dialect=None,
+            max_workers=1,
+            config=cfg,
+        )
 
 

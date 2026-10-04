@@ -182,7 +182,8 @@ class _MockRunnerAdapter(PipelineAdapter):
         if self._provider == "dbt":
             from tff.dbt.manifest import load_dbt_models
 
-            return load_dbt_models(roots[0], dialect=dialect)
+            root_arg = roots[0] if len(roots) == 1 else roots
+            return load_dbt_models(root_arg, dialect=dialect)
         elif self._provider == "dataform":
             from tff.dataform.manifest import load_dataform_models
 
