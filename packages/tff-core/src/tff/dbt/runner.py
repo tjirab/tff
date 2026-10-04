@@ -5,6 +5,9 @@ from __future__ import annotations
 import logging
 from pathlib import Path
 
+from typing import Sequence
+
+from tff.core.adapter import normalize_project_roots
 from tff.core.config import FitnessFunctionsConfig, load_fitness_config
 from tff.core.model import ModelRepresentation
 from tff.core.registry import registry
@@ -36,7 +39,7 @@ def _check_enabled(config: FitnessFunctionsConfig, check_name: str) -> bool:
 
 
 def run_all_checks(
-    project_root: Path | None = None,
+    project_root: Path | Sequence[Path] | None = None,
     config: FitnessFunctionsConfig | None = None,
     checks: list[str] | None = None,
     dialect: str | None = None,
@@ -44,16 +47,17 @@ def run_all_checks(
     workers: int | None = None,
     scoped_models: set[str] | None = None,
 ) -> tuple[list[LintFinding], int, list[str]]:
-    project_root = project_root or Path.cwd()
+    roots = normalize_project_roots(project_root) if project_root is not None else [Path.cwd()]
+    primary_root = roots[0]
     if config is None:
-        config = load_fitness_config(project_root)
+        config = load_fitness_config(primary_root)
 
     resolved_workers = workers if workers is not None else getattr(config, "workers", None)
 
     # Parse and load manifest.json if models not already provided
     if models is None:
         models = load_dbt_models(
-            project_root,
+            roots if len(roots) > 1 else primary_root,
             dialect=dialect,
             max_workers=resolved_workers,
             config=config,

@@ -60,6 +60,16 @@ tff infers the layer of a model from its folder path relative to the `models/` d
 
 This layer and domain structure is evaluated against your `layers.order` configuration and the custom layer isolation boundaries.
 
+### 5. Multi-Project & Cross-Project Manifest Merging (dbt Mesh)
+In modular dbt architectures (such as dbt Mesh or split monorepos/multi-repos), multiple projects can be linted and analyzed simultaneously by passing repeatable `-p` / `--project` flags:
+```bash
+tff lint -p projects/core -p projects/marketing
+```
+* **Cohesive Model Graph**: Merges `nodes`, `sources`, `exposures`, and `metrics` from all manifests.
+* **Unified Cross-Project DAG**: Unifies `parent_map` and `child_map` across projects so cross-project `ref('upstream_project', 'model_name')` dependencies, view nesting depth, and layer integrity are evaluated end-to-end across project boundaries.
+* **Automatic `dbt parse` Fallback**: If `target/manifest.json` is missing in any project root, `tff` automatically falls back to generating the manifest on the fly via `dbt parse`.
+* **Namespacing & Conflict Resolution**: Automatically distinguishes canonical project definitions from external stubs and namespaces colliding model IDs when multiple projects share identical package names.
+
 ---
 
 ## CLI Options
@@ -67,10 +77,10 @@ This layer and domain structure is evaluated against your `layers.order` configu
 ### `tff lint`
 
 ```bash
-tff lint [--project PATH] [--config PATH] [--provider PROVIDER] [--manifest PATH] [--checks CHECK,...] [--fail-level error|warning] [--group-by connascence|model] [--dialect DIALECT]
+tff lint [--project PATH ...] [--config PATH] [--provider PROVIDER] [--manifest PATH] [--checks CHECK,...] [--fail-level error|warning] [--group-by connascence|model] [--dialect DIALECT]
 ```
 
-* **`--project`**: Path to your project root (default: current directory).
+* **`--project`** / **`-p`**: Path to your project root (default: current directory). Can be specified multiple times for multi-repo or multi-project dbt setups (e.g. `tff lint -p path/to/upstream -p path/to/downstream`).
 * **`--config`**: Path to `fitness_functions.yaml` (default: `fitness_functions.yaml`).
 * **`--provider`**: The pipeline engine provider: `auto`, `dbt`, `sqlmesh`, or `dataform` (default: `auto`).
 * **`--manifest`**: Path to precompiled dbt `manifest.json` (default: auto-detected under `target/manifest.json`).

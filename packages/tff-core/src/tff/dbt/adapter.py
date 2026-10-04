@@ -36,7 +36,11 @@ class DBTAdapter(PipelineAdapter):
         from tff.dbt.manifest import load_dbt_models
 
         roots = normalize_project_roots(project_root)
-        return load_dbt_models(roots[0], dialect=dialect)
+        root_arg = roots[0] if len(roots) == 1 else roots
+        kwargs: dict[str, Any] = {"dialect": dialect}
+        if manifest_path is not None:
+            kwargs["manifest_path"] = manifest_path
+        return load_dbt_models(root_arg, **kwargs)
 
     def run_checks(
         self,
@@ -51,8 +55,9 @@ class DBTAdapter(PipelineAdapter):
         from tff.dbt.runner import run_all_checks
 
         roots = normalize_project_roots(project_root)
+        root_arg = roots[0] if len(roots) == 1 else roots
         kwargs: dict[str, Any] = {
-            "project_root": roots[0],
+            "project_root": root_arg,
             "config": config,
             "checks": checks,
             "dialect": dialect,
