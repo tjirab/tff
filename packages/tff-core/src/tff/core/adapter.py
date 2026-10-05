@@ -10,6 +10,8 @@ from typing import TYPE_CHECKING, Callable, Sequence
 
 import yaml
 
+from tff.core.exceptions import TffDependencyError, TffProviderError
+
 
 def normalize_project_roots(project_root: Path | Sequence[Path | str] | str) -> list[Path]:
     """Normalize a single Path or a sequence of paths into a list of unique, resolved Path objects."""
@@ -172,25 +174,34 @@ def get_adapter(provider: str) -> PipelineAdapter:
             try:
                 mod = importlib.import_module(module_name)
             except ImportError as e:
-                raise ImportError(
-                    "dbt project detected, but tff is not installed with dbt support.\n"
-                    'Please install it using: pip install "tff-core[dbt]" or uv add "tff-core[dbt]"'
+                raise TffDependencyError(
+                    "dbt project detected, but tff is not installed with dbt support.",
+                    hint='Please install it using: pip install "tff-core[dbt]" or uv add "tff-core[dbt]"',
+                    provider="dbt",
+                    package_hint="tff-core[dbt]",
+                    original_error=e,
                 ) from e
         elif provider == "sqlmesh":
             try:
                 mod = importlib.import_module(module_name)
             except ImportError as e:
-                raise ImportError(
-                    "SQLMesh project detected, but tff is not installed with sqlmesh support.\n"
-                    'Please install it using: pip install "tff-core[sqlmesh]" or uv add "tff-core[sqlmesh]"'
+                raise TffDependencyError(
+                    "SQLMesh project detected, but tff is not installed with sqlmesh support.",
+                    hint='Please install it using: pip install "tff-core[sqlmesh]" or uv add "tff-core[sqlmesh]"',
+                    provider="sqlmesh",
+                    package_hint="tff-core[sqlmesh]",
+                    original_error=e,
                 ) from e
         elif provider == "dataform":
             try:
                 mod = importlib.import_module(module_name)
             except ImportError as e:
-                raise ImportError(
-                    "Dataform project detected, but tff is not installed with dataform support.\n"
-                    'Please install it using: pip install "tff-core[dataform]" or uv add "tff-core[dataform]"'
+                raise TffDependencyError(
+                    "Dataform project detected, but tff is not installed with dataform support.",
+                    hint='Please install it using: pip install "tff-core[dataform]" or uv add "tff-core[dataform]"',
+                    provider="dataform",
+                    package_hint="tff-core[dataform]",
+                    original_error=e,
                 ) from e
         else:
             mod = importlib.import_module(module_name)
@@ -203,7 +214,11 @@ def get_adapter(provider: str) -> PipelineAdapter:
     if ep_adapter is not None:
         return ep_adapter
 
-    raise ValueError(f"Unknown provider: {provider}")
+    raise TffProviderError(
+        f"Unknown provider: {provider}",
+        hint="Supported providers: dbt, sqlmesh, dataform",
+        provider=provider,
+    )
 
 
 SQLMESH_YAML_KEYS: set[str] = {
@@ -414,15 +429,17 @@ def _detect_provider_single(
         model_prov = _detect_provider_from_models(project_root)
         if model_prov in ("dbt", "sqlmesh"):
             return model_prov
-        raise ValueError(
-            f"Both dbt and SQLMesh configuration files were detected in the project root ({project_root}).\n"
-            "Please specify the provider explicitly using the --provider option (e.g. '--provider dbt' or '--provider sqlmesh')."
+        raise TffProviderError(
+            f"Both dbt and SQLMesh configuration files were detected in the project root ({project_root}).",
+            hint="Please specify the provider explicitly using the --provider option (e.g. '--provider dbt' or '--provider sqlmesh').",
+            project_root=project_root,
         )
     if len(detected) > 1:
         names = ", ".join(detected)
-        raise ValueError(
-            f"Multiple pipeline configuration files were detected in the project root {project_root} ({names}).\n"
-            f"Please specify the provider explicitly using the --provider option (e.g. '--provider dbt', '--provider sqlmesh', or '--provider dataform')."
+        raise TffProviderError(
+            f"Multiple pipeline configuration files were detected in the project root {project_root} ({names}).",
+            hint="Please specify the provider explicitly using the --provider option (e.g. '--provider dbt', '--provider sqlmesh', or '--provider dataform').",
+            project_root=project_root,
         )
     if len(detected) == 1:
         return detected[0]
@@ -432,9 +449,10 @@ def _detect_provider_single(
     if model_prov is not None:
         return model_prov
 
-    raise ValueError(
-        f"Could not detect project type for {project_root} (neither dbt_project.yml, SQLMesh config, nor Dataform config was found).\n"
-        "Please run this command from your project root, or specify the provider explicitly using the --provider option."
+    raise TffProviderError(
+        f"Could not detect project type for {project_root} (neither dbt_project.yml, SQLMesh config, nor Dataform config was found).",
+        hint="Please run this command from your project root, or specify the provider explicitly using the --provider option.",
+        project_root=project_root,
     )
 
 
@@ -450,8 +468,9 @@ def detect_provider(
     unique_providers = list(dict.fromkeys(providers))
     if len(unique_providers) > 1:
         names = ", ".join(unique_providers)
-        raise ValueError(
-            f"Conflicting pipeline engine providers detected across project roots ({names}).\n"
-            "Please ensure all project roots use the same pipeline engine or specify --provider explicitly."
+        raise TffProviderError(
+            f"Conflicting pipeline engine providers detected across project roots ({names}).",
+            hint="Please ensure all project roots use the same pipeline engine or specify --provider explicitly.",
+            project_root=roots,
         )
     return unique_providers[0]

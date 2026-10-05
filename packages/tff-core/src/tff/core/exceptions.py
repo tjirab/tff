@@ -5,7 +5,7 @@ from __future__ import annotations
 from contextlib import contextmanager
 import errno
 from pathlib import Path
-from typing import Any, Generator
+from typing import Any, Generator, Sequence
 
 
 class TffError(Exception):
@@ -175,6 +175,89 @@ class TffGitError(TffError):
     pass
 
 
+class TffProviderError(TffError, ValueError):
+    """Exception raised for provider auto-detection, resolution, and configuration errors.
+
+    Attributes:
+        provider: Provider identifier if known.
+        project_root: Project root directory or list of project roots.
+    """
+
+    def __init__(
+        self,
+        message: str,
+        hint: str | None = None,
+        *,
+        provider: str | None = None,
+        project_root: str | Path | Sequence[Path] | None = None,
+        details: dict[str, Any] | None = None,
+        original_error: Exception | None = None,
+    ) -> None:
+        det = details.copy() if details is not None else {}
+        if provider is not None:
+            det.setdefault("provider", provider)
+        if project_root is not None:
+            if isinstance(project_root, (list, tuple)):
+                det.setdefault("project_root", ", ".join(str(p) for p in project_root))
+            else:
+                det.setdefault("project_root", str(project_root))
+        super().__init__(
+            message,
+            hint=hint,
+            details=det,
+            original_error=original_error,
+        )
+        self.provider: str | None = provider
+        self.project_root: str | Path | Sequence[Path] | None = project_root
+
+
+class TffDependencyError(TffError, ImportError):
+    """Exception raised when an optional provider adapter or package dependency is missing.
+
+    Attributes:
+        provider: Provider identifier (e.g. 'dbt', 'sqlmesh', 'dataform').
+        project_root: Project root directory or list of project roots.
+        package_hint: Suggested package or extra installation string (e.g. 'tff-core[dbt]').
+    """
+
+    def __init__(
+        self,
+        message: str,
+        hint: str | None = None,
+        *,
+        provider: str | None = None,
+        project_root: str | Path | Sequence[Path] | None = None,
+        package_hint: str | None = None,
+        details: dict[str, Any] | None = None,
+        original_error: Exception | None = None,
+    ) -> None:
+        det = details.copy() if details is not None else {}
+        if provider is not None:
+            det.setdefault("provider", provider)
+        if project_root is not None:
+            if isinstance(project_root, (list, tuple)):
+                det.setdefault("project_root", ", ".join(str(p) for p in project_root))
+            else:
+                det.setdefault("project_root", str(project_root))
+        if package_hint is not None:
+            det.setdefault("package_hint", package_hint)
+
+        effective_hint = hint
+        if effective_hint is None and (package_hint or provider):
+            pkg = package_hint or f"tff-core[{provider}]"
+            effective_hint = f'Please install it using: pip install "{pkg}" or uv add "{pkg}"'
+
+        super().__init__(
+            message,
+            hint=effective_hint,
+            details=det,
+            original_error=original_error,
+        )
+        self.provider: str | None = provider
+        self.project_root: str | Path | Sequence[Path] | None = project_root
+        self.package_hint: str | None = package_hint
+
+
 def normalize_os_error(
     exc: Exception,
     *,
@@ -329,6 +412,8 @@ __all__ = [
     "TffManifestError",
     "TffManifestNotFoundError",
     "TffGitError",
+    "TffProviderError",
+    "TffDependencyError",
     "normalize_os_error",
     "translate_os_error",
     "handle_os_errors",
