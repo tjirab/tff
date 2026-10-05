@@ -9,7 +9,7 @@ authors = [
     { name = "Bart Schuijt", email = "schuijt.bart@gmail.com" }
 ]
 dependencies = [
-    "tff-core[sqlmesh]>=0.5.0"
+    "tff-core[sqlmesh]>=0.24.0"
 ]
 
 [build-system]
