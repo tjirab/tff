@@ -13,9 +13,11 @@ from tff.core import render_cli_error
 from tff.core.cli import _is_debug_requested, main
 from tff.core.exceptions import (
     TffConfigError,
+    TffDependencyError,
     TffError,
     TffManifestNotFoundError,
     TffModelError,
+    TffProviderError,
 )
 
 
@@ -379,4 +381,185 @@ def test_main_propagates_tff_error_from_init(tmp_path: Path, capsys):
     captured = capsys.readouterr()
     assert "✖ Error: Permission denied initializing config" in captured.err
     assert "• Hint: Check write permissions." in captured.err
+
+
+def test_render_cli_error_project_root_and_package_hint():
+    """Renders Project Root for both single path and list, while ignoring raw package_hint."""
+    err1 = TffProviderError(
+        "Detection failed",
+        hint="Pass --provider",
+        project_root=Path("/my/proj"),
+    )
+    buf1 = io.StringIO()
+    console1 = Console(file=buf1, force_terminal=False, no_color=True)
+    render_cli_error(err1, console=console1)
+    out1 = buf1.getvalue()
+    assert "✖ Error: Detection failed" in out1
+    assert "• Project Root: /my/proj" in out1
+    assert "• Hint: Pass --provider" in out1
+
+    err2 = TffDependencyError(
+        "Missing extra",
+        provider="dbt",
+        package_hint="tff-core[dbt]",
+        project_root=[Path("/p1"), Path("/p2")],
+    )
+    buf2 = io.StringIO()
+    console2 = Console(file=buf2, force_terminal=False, no_color=True)
+    render_cli_error(err2, console=console2)
+    out2 = buf2.getvalue()
+    assert "✖ Error: Missing extra" in out2
+    assert "• Provider: dbt" in out2
+    assert "• Project Root: /p1, /p2" in out2
+    assert "Package Hint" not in out2
+    assert '• Hint: Please install it using: pip install "tff-core[dbt]"' in out2
+
+
+def test_main_propagates_tff_provider_error_from_detection(tmp_path: Path, capsys):
+    """Provider auto-detection failure in lint raises TffProviderError and renders cleanly."""
+    exit_code = main(["lint", "--project", str(tmp_path)])
+    assert exit_code == 1
+
+    captured = capsys.readouterr()
+    assert "✖ Error: Could not detect project type for" in captured.err
+    assert "• Project Root:" in captured.err
+    assert "• Hint: Please run this command from your project root" in captured.err
+    assert "Traceback" not in captured.err
+
+
+def test_main_propagates_tff_dependency_error_from_missing_adapter(tmp_path: Path, capsys):
+    """Missing adapter dependency raises TffDependencyError with install hints."""
+    (tmp_path / "dbt_project.yml").touch()
+
+    with patch("importlib.import_module", side_effect=ImportError("No module named tff.dbt.adapter")):
+        exit_code = main(["lint", "--project", str(tmp_path), "--provider", "dbt"])
+        assert exit_code == 1
+
+    captured = capsys.readouterr()
+    assert "✖ Error: dbt project detected, but tff is not installed with dbt support." in captured.err
+    assert "• Provider: dbt" in captured.err
+    assert '• Hint: Please install it using: pip install "tff-core[dbt]"' in captured.err
+    assert "Traceback" not in captured.err
+
+
+def test_main_propagates_unknown_provider_error(tmp_path: Path, capsys):
+    """Unknown provider raises TffProviderError with supported provider hint."""
+    exit_code = main(["lint", "--project", str(tmp_path), "--provider", "unsupported_engine"])
+    assert exit_code == 1
+
+    captured = capsys.readouterr()
+    assert "✖ Error: Unknown provider: unsupported_engine" in captured.err
+    assert "• Provider: unsupported_engine" in captured.err
+    assert "• Hint: Supported providers: dbt, sqlmesh, dataform" in captured.err
+    assert "Traceback" not in captured.err
+
+
+def test_main_propagates_tff_provider_error_from_docs_detection(tmp_path: Path, capsys):
+    """Provider auto-detection failure in docs raises TffProviderError and renders cleanly."""
+    exit_code = main(["docs", "--project", str(tmp_path)])
+    assert exit_code == 1
+
+    captured = capsys.readouterr()
+    assert "✖ Error: Could not detect project type for" in captured.err
+    assert "• Project Root:" in captured.err
+    assert "• Hint: Please run this command from your project root" in captured.err
+    assert "Traceback" not in captured.err
+
+
+def test_main_converts_raw_value_error_from_detection(tmp_path: Path, capsys):
+    """Raw ValueError from patched _detect_provider is converted to TffProviderError."""
+    with patch("tff.core.cli._detect_provider", side_effect=ValueError("Custom detection failure")):
+        exit_code = main(["lint", "--project", str(tmp_path)])
+        assert exit_code == 1
+
+    captured = capsys.readouterr()
+    assert "✖ Error: Custom detection failure" in captured.err
+    assert "• Project Root:" in captured.err
+    assert "• Hint: Please run this command from your project root" in captured.err
+
+
+def test_main_converts_raw_import_error_from_adapter(tmp_path: Path, capsys):
+    """Raw ImportError from patched _get_adapter is converted to TffDependencyError."""
+    with patch("tff.core.cli._get_adapter", side_effect=ImportError("Custom missing package")):
+        exit_code = main(["lint", "--project", str(tmp_path), "--provider", "dbt"])
+        assert exit_code == 1
+
+    captured = capsys.readouterr()
+    assert "✖ Error: Custom missing package" in captured.err
+    assert "• Provider: dbt" in captured.err
+    assert "• Project Root:" in captured.err
+    assert '• Hint: Please install it using: pip install "tff-core[dbt]"' in captured.err
+
+
+def test_main_converts_raw_value_error_from_adapter(tmp_path: Path, capsys):
+    """Raw ValueError from patched _get_adapter is converted to TffProviderError."""
+    with patch("tff.core.cli._get_adapter", side_effect=ValueError("Corrupt adapter spec")):
+        exit_code = main(["lint", "--project", str(tmp_path), "--provider", "dbt"])
+        assert exit_code == 1
+
+    captured = capsys.readouterr()
+    assert "✖ Error: Corrupt adapter spec" in captured.err
+    assert "• Provider: dbt" in captured.err
+    assert "• Project Root:" in captured.err
+    assert "Check provider 'dbt' configuration" in captured.err
+
+
+def test_convert_to_provider_error_edge_cases():
+    from tff.core.cli import _convert_to_provider_error
+
+    existing = TffProviderError("Already domain", hint="Existing hint")
+    assert _convert_to_provider_error(existing) is existing
+
+    # With newline and 'Hint: '
+    exc1 = ValueError("First line\nHint: fix it")
+    res1 = _convert_to_provider_error(exc1)
+    assert res1.message == "First line"
+    assert res1.hint == "fix it"
+
+    # With newline and 'Please '
+    exc2 = ValueError("Failed line\nPlease do something")
+    res2 = _convert_to_provider_error(exc2)
+    assert res2.message == "Failed line"
+    assert res2.hint == "Do something"
+
+    # With newline and arbitrary string
+    exc3 = ValueError("Failed line\nArbitrary hint text")
+    res3 = _convert_to_provider_error(exc3)
+    assert res3.message == "Failed line"
+    assert res3.hint == "Arbitrary hint text"
+
+    # With provider specified
+    exc4 = ValueError("Provider failure")
+    res4 = _convert_to_provider_error(exc4, provider="custom_p")
+    assert "Check provider 'custom_p'" in res4.hint
+
+
+def test_convert_to_dependency_error_edge_cases():
+    from tff.core.cli import _convert_to_dependency_error
+
+    existing = TffDependencyError("Already domain", hint="Existing hint")
+    assert _convert_to_dependency_error(existing) is existing
+
+    # With newline and 'Hint: '
+    exc1 = ImportError("Import error\nHint: install x")
+    res1 = _convert_to_dependency_error(exc1)
+    assert res1.message == "Import error"
+    assert res1.hint == "install x"
+
+    # With newline and 'Please '
+    exc2 = ImportError("Import error\nPlease run pip install")
+    res2 = _convert_to_dependency_error(exc2)
+    assert res2.message == "Import error"
+    assert res2.hint == "Run pip install"
+
+    # With newline and arbitrary text
+    exc3 = ImportError("Import error\nCustom message")
+    res3 = _convert_to_dependency_error(exc3)
+    assert res3.message == "Import error"
+    assert res3.hint == "Custom message"
+
+    # Provider=None
+    exc4 = ImportError("No package")
+    res4 = _convert_to_dependency_error(exc4, provider=None)
+    assert res4.hint == "Please install the missing dependency."
 

@@ -411,7 +411,7 @@ def test_collect_stats_chronological_traversal_edge_cases(tmp_path: Path):
     lint_dir.mkdir(parents=True)
 
     import json
-    now = datetime.now()
+    now = datetime.now().replace(hour=14, minute=0, second=0)
 
     # 4 days ago: run 1
     t_4d = (now - timedelta(days=4)).astimezone()

@@ -22,7 +22,7 @@ from tff.core.config import (
     load_fitness_config,
     resolve_project_path,
 )
-from tff.core.exceptions import TffError
+from tff.core.exceptions import TffDependencyError, TffError, TffProviderError
 from tff.core.logs import is_debug_enabled, setup_cli_logging
 from tff.core.registry import CheckDefinition, normalize_check_name, registry
 from tff.core.report import render_lint_report
@@ -78,6 +78,13 @@ def render_cli_error(error: TffError | Exception, console: Console | None = None
     if path:
         bullets.append(("Path", path))
 
+    project_root = getattr(error, "project_root", None) or details.get("project_root")
+    if project_root:
+        if isinstance(project_root, (list, tuple)):
+            bullets.append(("Project Root", ", ".join(str(p) for p in project_root)))
+        else:
+            bullets.append(("Project Root", str(project_root)))
+
     rule = (
         details.get("rule")
         or details.get("rule_name")
@@ -98,6 +105,8 @@ def render_cli_error(error: TffError | Exception, console: Console | None = None
         "model",
         "model_name",
         "path",
+        "project_root",
+        "package_hint",
         "rule",
         "rule_name",
         "check",
@@ -134,28 +143,41 @@ def _get_runner(provider: str) -> Any:
         try:
             return importlib.import_module("tff.dbt.runner")
         except ImportError as e:
-            raise ImportError(
-                "dbt project detected, but tff is not installed with dbt support.\n"
-                'Please install it using: pip install "tff-core[dbt]" or uv add "tff-core[dbt]"'
+            raise TffDependencyError(
+                "dbt project detected, but tff is not installed with dbt support.",
+                hint='Please install it using: pip install "tff-core[dbt]" or uv add "tff-core[dbt]"',
+                provider="dbt",
+                package_hint="tff-core[dbt]",
+                original_error=e,
             ) from e
     elif provider == "sqlmesh":
         try:
             return importlib.import_module("tff.sqlmesh.runner")
         except ImportError as e:
-            raise ImportError(
-                "SQLMesh project detected, but tff is not installed with sqlmesh support.\n"
-                'Please install it using: pip install "tff-core[sqlmesh]" or uv add "tff-core[sqlmesh]"'
+            raise TffDependencyError(
+                "SQLMesh project detected, but tff is not installed with sqlmesh support.",
+                hint='Please install it using: pip install "tff-core[sqlmesh]" or uv add "tff-core[sqlmesh]"',
+                provider="sqlmesh",
+                package_hint="tff-core[sqlmesh]",
+                original_error=e,
             ) from e
     elif provider == "dataform":
         try:
             return importlib.import_module("tff.dataform.runner")
         except ImportError as e:
-            raise ImportError(
-                "Dataform project detected, but tff is not installed with dataform support.\n"
-                'Please install it using: pip install "tff-core[dataform]" or uv add "tff-core[dataform]"'
+            raise TffDependencyError(
+                "Dataform project detected, but tff is not installed with dataform support.",
+                hint='Please install it using: pip install "tff-core[dataform]" or uv add "tff-core[dataform]"',
+                provider="dataform",
+                package_hint="tff-core[dataform]",
+                original_error=e,
             ) from e
     else:
-        raise ValueError(f"Unknown provider: {provider}")
+        raise TffProviderError(
+            f"Unknown provider: {provider}",
+            hint="Supported providers: dbt, sqlmesh, dataform",
+            provider=provider,
+        )
 
 
 class _MockRunnerAdapter(PipelineAdapter):
@@ -299,15 +321,103 @@ class _MockRunnerAdapter(PipelineAdapter):
 
 def _get_adapter(provider: str) -> PipelineAdapter:
     """Load and return the adapter instance for the specified provider, wrapping test mocks if present."""
-    try:
-        runner = _get_runner(provider)
-        from unittest.mock import Mock
+    from unittest.mock import Mock
 
+    if isinstance(_get_runner, Mock):
+        runner = _get_runner(provider)
         if isinstance(runner, Mock):
             return _MockRunnerAdapter(provider, runner)
-    except Exception:
-        pass
+    else:
+        try:
+            runner = _get_runner(provider)
+            if isinstance(runner, Mock):
+                return _MockRunnerAdapter(provider, runner)
+        except Exception:
+            pass
     return get_adapter(provider)
+
+
+def _convert_to_provider_error(
+    exc: Exception,
+    *,
+    provider: str | None = None,
+    project_roots: Path | Sequence[Path] | None = None,
+) -> TffProviderError:
+    """Convert an arbitrary exception into a structured TffProviderError."""
+    if isinstance(exc, TffProviderError):
+        return exc
+
+    raw_msg = getattr(exc, "message", None) or str(exc)
+    hint = getattr(exc, "hint", None)
+    if not hint and "\n" in raw_msg:
+        parts = raw_msg.split("\n", 1)
+        msg = parts[0].strip()
+        candidate_hint = parts[1].strip()
+        if candidate_hint.startswith("Hint: "):
+            hint = candidate_hint[6:].strip()
+        elif candidate_hint.startswith("Please "):
+            hint = candidate_hint[7:].strip()
+            hint = hint[0].upper() + hint[1:]
+        else:
+            hint = candidate_hint
+    else:
+        msg = raw_msg
+        if not hint:
+            if provider:
+                hint = f"Check provider '{provider}' configuration or install the required adapter plugin."
+            else:
+                hint = "Please run this command from your project root, or specify the provider explicitly using the --provider option."
+
+    return TffProviderError(
+        msg,
+        hint=hint,
+        provider=provider,
+        project_root=project_roots,
+        original_error=exc,
+    )
+
+
+def _convert_to_dependency_error(
+    exc: Exception,
+    *,
+    provider: str | None = None,
+    project_roots: Path | Sequence[Path] | None = None,
+) -> TffDependencyError:
+    """Convert an arbitrary exception into a structured TffDependencyError."""
+    if isinstance(exc, TffDependencyError):
+        return exc
+
+    raw_msg = getattr(exc, "message", None) or str(exc)
+    hint = getattr(exc, "hint", None)
+    if not hint and "\n" in raw_msg:
+        parts = raw_msg.split("\n", 1)
+        msg = parts[0].strip()
+        candidate_hint = parts[1].strip()
+        if candidate_hint.startswith("Hint: "):
+            hint = candidate_hint[6:].strip()
+        elif candidate_hint.startswith("Please "):
+            hint = candidate_hint[7:].strip()
+            hint = hint[0].upper() + hint[1:]
+        else:
+            hint = candidate_hint
+    else:
+        msg = raw_msg
+        if not hint:
+            if provider:
+                pkg = f"tff-core[{provider}]"
+                hint = f'Please install it using: pip install "{pkg}" or uv add "{pkg}"'
+            else:
+                hint = "Please install the missing dependency."
+
+    pkg_hint = getattr(exc, "package_hint", None) or (f"tff-core[{provider}]" if provider else None)
+    return TffDependencyError(
+        msg,
+        hint=hint,
+        provider=provider,
+        project_root=project_roots,
+        package_hint=pkg_hint,
+        original_error=exc,
+    )
 
 
 
@@ -1626,9 +1736,10 @@ def _main_impl(argv: list[str] | None = None) -> int:
                     provider = _detect_provider(project_roots, config_path=cfg_path)
                 else:
                     provider = _detect_provider(project_roots)
+            except TffError:
+                raise
             except ValueError as e:
-                print(f"Error: {e}", file=sys.stderr)
-                return 1
+                raise _convert_to_provider_error(e, project_roots=project_roots) from e
 
         from tff.core.docs import generate_docs_dashboard
 
@@ -1696,10 +1807,11 @@ def _main_impl(argv: list[str] | None = None) -> int:
                     else _detect_provider(project_roots)
                 )
                 logger.debug("Auto-detected provider: %s", provider)
+            except TffError:
+                raise
             except ValueError as e:
                 logger.debug("Provider auto-detection error: %s", e)
-                print(f"Error: {e}", file=sys.stderr)
-                return 1
+                raise _convert_to_provider_error(e, project_roots=project_roots) from e
         else:
             logger.debug("Using specified provider: %s", provider)
 
@@ -1707,10 +1819,18 @@ def _main_impl(argv: list[str] | None = None) -> int:
         try:
             adapter = _get_adapter(provider)
             logger.debug("Loaded pipeline adapter: %s", adapter.provider_name)
-        except (ImportError, ValueError) as e:
+        except TffError:
+            raise
+        except ImportError as e:
             logger.debug("Failed to load adapter: %s", e)
-            print(f"Error: {e}", file=sys.stderr)
-            return 1
+            raise _convert_to_dependency_error(
+                e, provider=provider, project_roots=project_roots
+            ) from e
+        except ValueError as e:
+            logger.debug("Failed to load adapter: %s", e)
+            raise _convert_to_provider_error(
+                e, provider=provider, project_roots=project_roots
+            ) from e
 
         # 3. Load config
         try:

@@ -8,11 +8,13 @@ import pytest
 from tff.core.config import FitnessFunctionsConfig, load_fitness_config, resolve_project_path
 from tff.core.exceptions import (
     TffConfigError,
+    TffDependencyError,
     TffError,
     TffFileError,
     TffManifestError,
     TffManifestNotFoundError,
     TffModelError,
+    TffProviderError,
     handle_os_errors,
     normalize_os_error,
     translate_os_error,
@@ -113,6 +115,64 @@ def test_tff_manifest_not_found_error():
     assert isinstance(err, FileNotFoundError)
     assert isinstance(err, OSError)
     assert isinstance(err, TffError)
+
+
+def test_tff_provider_error():
+    root = Path("/path/to/project")
+    err = TffProviderError(
+        "Could not detect project type",
+        hint="Specify --provider explicitly",
+        provider="dbt",
+        project_root=root,
+        details={"extra": "val"},
+    )
+    assert isinstance(err, TffError)
+    assert isinstance(err, ValueError)
+    assert err.message == "Could not detect project type"
+    assert err.provider == "dbt"
+    assert err.project_root == root
+    assert err.details["provider"] == "dbt"
+    assert err.details["project_root"] == str(root)
+    assert err.details["extra"] == "val"
+    assert "Hint: Specify --provider explicitly" in str(err)
+
+    # Test multi-root sequence
+    multi_err = TffProviderError(
+        "Conflict across roots",
+        project_root=[Path("/p1"), Path("/p2")],
+    )
+    assert multi_err.details["project_root"] == "/p1, /p2"
+
+
+def test_tff_dependency_error():
+    root = Path("/path/to/dbt_project")
+    # Default hint generation
+    err = TffDependencyError(
+        "dbt project detected, but tff is not installed with dbt support.",
+        provider="dbt",
+        project_root=root,
+    )
+    assert isinstance(err, TffError)
+    assert isinstance(err, ImportError)
+    assert err.provider == "dbt"
+    assert err.project_root == root
+    assert err.package_hint is None
+    assert 'pip install "tff-core[dbt]"' in err.hint
+    assert err.details["provider"] == "dbt"
+    assert err.details["project_root"] == str(root)
+
+    # Explicit hint and custom package_hint
+    custom_err = TffDependencyError(
+        "Missing custom engine adapter",
+        hint="Install my-adapter",
+        provider="custom",
+        package_hint="my-adapter-pkg",
+        project_root=[Path("/p1")],
+    )
+    assert custom_err.hint == "Install my-adapter"
+    assert custom_err.package_hint == "my-adapter-pkg"
+    assert custom_err.details["package_hint"] == "my-adapter-pkg"
+    assert custom_err.details["project_root"] == "/p1"
 
 
 def test_normalize_os_error_eisdir():
