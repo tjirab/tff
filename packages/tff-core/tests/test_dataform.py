@@ -1,4 +1,5 @@
 import json
+import os
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -404,24 +405,25 @@ def test_load_dataform_models_direct_sqlx(tmp_path: Path):
 
 
 def test_cli_compile_fallback(tmp_path: Path):
-    with patch("shutil.which") as mock_which, patch("subprocess.run") as mock_run:
-        mock_which.side_effect = lambda cmd: "/usr/local/bin/dataform" if cmd == "dataform" else None
-        mock_proc = MagicMock()
-        mock_proc.returncode = 0
-        mock_proc.stdout = json.dumps({
-            "tables": [
-                {
-                    "target": {"schema": "s", "name": "t"},
-                    "type": "table",
-                    "query": "SELECT 1",
-                }
-            ]
-        })
-        mock_run.return_value = mock_proc
+    with patch.dict(os.environ, {"TFF_DISABLE_DATAFORM_CLI_COMPILATION": "0"}):
+        with patch("shutil.which") as mock_which, patch("subprocess.run") as mock_run:
+            mock_which.side_effect = lambda cmd: "/usr/local/bin/dataform" if cmd == "dataform" else None
+            mock_proc = MagicMock()
+            mock_proc.returncode = 0
+            mock_proc.stdout = json.dumps({
+                "tables": [
+                    {
+                        "target": {"schema": "s", "name": "t"},
+                        "type": "table",
+                        "query": "SELECT 1",
+                    }
+                ]
+            })
+            mock_run.return_value = mock_proc
 
-        res = _compile_via_cli(tmp_path)
-        assert res is not None
-        assert "tables" in res
+            res = _compile_via_cli(tmp_path)
+            assert res is not None
+            assert "tables" in res
 
 
 def test_dataform_runner_run_all_checks(tmp_path: Path):
@@ -657,22 +659,23 @@ def test_load_settings_exceptions(tmp_path: Path):
 
 
 def test_compile_via_cli_npx_and_exceptions(tmp_path: Path):
-    # Test npx fallback
-    with patch("shutil.which") as mock_which, patch("subprocess.run") as mock_run:
-        mock_which.side_effect = lambda cmd: "/usr/local/bin/npx" if cmd == "npx" else None
-        mock_proc = MagicMock()
-        mock_proc.returncode = 0
-        mock_proc.stdout = json.dumps({"tables": []})
-        mock_run.return_value = mock_proc
+    with patch.dict(os.environ, {"TFF_DISABLE_DATAFORM_CLI_COMPILATION": "0"}):
+        # Test npx fallback
+        with patch("shutil.which") as mock_which, patch("subprocess.run") as mock_run:
+            mock_which.side_effect = lambda cmd: "/usr/local/bin/npx" if cmd == "npx" else None
+            mock_proc = MagicMock()
+            mock_proc.returncode = 0
+            mock_proc.stdout = json.dumps({"tables": []})
+            mock_run.return_value = mock_proc
 
-        res = _compile_via_cli(tmp_path)
-        assert res == {"tables": []}
-        assert mock_run.call_args[0][0][:2] == ["npx", "--no-install"]
+            res = _compile_via_cli(tmp_path)
+            assert res == {"tables": []}
+            assert mock_run.call_args[0][0][:2] == ["npx", "--no-install"]
 
-    # Test exception handling
-    with patch("shutil.which", return_value="/usr/local/bin/dataform"):
-        with patch("subprocess.run", side_effect=RuntimeError("exec error")):
-            assert _compile_via_cli(tmp_path) is None
+        # Test exception handling
+        with patch("shutil.which", return_value="/usr/local/bin/dataform"):
+            with patch("subprocess.run", side_effect=RuntimeError("exec error")):
+                assert _compile_via_cli(tmp_path) is None
 
 
 def test_load_dataform_models_manifest_parse_error(tmp_path: Path):
@@ -790,8 +793,9 @@ def test_dataform_cli_no_subcommand():
 
 
 def test_compile_via_cli_no_binary(tmp_path: Path):
-    with patch("shutil.which", return_value=None):
-        assert _compile_via_cli(tmp_path) is None
+    with patch.dict(os.environ, {"TFF_DISABLE_DATAFORM_CLI_COMPILATION": "0"}):
+        with patch("shutil.which", return_value=None):
+            assert _compile_via_cli(tmp_path) is None
 
 
 def test_parse_sqlx_config_edge_cases():

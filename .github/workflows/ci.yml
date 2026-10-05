@@ -19,7 +19,7 @@ jobs:
       - name: Run dependency audit
         run: uv run python scripts/audit.py --min-severity HIGH
       - run: uv run ruff check .
-      - run: uv run pytest --cov=packages --cov-report=xml
+      - run: uv run pytest -n auto --cov --cov-report=xml
       - run: uv run diff-cover coverage.xml --compare-branch=origin/main --fail-under=100
       - name: Run performance benchmark
         run: uv run python scripts/benchmark.py --max-seconds 15.0
