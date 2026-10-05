@@ -1,5 +1,26 @@
 # Changelog
 
+## [0.25.0](https://github.com/tjirab/tff/compare/tff-core-v0.24.0...tff-core-v0.25.0) (2026-10-05)
+
+
+### Features
+
+* **dbt:** support multi-project and cross-project manifest merging ([#355](https://github.com/tjirab/tff/issues/355)) ([1ca89c0](https://github.com/tjirab/tff/commit/1ca89c0cdd517939a277a575576136abb163ed5a))
+* **testing:** add static AST test architecture and anti-bloat linter ([#364](https://github.com/tjirab/tff/issues/364)) ([bc096f6](https://github.com/tjirab/tff/commit/bc096f616c9d44e5c8c0e90f33b2d90e41031b00))
+
+
+### Performance Improvements
+
+* **ci:** accelerate test suite, audit, and CI execution with pytest-xdist and scoped coverage ([#363](https://github.com/tjirab/tff/issues/363)) ([95a9f81](https://github.com/tjirab/tff/commit/95a9f8119ea4a63fb3bf1e34df873a0c4b3f541a))
+* **core:** optimize chronological log traversal in collect_stats ([#352](https://github.com/tjirab/tff/issues/352)) ([d225030](https://github.com/tjirab/tff/commit/d2250306e3457336c5b779822b22ad5296dcec42))
+* **core:** skip process pool for small projects, add in-memory AST cache, single-pass AST rule traversals ([#365](https://github.com/tjirab/tff/issues/365)) ([ef0e263](https://github.com/tjirab/tff/commit/ef0e263b95383e51239608a84d1f7caf5da6621a))
+* **git:** pass model_candidate_files to map_files_to_model_names to prevent non-model stem collisions ([#361](https://github.com/tjirab/tff/issues/361)) ([309dbb4](https://github.com/tjirab/tff/commit/309dbb4e66fcb44d38734038db8ea1170935ed88))
+
+
+### Documentation
+
+* **core:** document rule_execution_error diagnostic finding and behavior ([#357](https://github.com/tjirab/tff/issues/357)) ([16cb3bb](https://github.com/tjirab/tff/commit/16cb3bbd1089ce7257d02dfa768808af9a64a706))
+
 ## [0.24.0](https://github.com/tjirab/tff/compare/tff-core-v0.23.0...tff-core-v0.24.0) (2026-09-30)
 
 
