@@ -1,132 +1,61 @@
 from pathlib import Path
+import pytest
+
+from conftest import _make_model
 from tff.core.config import FitnessFunctionsConfig
-from tff.core.model import ModelRepresentation
 from tff.core.rules.ban_select_star import BanSelectStar
 
 
-def test_ban_select_star_violations(tmp_path: Path):
+@pytest.mark.parametrize(
+    ("path", "query", "is_symbolic", "expect_violation"),
+    [
+        ("models/marts/my_model.sql", "SELECT * FROM table", False, True),
+        ("models/core/my_model.sql", "SELECT a.*, b.id FROM a JOIN b", False, True),
+        ("models/sources/my_model.sql", "SELECT * FROM table", False, False),
+        ("models/marts/compliant_model.sql", "SELECT col1, col2 FROM table", False, False),
+        ("models/marts/symbolic_model.sql", "SELECT * FROM table", True, False),
+        ("models/marts/count_model.sql", "SELECT COUNT(*), COUNT(DISTINCT *) FROM table GROUP BY col1", False, False),
+        ("models/marts/sub_star_model.sql", "SELECT COUNT((SELECT * FROM table))", False, True),
+    ],
+)
+def test_ban_select_star_rule(path: str, query: str, is_symbolic: bool, expect_violation: bool) -> None:
     config = FitnessFunctionsConfig()
     config.rules.ban_select_star.enabled = True
     config.rules.ban_select_star.skip_layers = ["sources"]
-    config.rules.ban_select_star.only_layers = None
-
     rule = BanSelectStar(config=config)
 
-    # 1. Violating model in non-skipped layer (marts)
-    sql_file = tmp_path / "models/marts/my_model.sql"
-    sql_file.parent.mkdir(parents=True, exist_ok=True)
-    sql_file.write_text("SELECT * FROM table", encoding="utf-8")
-
-    model = ModelRepresentation(
-        name="marts.my_model",
-        path=str(sql_file),
-        dialect="bigquery",
-        is_symbolic=False,
-    )
+    model = _make_model(name=Path(path).stem, path=path, query=query, is_symbolic=is_symbolic, dialect="bigquery")
     violation = rule.check_model(model)
-    assert violation is not None
-    assert "SELECT * is prohibited" in violation.violation_msg[0]
-
-    # 2. Mock model with table-qualified star (a.*) in core layer
-    sql_file_qualified = tmp_path / "models/core/my_model.sql"
-    sql_file_qualified.parent.mkdir(parents=True, exist_ok=True)
-    sql_file_qualified.write_text("SELECT a.*, b.id FROM a JOIN b", encoding="utf-8")
-
-    model_qualified = ModelRepresentation(
-        name="core.my_model",
-        path=str(sql_file_qualified),
-        dialect="bigquery",
-        is_symbolic=False,
-    )
-    violation_qualified = rule.check_model(model_qualified)
-    assert violation_qualified is not None
-
-    # 3. Model in skipped layer (sources)
-    sql_file_sources = tmp_path / "models/sources/my_model.sql"
-    sql_file_sources.parent.mkdir(parents=True, exist_ok=True)
-    sql_file_sources.write_text("SELECT * FROM table", encoding="utf-8")
-
-    model_sources = ModelRepresentation(
-        name="sources.my_model",
-        path=str(sql_file_sources),
-        dialect="bigquery",
-        is_symbolic=False,
-    )
-    violation_sources = rule.check_model(model_sources)
-    assert violation_sources is None
-
-    # 4. Compliant model (explicit columns) in marts
-    sql_file_compliant = tmp_path / "models/marts/compliant_model.sql"
-    sql_file_compliant.parent.mkdir(parents=True, exist_ok=True)
-    sql_file_compliant.write_text("SELECT col1, col2 FROM table", encoding="utf-8")
-
-    model_compliant = ModelRepresentation(
-        name="marts.compliant_model",
-        path=str(sql_file_compliant),
-        dialect="bigquery",
-        is_symbolic=False,
-    )
-    violation_compliant = rule.check_model(model_compliant)
-    assert violation_compliant is None
-
-    # 5. Symbolic model
-    model_symbolic = ModelRepresentation(
-        name="marts.symbolic_model",
-        path=str(sql_file_compliant),
-        dialect="bigquery",
-        is_symbolic=True,
-    )
-    violation_symbolic = rule.check_model(model_symbolic)
-    assert violation_symbolic is None
-
-    # 6. COUNT(*) and COUNT(DISTINCT *) should NOT trigger violation
-    sql_file_count = tmp_path / "models/marts/count_model.sql"
-    sql_file_count.parent.mkdir(parents=True, exist_ok=True)
-    sql_file_count.write_text(
-        "SELECT COUNT(*), COUNT(DISTINCT *) FROM table GROUP BY col1", encoding="utf-8"
-    )
-    model_count = ModelRepresentation(
-        name="marts.count_model",
-        path=str(sql_file_count),
-        dialect="bigquery",
-        is_symbolic=False,
-    )
-    assert rule.check_model(model_count) is None
-
-    # 7. Subquery with SELECT * inside COUNT should still trigger violation
-    sql_file_sub = tmp_path / "models/marts/sub_star_model.sql"
-    sql_file_sub.write_text("SELECT COUNT((SELECT * FROM table))", encoding="utf-8")
-    model_sub = ModelRepresentation(
-        name="marts.sub_star_model",
-        path=str(sql_file_sub),
-        dialect="bigquery",
-        is_symbolic=False,
-    )
-    assert rule.check_model(model_sub) is not None
+    if expect_violation:
+        assert violation is not None
+        assert "SELECT * is prohibited" in violation.violation_msg[0]
+    else:
+        assert violation is None
 
 
-def test_ban_select_star_error_paths(tmp_path: Path):
+def test_ban_select_star_disk_read(tmp_path: Path) -> None:
     config = FitnessFunctionsConfig()
     config.rules.ban_select_star.enabled = True
-
     rule = BanSelectStar(config=config)
 
-    # Non-existent file path
-    model_missing = ModelRepresentation(
-        name="marts.missing",
-        path="non_existent_file.sql",
-        dialect="bigquery",
-        is_symbolic=False,
-    )
-    assert rule.check_model(model_missing) is None
+    sql_file = tmp_path / "models" / "marts" / "model.sql"
+    sql_file.parent.mkdir(parents=True, exist_ok=True)
+    sql_file.write_text("SELECT * FROM table", encoding="utf-8")
+    model = _make_model(name="marts.disk_model", path=str(sql_file), query=None, dialect="bigquery")
+    assert rule.check_model(model) is not None
 
-    # Invalid SQL syntax
-    sql_file = tmp_path / "invalid.sql"
-    sql_file.write_text("SELECT * FROM (invalid syntax", encoding="utf-8")
-    model_invalid = ModelRepresentation(
-        name="marts.invalid",
-        path=str(sql_file),
-        dialect="bigquery",
-        is_symbolic=False,
-    )
-    assert rule.check_model(model_invalid) is None
+
+@pytest.mark.parametrize(
+    "model_kwargs",
+    [
+        {"path": "non_existent_file.sql", "query": None},
+        {"query": "SELECT * FROM (invalid syntax"},
+    ],
+)
+def test_ban_select_star_error_paths(model_kwargs: dict) -> None:
+    config = FitnessFunctionsConfig()
+    config.rules.ban_select_star.enabled = True
+    rule = BanSelectStar(config=config)
+
+    model = _make_model(name="marts.err_model", dialect="bigquery", **model_kwargs)
+    assert rule.check_model(model) is None

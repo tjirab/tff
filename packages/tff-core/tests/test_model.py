@@ -1,19 +1,25 @@
+from __future__ import annotations
+
 import os
 from pathlib import Path
 from unittest.mock import patch
+import pytest
 
-from tff.core.model import ModelRepresentation, read_file_safe, read_model_sql
-
-
-def test_read_file_safe_none_or_empty() -> None:
-    assert read_file_safe(None) is None
-    assert read_file_safe("") is None
+from conftest import _make_model
+from tff.core.model import read_file_safe, read_model_sql
 
 
-def test_read_file_safe_nonexistent(tmp_path: Path) -> None:
-    non_existent = tmp_path / "does_not_exist.sql"
-    assert read_file_safe(str(non_existent)) is None
-    assert read_file_safe(non_existent) is None
+@pytest.mark.parametrize(
+    "path_val",
+    [None, "", "does_not_exist.sql", "\0invalid_path"],
+)
+def test_read_file_safe_invalid_or_missing(tmp_path: Path, path_val: str | None) -> None:
+    if path_val == "does_not_exist.sql":
+        target = tmp_path / path_val
+        assert read_file_safe(str(target)) is None
+        assert read_file_safe(target) is None
+    else:
+        assert read_file_safe(path_val) is None
 
 
 def test_read_file_safe_directory(tmp_path: Path) -> None:
@@ -28,15 +34,18 @@ def test_read_file_safe_valid_file(tmp_path: Path) -> None:
     assert read_file_safe(f) == "SELECT 1 AS col;"
 
 
-def test_read_file_safe_read_exception(tmp_path: Path) -> None:
+def test_read_file_safe_exceptions(tmp_path: Path) -> None:
     f = tmp_path / "valid.sql"
     f.write_text("SELECT 1 AS col;", encoding="utf-8")
+
     with patch.object(Path, "read_text", side_effect=OSError("Read error")):
         assert read_file_safe(str(f)) is None
 
+    with patch.object(Path, "is_file", return_value=False):
+        assert read_file_safe(str(f)) is None
 
-def test_read_file_safe_path_instantiation_exception() -> None:
-    assert read_file_safe("\0invalid_path") is None
+    with patch.object(Path, "is_file", side_effect=OSError("Permission denied")):
+        assert read_file_safe(str(f)) is None
 
 
 def test_read_file_safe_fifo(tmp_path: Path) -> None:
@@ -47,219 +56,94 @@ def test_read_file_safe_fifo(tmp_path: Path) -> None:
         assert read_file_safe(str(fifo_path)) is None
 
 
-def test_read_file_safe_non_regular_file(tmp_path: Path) -> None:
-    f = tmp_path / "special.sql"
-    f.write_text("SELECT 1;", encoding="utf-8")
-    with patch.object(Path, "is_file", return_value=False):
-        assert read_file_safe(str(f)) is None
-        assert read_file_safe(f) is None
+@pytest.mark.parametrize(
+    ("prefer_file", "has_file", "query", "expected"),
+    [
+        (False, True, "SELECT 'from_query';", "SELECT 'from_query';"),
+        (False, True, None, "SELECT 'from_file';"),
+        (False, False, None, None),
+        (True, True, "SELECT 'from_query';", "SELECT 'from_file';"),
+        (True, False, "SELECT 'from_query';", "SELECT 'from_query';"),
+        (True, False, None, None),
+    ],
+)
+def test_read_model_sql_resolution(
+    tmp_path: Path, prefer_file: bool, has_file: bool, query: str | None, expected: str | None
+) -> None:
+    file_path = ""
+    if has_file:
+        f = tmp_path / "model.sql"
+        f.write_text("SELECT 'from_file';", encoding="utf-8")
+        file_path = str(f)
+    elif expected is not None or query is not None:
+        file_path = str(tmp_path / "nonexistent.sql")
+
+    model = _make_model(name="my_model", path=file_path, query=query)
+    assert read_model_sql(model, prefer_file=prefer_file) == expected
+    assert model.get_sql(prefer_file=prefer_file) == expected
+    assert model.read_sql(prefer_file=prefer_file) == expected
 
 
-def test_read_file_safe_is_file_exception(tmp_path: Path) -> None:
-    f = tmp_path / "valid.sql"
-    f.write_text("SELECT 1;", encoding="utf-8")
-    with patch.object(Path, "is_file", side_effect=OSError("Permission denied")):
-        assert read_file_safe(str(f)) is None
-
-
-def test_read_model_sql_prefer_file_false_with_query(tmp_path: Path) -> None:
-    f = tmp_path / "model.sql"
-    f.write_text("SELECT 'from_file';", encoding="utf-8")
-
-    model = ModelRepresentation(
-        name="my_model",
-        path=str(f),
-        dialect="duckdb",
-        query="SELECT 'from_query';",
-    )
-    # Default prefer_file=False returns query without checking disk
-    assert read_model_sql(model) == "SELECT 'from_query';"
-    assert model.get_sql() == "SELECT 'from_query';"
-    assert model.read_sql() == "SELECT 'from_query';"
-
-
-def test_read_model_sql_prefer_file_false_without_query(tmp_path: Path) -> None:
-    f = tmp_path / "model.sql"
-    f.write_text("SELECT 'from_file';", encoding="utf-8")
-
-    model = ModelRepresentation(
-        name="my_model",
-        path=str(f),
-        dialect="duckdb",
-        query=None,
-    )
-    assert read_model_sql(model) == "SELECT 'from_file';"
-    assert model.get_sql() == "SELECT 'from_file';"
-    assert model.read_sql() == "SELECT 'from_file';"
-
-
-def test_read_model_sql_prefer_file_false_nonexistent() -> None:
-    model = ModelRepresentation(
-        name="my_model",
-        path="nonexistent_file.sql",
-        dialect="duckdb",
-        query=None,
-    )
-    assert model.get_sql() is None
-
-
-def test_read_model_sql_prefer_file_false_empty_path() -> None:
-    model = ModelRepresentation(
-        name="my_model",
-        path="",
-        dialect="duckdb",
-        query=None,
-    )
-    assert model.get_sql() is None
-
-
-def test_read_model_sql_prefer_file_true_prefers_file(tmp_path: Path) -> None:
-    f = tmp_path / "model.sql"
-    f.write_text("SELECT 'from_file';", encoding="utf-8")
-
-    model = ModelRepresentation(
-        name="my_model",
-        path=str(f),
-        dialect="duckdb",
-        query="SELECT 'from_query';",
-    )
-    assert read_model_sql(model, prefer_file=True) == "SELECT 'from_file';"
-    assert model.get_sql(prefer_file=True) == "SELECT 'from_file';"
-    assert model.read_sql(prefer_file=True) == "SELECT 'from_file';"
-
-
-def test_read_model_sql_prefer_file_true_fallback_on_missing(tmp_path: Path) -> None:
-    non_existent = tmp_path / "does_not_exist.sql"
-    model = ModelRepresentation(
-        name="my_model",
-        path=str(non_existent),
-        dialect="duckdb",
-        query="SELECT 'from_query';",
-    )
+def test_read_model_sql_prefer_file_directory_fallback(tmp_path: Path) -> None:
+    model = _make_model(name="my_model", path=str(tmp_path), query="SELECT 'from_query';")
     assert model.get_sql(prefer_file=True) == "SELECT 'from_query';"
 
 
-def test_read_model_sql_prefer_file_true_fallback_on_directory(tmp_path: Path) -> None:
-    model = ModelRepresentation(
-        name="my_model",
-        path=str(tmp_path),
-        dialect="duckdb",
-        query="SELECT 'from_query';",
-    )
-    assert model.get_sql(prefer_file=True) == "SELECT 'from_query';"
-
-
-def test_read_model_sql_prefer_file_true_fallback_on_read_error(tmp_path: Path) -> None:
+def test_read_model_sql_prefer_file_read_error_fallback(tmp_path: Path) -> None:
     f = tmp_path / "model.sql"
     f.write_text("SELECT 'from_file';", encoding="utf-8")
-
-    model = ModelRepresentation(
-        name="my_model",
-        path=str(f),
-        dialect="duckdb",
-        query="SELECT 'from_query';",
-    )
+    model = _make_model(name="my_model", path=str(f), query="SELECT 'from_query';")
     with patch.object(Path, "read_text", side_effect=OSError("Read error")):
         assert model.get_sql(prefer_file=True) == "SELECT 'from_query';"
-
-
-def test_read_model_sql_prefer_file_true_none_when_both_unavailable(tmp_path: Path) -> None:
-    non_existent = tmp_path / "does_not_exist.sql"
-    model = ModelRepresentation(
-        name="my_model",
-        path=str(non_existent),
-        dialect="duckdb",
-        query=None,
-    )
-    assert model.get_sql(prefer_file=True) is None
 
 
 def test_model_representation_ast_from_file(tmp_path: Path) -> None:
     f = tmp_path / "model.sql"
     f.write_text("SELECT id, name FROM users;", encoding="utf-8")
-
-    model = ModelRepresentation(
-        name="users_model",
-        path=str(f),
-        dialect="duckdb",
-        query=None,
-    )
+    model = _make_model(name="users_model", path=str(f), query=None)
     assert model.ast is not None
 
 
-def test_read_model_sql_with_project_root_relative_path(tmp_path: Path) -> None:
+@pytest.mark.parametrize("prefer_file", [False, True])
+def test_read_model_sql_with_project_root_relative(tmp_path: Path, prefer_file: bool) -> None:
     models_dir = tmp_path / "models" / "staging"
     models_dir.mkdir(parents=True, exist_ok=True)
     sql_file = models_dir / "stg_users.sql"
     sql_file.write_text("SELECT id FROM raw_users;", encoding="utf-8")
 
-    model = ModelRepresentation(
-        name="stg_users",
-        path="models/staging/stg_users.sql",
-        dialect="duckdb",
-        query=None,
-    )
+    model = _make_model(name="stg_users", path="models/staging/stg_users.sql", query=None)
 
-    # project_root as Path
-    assert read_model_sql(model, project_root=tmp_path) == "SELECT id FROM raw_users;"
-    assert model.get_sql(project_root=tmp_path) == "SELECT id FROM raw_users;"
-    assert model.read_sql(project_root=tmp_path) == "SELECT id FROM raw_users;"
-
-    # project_root as str
+    assert read_model_sql(model, prefer_file=prefer_file, project_root=tmp_path) == "SELECT id FROM raw_users;"
+    assert model.get_sql(prefer_file=prefer_file, project_root=tmp_path) == "SELECT id FROM raw_users;"
+    assert model.read_sql(prefer_file=prefer_file, project_root=tmp_path) == "SELECT id FROM raw_users;"
     assert read_model_sql(model, project_root=str(tmp_path)) == "SELECT id FROM raw_users;"
 
-    # prefer_file=True with project_root
-    assert read_model_sql(model, prefer_file=True, project_root=tmp_path) == "SELECT id FROM raw_users;"
-    assert model.get_sql(prefer_file=True, project_root=tmp_path) == "SELECT id FROM raw_users;"
-    assert model.read_sql(prefer_file=True, project_root=tmp_path) == "SELECT id FROM raw_users;"
 
-
-def test_read_model_sql_with_project_root_absolute_path(tmp_path: Path) -> None:
+def test_read_model_sql_with_project_root_edge_cases(tmp_path: Path) -> None:
     f = tmp_path / "model.sql"
     f.write_text("SELECT 'absolute';", encoding="utf-8")
 
-    model = ModelRepresentation(
-        name="my_model",
-        path=str(f),
-        dialect="duckdb",
-        query=None,
-    )
-    # When model.path is absolute, project_root is not prepended
+    # Absolute path ignores project_root prepending
+    model_abs = _make_model(name="my_model", path=str(f), query=None)
     dummy_root = tmp_path / "nonexistent_dir"
-    assert read_model_sql(model, project_root=dummy_root) == "SELECT 'absolute';"
-    assert model.get_sql(project_root=dummy_root) == "SELECT 'absolute';"
+    assert read_model_sql(model_abs, project_root=dummy_root) == "SELECT 'absolute';"
 
-
-def test_read_model_sql_with_project_root_empty_path(tmp_path: Path) -> None:
-    model = ModelRepresentation(
-        name="empty_path_model",
-        path="",
-        dialect="duckdb",
-        query=None,
-    )
-    assert read_model_sql(model, project_root=tmp_path) is None
-    assert model.get_sql(project_root=tmp_path) is None
+    # Empty path returns None
+    model_empty = _make_model(name="empty_path_model", path="", query=None)
+    assert read_model_sql(model_empty, project_root=tmp_path) is None
 
 
 def test_read_model_sql_raw_code_and_get_raw_sql() -> None:
-    model_raw = ModelRepresentation(
-        name="raw_model",
-        path="models/raw.sql",
-        dialect="duckdb",
-        raw_code="SELECT * FROM raw;",
-    )
-    # When query is None and prefer_file=False, falls back to raw_code
+    model_raw = _make_model(name="raw_model", path="models/raw.sql", raw_code="SELECT * FROM raw;")
     assert model_raw.get_sql(prefer_file=False) == "SELECT * FROM raw;"
     assert model_raw.get_raw_sql() == "SELECT * FROM raw;"
 
-    model_both = ModelRepresentation(
+    model_both = _make_model(
         name="both_model",
         path="models/both.sql",
-        dialect="duckdb",
         query="SELECT * FROM compiled;",
         raw_code="SELECT * FROM raw;",
     )
     assert model_both.get_sql(prefer_file=False) == "SELECT * FROM compiled;"
     assert model_both.get_sql(prefer_file=True) == "SELECT * FROM raw;"
     assert model_both.get_raw_sql() == "SELECT * FROM raw;"
-
