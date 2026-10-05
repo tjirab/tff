@@ -10,6 +10,8 @@ import tempfile
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+import sqlglot
+
 if TYPE_CHECKING:
     import sqlglot.expressions as exp
     from tff.core.config import FitnessFunctionsConfig
@@ -18,6 +20,10 @@ logger = logging.getLogger(__name__)
 
 DEFAULT_CACHE_DIR_NAME = ".tff_cache"
 AST_CACHE_SUBDIR = "ast"
+SQLGLOT_VERSION = getattr(sqlglot, "__version__", "unknown")
+
+_MEM_CACHE: dict[str, exp.Expression] = {}
+_MAX_MEM_CACHE_SIZE = 1024
 
 
 def get_ast_cache_dir(
@@ -55,10 +61,8 @@ def is_cache_enabled(config: FitnessFunctionsConfig | None = None) -> bool:
 
 def compute_ast_cache_key(sql: str, dialect: str) -> str:
     """Compute a SHA-256 cache key based on SQLGlot version, dialect, and SQL content."""
-    import sqlglot
-
     normalized = sql.strip()
-    key_payload = f"{sqlglot.__version__}:{dialect}:{normalized}".encode("utf-8")
+    key_payload = f"{SQLGLOT_VERSION}:{dialect}:{normalized}".encode("utf-8")
     return hashlib.sha256(key_payload).hexdigest()
 
 
@@ -67,7 +71,11 @@ def get_cached_ast(
     cache_dir: Path | None = None,
     project_root: Path | None = None,
 ) -> exp.Expression | None:
-    """Retrieve a cached AST expression from disk by cache key if available."""
+    """Retrieve a cached AST expression from memory or disk by cache key if available."""
+    # Fast L1 in-memory lookup
+    if cache_key in _MEM_CACHE:
+        return _MEM_CACHE[cache_key]
+
     target_dir = cache_dir or get_ast_cache_dir(project_root)
     cache_file = target_dir / cache_key[:2] / f"{cache_key[2:]}.ast"
     if not cache_file.exists():
@@ -78,6 +86,9 @@ def get_cached_ast(
         data = cache_file.read_bytes()
         expr = pickle.loads(data)
         logger.debug("AST cache hit for key %s (%s)", cache_key[:12], cache_file.name)
+        if len(_MEM_CACHE) >= _MAX_MEM_CACHE_SIZE:
+            _MEM_CACHE.pop(next(iter(_MEM_CACHE)))
+        _MEM_CACHE[cache_key] = expr
         return expr
     except Exception as exc:
         logger.debug("Failed to load cached AST from %s: %s", cache_file, exc)
@@ -91,7 +102,11 @@ def set_cached_ast(
     cache_dir: Path | None = None,
     project_root: Path | None = None,
 ) -> None:
-    """Atomically store an AST expression into the disk cache."""
+    """Atomically store an AST expression into the in-memory and disk cache."""
+    if len(_MEM_CACHE) >= _MAX_MEM_CACHE_SIZE:
+        _MEM_CACHE.pop(next(iter(_MEM_CACHE)))
+    _MEM_CACHE[cache_key] = expression
+
     target_dir = cache_dir or get_ast_cache_dir(project_root)
     subdir = target_dir / cache_key[:2]
     temp_path: Path | None = None
@@ -121,8 +136,6 @@ def parse_sql_with_cache(
     enabled: bool = True,
 ) -> exp.Expression | None:
     """Parse SQL using SQLGlot, using disk cache if enabled and allowed by environment."""
-    import sqlglot
-
     if not sql or not sql.strip():
         return None
 
@@ -153,6 +166,7 @@ def clear_ast_cache(
     custom_dir: Path | str | None = None,
 ) -> int:
     """Remove all cached AST files and return the number of deleted files."""
+    _MEM_CACHE.clear()
     target_dir = get_ast_cache_dir(project_root, custom_dir=custom_dir)
     if not target_dir.exists():
         return 0

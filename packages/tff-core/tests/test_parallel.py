@@ -5,6 +5,7 @@ from unittest.mock import patch
 import pytest
 import sqlglot.expressions as exp
 
+from conftest import _make_model
 from tff.core.config import FitnessFunctionsConfig
 from tff.core.model import ModelRepresentation, read_model_sql
 from tff.core.parallel import (
@@ -216,7 +217,7 @@ def test_precompute_model_asts_cache_hit(tmp_path: Path):
 
 
 def test_precompute_model_asts_parallel_pool(tmp_path: Path):
-    # Multiple models to trigger parallel pool execution (len > 2 and workers > 1)
+    # Multiple models to trigger parallel pool execution (len >= pool_threshold and workers > 1)
     models = {}
     for i in range(5):
         models[f"model_{i}"] = ModelRepresentation(
@@ -226,7 +227,7 @@ def test_precompute_model_asts_parallel_pool(tmp_path: Path):
             query=f"SELECT {i} AS val, name FROM table_{i}",
         )
 
-    precompute_model_asts(models, project_root=tmp_path, max_workers=2)
+    precompute_model_asts(models, project_root=tmp_path, max_workers=2, pool_threshold=2)
 
     for i in range(5):
         assert models[f"model_{i}"].expression is not None
@@ -248,10 +249,44 @@ def test_precompute_model_asts_parallel_pool_fallback(tmp_path: Path):
         "tff.core.parallel.ProcessPoolExecutor",
         side_effect=RuntimeError("Process pool unavailable"),
     ):
-        precompute_model_asts(models, project_root=tmp_path, max_workers=2)
+        precompute_model_asts(models, project_root=tmp_path, max_workers=2, pool_threshold=2)
 
     for i in range(4):
         assert models[f"model_{i}"].expression is not None
+
+
+def _threshold_models(n: int) -> dict[str, ModelRepresentation]:
+    return {
+        f"model_{i}": _make_model(
+            name=f"model_{i}",
+            path=f"models/m_{i}.sql",
+            dialect="duckdb",
+            query=f"SELECT {i} AS val",
+        )
+        for i in range(n)
+    }
+
+
+@pytest.mark.parametrize(
+    ("env_value", "expect_pool"),
+    [(None, False), ("2", True), ("not-a-number", False)],
+)
+def test_precompute_model_asts_pool_threshold_env(tmp_path, monkeypatch, env_value, expect_pool):
+    monkeypatch.setenv("TFF_NO_CACHE", "1")
+    if env_value is None:
+        monkeypatch.delenv("TFF_PROCESS_POOL_THRESHOLD", raising=False)
+    else:
+        monkeypatch.setenv("TFF_PROCESS_POOL_THRESHOLD", env_value)
+    models = _threshold_models(4)
+
+    with patch(
+        "tff.core.parallel.ProcessPoolExecutor",
+        side_effect=RuntimeError("pool spawned"),
+    ) as mock_pool:
+        precompute_model_asts(models, project_root=tmp_path, max_workers=2)
+
+    assert mock_pool.called is expect_pool
+    assert all(m.expression is not None for m in models.values())
 
 
 def test_run_parallel_model_rule_sequential():
