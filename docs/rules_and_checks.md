@@ -705,6 +705,9 @@ For SQLMesh projects, these rules run dynamically inside SQLMesh (e.g., `sqlmesh
   ```
   * **SQLMesh Rule Name**: `filenameequalsmodelname`
 
+!!! note "Per-Model Error Isolation"
+    If an unexpected error (such as a syntax error or AST parsing exception) prevents a rule from evaluating a model, tff isolates the failure and emits a `rule_execution_error` diagnostic finding. See [Diagnostic Findings & Error Isolation (`rule_execution_error`)](#5-diagnostic-findings-error-isolation-rule_execution_error) for details.
+
 ---
 
 ## 3. Health Scoring Configuration
@@ -899,4 +902,74 @@ You can inspect registered plugins and adapters using the `tff info` command:
 ```bash
 tff info
 ```
+
+---
+
+## 5. Diagnostic Findings & Error Isolation (`rule_execution_error`)
+
+tff provides **per-model error isolation** during rule and check evaluation. When evaluating hundreds or thousands of models across large dbt, SQLMesh, or Dataform projects, individual models may occasionally fail during evaluation due to dialect-specific SQL syntax, AST parsing failures, unhandled exceptions in custom rule plugins, or corrupted project metadata.
+
+Rather than aborting the entire evaluation run and discarding findings for all other models, tff isolates runtime failures to the specific model or check, allowing the rest of the project to complete evaluation.
+
+### Diagnostic Finding Specification
+
+| Attribute | Value |
+| :--- | :--- |
+| **Check ID** | `rule_execution_error` |
+| **Finding Label** | `Rule execution error` |
+| **Category** | `Execution Errors` |
+| **Default Severity** | `error` |
+| **Scope** | `model` (when a model rule fails) or `project` (when a DAG/project-level check fails) |
+| **Configurable via YAML?** | **No** (diagnostic finding, not a configurable quality rule) |
+
+### Quality Violations vs. Execution Errors
+
+It is important to distinguish `rule_execution_error` from standard architectural and linter violations:
+* **Fitness Function Violations** (e.g. `layer_integrity`, `ban_select_star`, `mart_naming`): The model was successfully parsed and evaluated, but its architecture or SQL style violated a configured governance rule.
+* **Execution Errors** (`rule_execution_error`): The rule could not be evaluated because an unexpected exception occurred during model inspection, AST parsing, or rule execution.
+
+Because `rule_execution_error` indicates an execution failure rather than a style preference, it **cannot be disabled** via `fitness_functions.yaml`.
+
+### Common Causes & Triggers
+
+1. **SQL Dialect Syntax Incompatibilities**:
+   * A model query uses database-specific syntax or procedural SQL constructs not yet supported by the configured SQLGlot dialect.
+2. **AST Parsing Failures**:
+   * Syntax errors or dialect mismatches when generating the abstract syntax tree for a model query.
+3. **Custom Plugin Exceptions**:
+   * An unhandled exception (e.g. `AttributeError`, `KeyError`, `IndexError`) raised within a custom rule plugin or custom adapter.
+4. **Missing or Corrupted Model Attributes**:
+   * Malformed manifest data or missing files that prevent standard model representation instantiation.
+
+### Surfacing in CLI and CI/CD Pipelines
+
+* **CLI Audit Ledger**: Surfaced in the terminal output with `ERR` status tag, `rule_execution_error` rule identifier, `[Execution Errors]` category, and the underlying error message:
+  ```text
+  STATUS  LOCATION                                 RULE                  COUPLING
+  ─────────────────────────────────────────────────────────────────────────────────────────────
+  ERR     models/marts/orders.sql                  rule_execution_error  [Execution Errors]
+          ! Rule 'ban_select_star' failed to evaluate: Syntax error near 'QUALIFY' at line 14
+  ```
+* **CI Exit Codes**: Since `rule_execution_error` is emitted with severity `error`, commands like `tff lint` and `tff check` exit with code `1` by default (`--fail-level error`), preventing broken or un-evaluated models from passing CI gates unnoticed.
+* **SARIF Reports (`--format sarif`)**: Exported as an error-level result under `ruleId: "rule_execution_error"` with file path and line location for GitHub Code Scanning and security alerts.
+* **GitHub Actions Workflow Annotations**: In CI or when `--github-annotations` is enabled, emits `::error` annotations on the exact model file in pull requests.
+* **JUnit XML (`--junit-xml`)**: Recorded as a failed test case in standard test reports for GitLab CI, Azure DevOps, and Bitbucket.
+* **Health Scoring (`tff health`)**:
+  * Grouped under the `Execution Errors` category in diagnostic breakdowns.
+  * Because `rule_execution_error` is an execution diagnostic rather than a configurable quality metric, its category score is reported as `None` and does not deduct penalty points from the overall architectural health score percentage (which measures fitness function conformance).
+
+### Troubleshooting & Remediation
+
+When encountering `rule_execution_error`:
+
+1. **Inspect Full Stack Traces with `--debug`**:
+   Run the command with the `--debug` flag or set `export TFF_DEBUG=1` to print the full Python exception traceback and diagnostic context:
+   ```bash
+   tff lint --debug
+   ```
+2. **Verify Dialect Configuration**:
+   Ensure the project or command specifies the correct SQL dialect (e.g. `--dialect snowflake` or `--dialect duckdb`).
+3. **Debug Custom Rule Plugins**:
+   If the failure occurs inside a custom plugin rule, inspect the exception trace to identify unhandled AST node types or missing model attributes.
+
 
