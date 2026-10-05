@@ -19,6 +19,7 @@ init:
 
 lint:
 	uv run ruff check .
+	uv run python scripts/lint_tests.py
 
 test:
 	uv run pytest -n auto

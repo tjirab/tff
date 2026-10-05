@@ -18,7 +18,15 @@ if [ $? -ne 0 ]; then
     exit 1
 fi
 
-# 2. Run dependency audit
+# 2. Run test architecture & anti-bloat linter
+echo "Running test anti-bloat linter..."
+uv run python scripts/lint_tests.py
+if [ $? -ne 0 ]; then
+    echo "❌ Error: Test anti-bloat lint checks failed. Push aborted."
+    exit 1
+fi
+
+# 3. Run dependency audit
 echo "Running dependency audit..."
 uv run python scripts/audit.py --min-severity HIGH
 if [ $? -ne 0 ]; then
