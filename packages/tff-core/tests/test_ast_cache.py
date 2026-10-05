@@ -5,6 +5,7 @@ from unittest.mock import patch
 import pytest
 import sqlglot.expressions as exp
 
+from tff.core import ast_cache
 from tff.core.ast_cache import (
     clear_ast_cache,
     compute_ast_cache_key,
@@ -15,6 +16,44 @@ from tff.core.ast_cache import (
     set_cached_ast,
 )
 from tff.core.config import FitnessFunctionsConfig
+
+
+@pytest.fixture(autouse=True)
+def _isolate_mem_cache():
+    ast_cache._MEM_CACHE.clear()
+    yield
+    ast_cache._MEM_CACHE.clear()
+
+
+def test_mem_cache_hit_skips_disk(tmp_path: Path):
+    expr = exp.Literal.number(1)
+    set_cached_ast("ab" + "0" * 62, expr, cache_dir=tmp_path)
+    with patch("pathlib.Path.exists", side_effect=AssertionError("disk touched")):
+        assert get_cached_ast("ab" + "0" * 62, cache_dir=tmp_path) is expr
+
+
+def test_mem_cache_evicts_oldest_on_set(tmp_path: Path):
+    with patch.object(ast_cache, "_MAX_MEM_CACHE_SIZE", 2):
+        for i in range(3):
+            set_cached_ast(f"{i:02d}" + "0" * 62, exp.Literal.number(i), cache_dir=tmp_path)
+        assert list(ast_cache._MEM_CACHE) == ["01" + "0" * 62, "02" + "0" * 62]
+
+
+def test_mem_cache_evicts_oldest_on_disk_load(tmp_path: Path):
+    key = "cd" + "0" * 62
+    set_cached_ast(key, exp.Literal.number(7), cache_dir=tmp_path)
+    ast_cache._MEM_CACHE.clear()
+    ast_cache._MEM_CACHE["stale"] = exp.Literal.number(0)
+    with patch.object(ast_cache, "_MAX_MEM_CACHE_SIZE", 1):
+        loaded = get_cached_ast(key, cache_dir=tmp_path)
+    assert loaded == exp.Literal.number(7)
+    assert list(ast_cache._MEM_CACHE) == [key]
+
+
+def test_clear_ast_cache_clears_memory(tmp_path: Path):
+    set_cached_ast("ef" + "0" * 62, exp.Literal.number(1), cache_dir=tmp_path)
+    clear_ast_cache(custom_dir=tmp_path)
+    assert ast_cache._MEM_CACHE == {}
 
 
 def test_compute_ast_cache_key():

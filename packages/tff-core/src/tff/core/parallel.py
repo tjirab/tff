@@ -91,6 +91,7 @@ def precompute_model_asts(
     project_root: Path | None = None,
     config: FitnessFunctionsConfig | None = None,
     max_workers: int | None = None,
+    pool_threshold: int | None = None,
 ) -> None:
     """Parse and populate AST expressions for models in parallel using disk cache."""
     cache_enabled = is_cache_enabled(config)
@@ -138,7 +139,15 @@ def precompute_model_asts(
         return
 
     workers = get_max_workers(config=config, override=max_workers)
-    if workers <= 1 or len(tasks) <= 2:
+    threshold = 32 if pool_threshold is None else pool_threshold
+    env_thresh = os.environ.get("TFF_PROCESS_POOL_THRESHOLD")
+    if env_thresh and pool_threshold is None:
+        try:
+            threshold = max(1, int(env_thresh.strip()))
+        except ValueError:
+            pass
+
+    if workers <= 1 or len(tasks) < threshold:
         for task in tasks:
             m_name, expr = _worker_parse_model_sql(task)
             if expr is not None and m_name in models:
