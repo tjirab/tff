@@ -4,14 +4,33 @@ members = ["packages/*"]
 [dependency-groups]
 dev = [
     "pytest>=8.0",
+    "pytest-xdist>=3.6.0",
     "ruff>=0.9",
     "pytest-cov>=7.1.0",
     "diff-cover>=10.5.1",
+    "pip-audit>=2.8.0",
 ]
 docs = [
     "mkdocs>=1.6.0",
     "mkdocs-material>=9.5.0",
     "mkdocstrings[python]>=1.0.6",
+]
+
+[tool.pytest.ini_options]
+filterwarnings = [
+    "ignore::pydantic.PydanticDeprecatedSince20",
+    "ignore::DeprecationWarning:dateparser.*",
+    "ignore:.*'tff.core.cli' found in sys.modules.*:RuntimeWarning",
+]
+
+[tool.coverage.run]
+source = [
+    "packages/tff-core/src/tff",
+    "packages/sqlmesh-ff/src/sqlmesh_ff",
+]
+omit = [
+    "*/tests/*",
+    "*/site-packages/*",
 ]
 
 [tool.coverage.report]
@@ -22,3 +41,4 @@ exclude_lines = [
     "if typing.TYPE_CHECKING:",
     "if TYPE_CHECKING:",
 ]
+

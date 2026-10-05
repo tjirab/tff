@@ -21,10 +21,10 @@ lint:
 	uv run ruff check .
 
 test:
-	uv run pytest
+	uv run pytest -n auto
 
 coverage:
-	uv run pytest --cov=src --cov-report=xml
+	uv run pytest -n auto --cov --cov-report=xml
 	uv run diff-cover coverage.xml --compare-branch=origin/main
 
 docs-serve:
