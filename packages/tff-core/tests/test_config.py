@@ -12,12 +12,16 @@ from tff.core.config import (
     STARTER_CONFIG_YAML,
     CheckEnabled,
     FitnessFunctionsConfig,
+    HealthConfig,
     LayerFilterConfig,
+    MetadataRuleConfig,
     Severity,
+    SqlComplexityRuleConfig,
     init_fitness_config,
     load_fitness_config,
     resolve_project_path,
 )
+from tff.core.exceptions import TffConfigError
 
 
 def test_load_defaults_without_file(tmp_path: Path) -> None:
@@ -954,5 +958,148 @@ rules:
     )
     with pytest.raises(ValidationError):
         load_fitness_config(tmp_path)
+
+
+def test_validation_errors_standardized_to_tff_config_error() -> None:
+    # 1. workers validation
+    with pytest.raises(ValidationError) as exc_info:
+        FitnessFunctionsConfig(workers=0)
+    err = exc_info.value.errors()[0]["ctx"]["error"]
+    assert isinstance(err, TffConfigError)
+    assert isinstance(err, ValueError)
+    assert "workers must be at least 1" in err.message
+    assert err.hint == "Set workers to an integer >= 1 in fitness_functions.yaml or CLI flag."
+    assert err.details == {"field": "workers", "workers": 0, "min_workers": 1}
+
+    # 2. provider validation
+    with pytest.raises(ValidationError) as exc_info:
+        FitnessFunctionsConfig(provider=123)  # type: ignore[arg-type]
+    err = exc_info.value.errors()[0]["ctx"]["error"]
+    assert isinstance(err, TffConfigError)
+    assert "Expected string for provider" in err.message
+    assert "Specify provider as a string" in err.hint
+    assert err.details["field"] == "provider"
+
+    # 3. plugins validation
+    with pytest.raises(ValidationError) as exc_info:
+        FitnessFunctionsConfig(plugins=123)  # type: ignore[arg-type]
+    err = exc_info.value.errors()[0]["ctx"]["error"]
+    assert isinstance(err, TffConfigError)
+    assert "Expected list of strings for plugins" in err.message
+    assert "Configure plugins as a list" in err.hint
+    assert err.details["field"] == "plugins"
+
+    # 4. health weights validation
+    with pytest.raises(ValidationError) as exc_info:
+        HealthConfig(weights={"layer_integrity": -1.0})
+    err = exc_info.value.errors()[0]["ctx"]["error"]
+    assert isinstance(err, TffConfigError)
+    assert "Weight for 'layer_integrity' must be non-negative" in err.message
+    assert err.details == {"key": "layer_integrity", "weight": -1.0}
+    assert "Set weight for 'layer_integrity' to a non-negative number" in err.hint
+
+    # 5. check entries: invalid type
+    with pytest.raises(ValidationError) as exc_info:
+        FitnessFunctionsConfig.model_validate({"checks": {"custom_check": 123}})
+    err = exc_info.value.errors()[0]["ctx"]["error"]
+    assert isinstance(err, TffConfigError)
+    assert "Invalid configuration for check 'custom_check'" in err.message
+    assert err.details == {"check": "custom_check", "provided_type": "int"}
+
+    # 6. check entries: invalid severity
+    with pytest.raises(ValidationError) as exc_info:
+        FitnessFunctionsConfig.model_validate({"checks": {"custom_check": {"severity": "fatal"}}})
+    err = exc_info.value.errors()[0]["ctx"]["error"]
+    assert isinstance(err, TffConfigError)
+    assert "Invalid severity 'fatal' for check 'custom_check'" in err.message
+    assert err.details == {"check": "custom_check", "severity": "fatal"}
+
+    # 7. rule entries: invalid type
+    with pytest.raises(ValidationError) as exc_info:
+        FitnessFunctionsConfig.model_validate({"rules": {"custom_rule": 123}})
+    err = exc_info.value.errors()[0]["ctx"]["error"]
+    assert isinstance(err, TffConfigError)
+    assert "Invalid configuration for rule 'custom_rule'" in err.message
+    assert err.details == {"rule": "custom_rule", "provided_type": "int"}
+
+    # 8. rule entries: invalid severity
+    with pytest.raises(ValidationError) as exc_info:
+        FitnessFunctionsConfig.model_validate({"rules": {"custom_rule": {"severity": "fatal"}}})
+    err = exc_info.value.errors()[0]["ctx"]["error"]
+    assert isinstance(err, TffConfigError)
+    assert "Invalid severity 'fatal' for rule 'custom_rule'" in err.message
+    assert err.details == {"rule": "custom_rule", "severity": "fatal"}
+
+    # 9. sql_complexity warn_only deprecation
+    with pytest.raises(ValidationError) as exc_info:
+        SqlComplexityRuleConfig.model_validate({"warn_only": True})
+    err = exc_info.value.errors()[0]["ctx"]["error"]
+    assert isinstance(err, TffConfigError)
+    assert "warn_only' is deprecated" in err.message
+    assert err.details == {"rule": "sql_complexity", "field": "warn_only"}
+
+    # warn_only setter
+    cfg_sql = SqlComplexityRuleConfig()
+    with pytest.raises(TffConfigError) as exc_info_setter:
+        cfg_sql.warn_only = True
+    assert isinstance(exc_info_setter.value, ValueError)
+    assert "warn_only' is deprecated" in exc_info_setter.value.message
+    assert exc_info_setter.value.details == {"rule": "sql_complexity", "field": "warn_only"}
+
+    # 10. sql_complexity threshold boundaries validation
+    # Not a dict
+    with pytest.raises(ValidationError) as exc_info:
+        SqlComplexityRuleConfig.model_validate({"thresholds": "bad"})
+    err = exc_info.value.errors()[0]["ctx"]["error"]
+    assert isinstance(err, TffConfigError)
+    assert "Expected dictionary for thresholds" in err.message
+
+    # Not 2 elements
+    with pytest.raises(ValidationError) as exc_info:
+        SqlComplexityRuleConfig.model_validate({"thresholds": {"line_count": [10]}})
+    err = exc_info.value.errors()[0]["ctx"]["error"]
+    assert isinstance(err, TffConfigError)
+    assert "must be a pair [warn, fail]" in err.message
+    assert err.details["metric"] == "line_count"
+
+    # Non-integer element
+    with pytest.raises(ValidationError) as exc_info:
+        SqlComplexityRuleConfig.model_validate({"thresholds": {"line_count": ["a", "b"]}})
+    err = exc_info.value.errors()[0]["ctx"]["error"]
+    assert isinstance(err, TffConfigError)
+    assert "must be integers" in err.message
+    assert err.details["metric"] == "line_count"
+
+    # Negative integer
+    with pytest.raises(ValidationError) as exc_info:
+        SqlComplexityRuleConfig.model_validate({"thresholds": {"line_count": [-5, 10]}})
+    err = exc_info.value.errors()[0]["ctx"]["error"]
+    assert isinstance(err, TffConfigError)
+    assert "must be non-negative" in err.message
+    assert err.details["metric"] == "line_count"
+
+    # warn > fail
+    with pytest.raises(ValidationError) as exc_info:
+        SqlComplexityRuleConfig.model_validate({"thresholds": {"line_count": [500, 200]}})
+    err = exc_info.value.errors()[0]["ctx"]["error"]
+    assert isinstance(err, TffConfigError)
+    assert "Warn threshold (500) cannot be greater than fail threshold (200)" in err.message
+    assert err.details == {"rule": "sql_complexity", "metric": "line_count", "warn": 500, "fail": 200}
+
+    # 11. metadata grain validation (validate_model_grain)
+    meta = MetadataRuleConfig(grain=True)
+    assert meta.grain is True
+    meta_str = MetadataRuleConfig(grain="false")  # type: ignore[arg-type]
+    assert meta_str.grain is False
+
+    with pytest.raises(ValidationError) as exc_info:
+        MetadataRuleConfig(grain="not_a_bool")  # type: ignore[arg-type]
+    err = exc_info.value.errors()[0]["ctx"]["error"]
+    assert isinstance(err, TffConfigError)
+    assert "Invalid configuration for 'rules.metadata.grain': expected boolean" in err.message
+    assert err.hint == "Set 'grain: true' or 'grain: false' under 'rules.metadata'."
+    assert err.details["rule"] == "metadata"
+    assert err.details["field"] == "grain"
+
 
 

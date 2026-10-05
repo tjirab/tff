@@ -413,3 +413,33 @@ def test_config_loader_exceptions(tmp_path: Path):
         resolve_project_path(cfg, "../../outside.json")
     assert isinstance(exc_info.value, ValueError)
     assert "resolves outside project root" in exc_info.value.message
+
+
+def test_config_validation_exceptions():
+    from pydantic import ValidationError
+    from tff.core.config import MetadataRuleConfig, SqlComplexityRuleConfig
+
+    # Workers validation
+    with pytest.raises(ValidationError) as exc_info:
+        FitnessFunctionsConfig(workers=0)
+    err = exc_info.value.errors()[0]["ctx"]["error"]
+    assert isinstance(err, TffConfigError)
+    assert err.hint == "Set workers to an integer >= 1 in fitness_functions.yaml or CLI flag."
+    assert err.details == {"field": "workers", "workers": 0, "min_workers": 1}
+
+    # Threshold boundaries validation
+    with pytest.raises(ValidationError) as exc_info:
+        SqlComplexityRuleConfig.model_validate({"thresholds": {"cte_count": [15, 10]}})
+    err = exc_info.value.errors()[0]["ctx"]["error"]
+    assert isinstance(err, TffConfigError)
+    assert "Warn threshold (15) cannot be greater than fail threshold (10)" in err.message
+    assert err.details == {"rule": "sql_complexity", "metric": "cte_count", "warn": 15, "fail": 10}
+
+    # Model grain validation
+    with pytest.raises(ValidationError) as exc_info:
+        MetadataRuleConfig(grain=123)  # type: ignore[arg-type]
+    err = exc_info.value.errors()[0]["ctx"]["error"]
+    assert isinstance(err, TffConfigError)
+    assert "Invalid configuration for 'rules.metadata.grain': expected boolean" in err.message
+    assert err.details == {"rule": "metadata", "field": "grain", "value": 123, "provided_type": "int"}
+

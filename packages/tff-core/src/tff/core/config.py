@@ -14,6 +14,8 @@ from pydantic import (
     field_validator,
     model_validator,
 )
+from tff.core.exceptions import TffConfigError
+
 
 
 Severity = Literal["error", "warning"]
@@ -396,15 +398,19 @@ class ChecksConfig(BaseModel):
             for k, v in data.items():
                 if k not in known:
                     if not isinstance(v, (dict, bool)):
-                        raise ValueError(
-                            f"Invalid configuration for check '{k}': expected a dictionary of options or boolean, got {type(v).__name__}"
+                        raise TffConfigError(
+                            f"Invalid configuration for check '{k}': expected a dictionary of options or boolean, got {type(v).__name__}",
+                            hint=f"Configure check '{k}' with a dictionary of options or a boolean.",
+                            details={"check": k, "provided_type": type(v).__name__},
                         )
                     if isinstance(v, dict) and "severity" in v and v["severity"] is not None:
                         sev = v["severity"]
                         sev_norm = sev.lower() if isinstance(sev, str) else sev
                         if sev_norm not in ("error", "warning"):
-                            raise ValueError(
-                                f"Invalid severity '{sev}' for check '{k}': expected 'error' or 'warning'"
+                            raise TffConfigError(
+                                f"Invalid severity '{sev}' for check '{k}': expected 'error' or 'warning'",
+                                hint=f"Set 'severity' for check '{k}' to either 'error' or 'warning'.",
+                                details={"check": k, "severity": sev},
                             )
                         v["severity"] = sev_norm
         return data
@@ -431,14 +437,53 @@ class SqlComplexityRuleConfig(LayerFilterConfig):
         }
     )
 
+    @field_validator("thresholds", mode="before")
+    @classmethod
+    def validate_thresholds(cls, v: Any) -> Any:
+        if not isinstance(v, dict):
+            raise TffConfigError(
+                f"Expected dictionary for thresholds in 'rules.sql_complexity', got {type(v).__name__}",
+                hint="Configure thresholds as a dictionary mapping metrics (e.g. 'decision_points', 'line_count') to [warn, fail] pairs.",
+                details={"rule": "sql_complexity", "field": "thresholds", "provided_type": type(v).__name__},
+            )
+        for metric, val in v.items():
+            if not isinstance(val, (list, tuple)) or len(val) != 2:
+                raise TffConfigError(
+                    f"Threshold for metric '{metric}' in 'rules.sql_complexity' must be a pair [warn, fail], got {val}",
+                    hint="Provide a list of two non-negative integers [warn, fail] where warn <= fail.",
+                    details={"rule": "sql_complexity", "metric": metric, "threshold": val},
+                )
+            warn, fail = val
+            if isinstance(warn, bool) or isinstance(fail, bool) or not isinstance(warn, int) or not isinstance(fail, int):
+                raise TffConfigError(
+                    f"Threshold values for metric '{metric}' in 'rules.sql_complexity' must be integers, got {val}",
+                    hint="Provide integer values for warn and fail thresholds.",
+                    details={"rule": "sql_complexity", "metric": metric, "threshold": val},
+                )
+            if warn < 0 or fail < 0:
+                raise TffConfigError(
+                    f"Threshold values for metric '{metric}' in 'rules.sql_complexity' must be non-negative, got {val}",
+                    hint="Provide non-negative integer values for warn and fail thresholds.",
+                    details={"rule": "sql_complexity", "metric": metric, "threshold": val},
+                )
+            if warn > fail:
+                raise TffConfigError(
+                    f"Warn threshold ({warn}) cannot be greater than fail threshold ({fail}) for metric '{metric}' in 'rules.sql_complexity'",
+                    hint="Ensure the warning threshold is less than or equal to the fail threshold: [warn, fail].",
+                    details={"rule": "sql_complexity", "metric": metric, "warn": warn, "fail": fail},
+                )
+        return v
+
     @model_validator(mode="before")
     @classmethod
     def reject_warn_only(cls, data: Any) -> Any:
         if isinstance(data, dict) and "warn_only" in data:
-            raise ValueError(
+            raise TffConfigError(
                 "'rules.sql_complexity.warn_only' is deprecated and no longer supported. "
                 "To emit warnings only, configure 'severity: warning' under 'rules.sql_complexity'. "
-                "To configure strict thresholds, define [warn, fail] values in 'thresholds'."
+                "To configure strict thresholds, define [warn, fail] values in 'thresholds'.",
+                hint="Configure 'severity: warning' under 'rules.sql_complexity' or define [warn, fail] values in 'thresholds'.",
+                details={"rule": "sql_complexity", "field": "warn_only"},
             )
         return data
 
@@ -452,10 +497,12 @@ class SqlComplexityRuleConfig(LayerFilterConfig):
 
     @warn_only.setter
     def warn_only(self, value: Any) -> None:
-        raise ValueError(
+        raise TffConfigError(
             "'rules.sql_complexity.warn_only' is deprecated and no longer supported. "
             "To emit warnings only, configure 'severity: warning' under 'rules.sql_complexity'. "
-            "To configure strict thresholds, define [warn, fail] values in 'thresholds'."
+            "To configure strict thresholds, define [warn, fail] values in 'thresholds'.",
+            hint="Configure 'severity: warning' under 'rules.sql_complexity' or define [warn, fail] values in 'thresholds'.",
+            details={"rule": "sql_complexity", "field": "warn_only"},
         )
 
 
@@ -488,6 +535,19 @@ class MetadataRuleConfig(LayerFilterConfig):
     grain: bool = True
     not_null: bool = True
     unique_values: bool = True
+
+    @field_validator("grain", mode="before")
+    @classmethod
+    def validate_model_grain(cls, v: Any) -> bool:
+        if isinstance(v, bool):
+            return v
+        if isinstance(v, str) and v.lower() in ("true", "false", "1", "0"):
+            return v.lower() in ("true", "1")
+        raise TffConfigError(
+            f"Invalid configuration for 'rules.metadata.grain': expected boolean, got {type(v).__name__}",
+            hint="Set 'grain: true' or 'grain: false' under 'rules.metadata'.",
+            details={"rule": "metadata", "field": "grain", "value": v, "provided_type": type(v).__name__},
+        )
 
 
 class FilenameEqualsModelnameRuleConfig(LayerFilterConfig):
@@ -605,15 +665,19 @@ class RulesConfig(BaseModel):
             for k, v in data.items():
                 if k not in known:
                     if not isinstance(v, (dict, bool)):
-                        raise ValueError(
-                            f"Invalid configuration for rule '{k}': expected a dictionary of options or boolean, got {type(v).__name__}"
+                        raise TffConfigError(
+                            f"Invalid configuration for rule '{k}': expected a dictionary of options or boolean, got {type(v).__name__}",
+                            hint=f"Configure rule '{k}' with a dictionary of options or a boolean.",
+                            details={"rule": k, "provided_type": type(v).__name__},
                         )
                     if isinstance(v, dict) and "severity" in v and v["severity"] is not None:
                         sev = v["severity"]
                         sev_norm = sev.lower() if isinstance(sev, str) else sev
                         if sev_norm not in ("error", "warning"):
-                            raise ValueError(
-                                f"Invalid severity '{sev}' for rule '{k}': expected 'error' or 'warning'"
+                            raise TffConfigError(
+                                f"Invalid severity '{sev}' for rule '{k}': expected 'error' or 'warning'",
+                                hint=f"Set 'severity' for rule '{k}' to either 'error' or 'warning'.",
+                                details={"rule": k, "severity": sev},
                             )
                         v["severity"] = sev_norm
         return data
@@ -711,8 +775,10 @@ class HealthConfig(BaseModel):
             for k, val in v.items():
                 flt_val = float(val)
                 if flt_val < 0.0:
-                    raise ValueError(
-                        f"Weight for '{k}' must be non-negative, got {flt_val}"
+                    raise TffConfigError(
+                        f"Weight for '{k}' must be non-negative, got {flt_val}",
+                        hint=f"Set weight for '{k}' to a non-negative number under 'health'.",
+                        details={"key": k, "weight": flt_val},
                     )
                 validated[str(k)] = flt_val
             return validated
@@ -746,7 +812,11 @@ class FitnessFunctionsConfig(BaseModel):
         if v is None:
             return None
         if not isinstance(v, str):
-            raise ValueError(f"Expected string for provider, got {type(v).__name__}")
+            raise TffConfigError(
+                f"Expected string for provider, got {type(v).__name__}",
+                hint="Specify provider as a string, e.g. 'dbt', 'sqlmesh', 'dataform', or 'auto'.",
+                details={"field": "provider", "provided_type": type(v).__name__},
+            )
         val = v.strip().lower()
         if not val or val == "auto":
             return None
@@ -759,7 +829,11 @@ class FitnessFunctionsConfig(BaseModel):
             return None
         val = int(v)
         if val < 1:
-            raise ValueError(f"workers must be at least 1, got {val}")
+            raise TffConfigError(
+                f"workers must be at least 1, got {val}",
+                hint="Set workers to an integer >= 1 in fitness_functions.yaml or CLI flag.",
+                details={"field": "workers", "workers": val, "min_workers": 1},
+            )
         return val
 
     @field_validator("plugins", mode="before")
@@ -771,8 +845,10 @@ class FitnessFunctionsConfig(BaseModel):
             return [v]
         if isinstance(v, (list, tuple)):
             return [str(item) for item in v]
-        raise ValueError(
-            f"Expected list of strings for plugins, got {type(v).__name__}"
+        raise TffConfigError(
+            f"Expected list of strings for plugins, got {type(v).__name__}",
+            hint="Configure plugins as a list of file paths or module names under 'plugins'.",
+            details={"field": "plugins", "provided_type": type(v).__name__},
         )
 
     @property
@@ -833,8 +909,6 @@ def load_fitness_config(
                 content = yaml_path.read_text(encoding="utf-8")
                 loaded = yaml.safe_load(content) or {}
             except yaml.YAMLError as exc:
-                from tff.core.exceptions import TffConfigError
-
                 raise TffConfigError(
                     f"Failed to parse YAML configuration at '{yaml_path}': {exc}",
                     path=yaml_path,
@@ -851,8 +925,6 @@ def load_fitness_config(
                     expected_type="configuration file",
                 ) from exc
             if not isinstance(loaded, dict):
-                from tff.core.exceptions import TffConfigError
-
                 raise TffConfigError(
                     f"Expected mapping in {yaml_path}",
                     path=yaml_path,
@@ -897,8 +969,6 @@ def _ensure_under_root(path: Path, root: Path) -> Path:
     try:
         resolved.relative_to(root_resolved)
     except ValueError:
-        from tff.core.exceptions import TffConfigError
-
         raise TffConfigError(
             f"Path {path} resolves outside project root {root}",
             path=path,
