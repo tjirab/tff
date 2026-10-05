@@ -18,8 +18,8 @@ The CLI provides the following subcommands:
 | [`tff stats`](#8-tff-stats) | Displays historical execution trends and metric logs | Tracking architectural drift over time |
 | [`tff info`](#9-tff-info) | Prints diagnostic info about environment and adapters | Debugging engine discovery, site-packages, config |
 | [`tff help`](#10-tff-help) | Displays help and usage information for commands | Exploring command arguments and syntax |
-| [`tff explain`](#11-tff-explain) | Displays in-terminal rule docs, rationale, and remediation | Understanding rules, learning how to fix violations |
-| [`tff rules`](#11-tff-explain) | Lists all available fitness checks and descriptions | Exploring rule catalog and default severities |
+| [`tff explain`](#11-tff-explain-tff-rules) | Displays in-terminal rule docs, rationale, and remediation | Understanding rules, learning how to fix violations |
+| [`tff rules`](#11-tff-explain-tff-rules) | Lists all available fitness checks and descriptions | Exploring rule catalog and default severities |
 
 ---
 
@@ -392,6 +392,37 @@ All error diagnostics, warnings, and progress indicators are routed exclusively 
 ### Debug Mode & Unexpected Errors
 * **Normal Mode**: Unexpected runtime crashes display a polite summary with a link to the issue tracker and instructions on enabling debug mode.
 * **Debug Mode**: Passing `--debug` (e.g. `tff --debug lint` or `tff lint --debug`) or setting `export TFF_DEBUG=1` reveals full Rich-formatted stack traces for in-depth troubleshooting.
+
+### Per-Model Error Isolation & `rule_execution_error`
+When evaluating rules across large repositories, individual models may encounter unhandled execution errors (for example, syntax errors in unparseable SQL, AST parsing exceptions, or bugs inside custom plugin rules). Rather than terminating the entire linting run and losing visibility into the rest of the project, tff isolates failures to the affected model:
+
+1. **Diagnostic Finding Representation**:
+   * The failure is recorded as an isolated diagnostic finding with check ID `rule_execution_error` and severity `error`.
+   * **Distinction from Quality Violations**: A `rule_execution_error` does not represent a failure to comply with architectural fitness functions (such as naming conventions or layer boundaries). It indicates that the rule or check could not be evaluated for that model.
+2. **Surfacing in CLI Summary & Ledger**:
+   * Appears in the architectural audit ledger with status `ERR`, check `rule_execution_error`, category `[Execution Errors]`, and the underlying exception message:
+     ```text
+     STATUS  LOCATION                                 RULE                  COUPLING
+     ─────────────────────────────────────────────────────────────────────────────────────────────
+     ERR     models/marts/orders.sql                  rule_execution_error  [Execution Errors]
+             ! Rule 'ban_select_star' failed to evaluate: Syntax error near 'QUALIFY' at line 14
+     ```
+   * Appears in the summary table with the count of models encountering execution failures.
+3. **CI Pipelines & Exit Codes**:
+   * Because `rule_execution_error` carries severity `error`, commands such as `tff lint` and `tff check` exit with a non-zero code (`1`) by default (`--fail-level error`).
+   * This ensures broken or un-evaluated models block CI merges rather than silently succeeding.
+4. **Structured CI Reports**:
+   * **SARIF (`--format sarif`)**: Recorded under rule ID `rule_execution_error` with `level: "error"` and the model's file location, creating actionable GitHub Code Scanning alerts.
+   * **GitHub Actions Annotations (`--format github` or `--github-annotations`)**: Emits `::error file=...::Rule '...' failed to evaluate: ...` annotations directly on the model in PR diffs.
+   * **JUnit XML (`--junit-xml`)**: Surfaces as a failed test case in standard CI test tabs.
+5. **Impact on Health Scores (`tff health`)**:
+   * Grouped under the `Execution Errors` category in diagnostic breakdowns.
+   * Because `rule_execution_error` represents an evaluation/infrastructure failure rather than a configured quality metric, its category score is not factored into or penalized against the architectural health score percentage (which measures fitness function conformance).
+6. **Troubleshooting**:
+   * Run with `--debug` or set `export TFF_DEBUG=1` to view the complete Python traceback and internal error context:
+     ```bash
+     tff lint --debug
+     ```
 
 ---
 
