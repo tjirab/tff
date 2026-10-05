@@ -57,6 +57,7 @@ git fetch origin main
    - Run verification commands:
      ```bash
      uv run ruff check .
+     uv run python scripts/lint_tests.py
      MAX_FORK_WORKERS=1 uv run pytest --cov=packages --cov-report=xml
      uv run diff-cover coverage.xml --compare-branch=origin/main --fail-under=100
      ```

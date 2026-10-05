@@ -113,8 +113,11 @@ uv run pytest --cov=packages --cov-report=xml
 # Check diff coverage against main branch (100% required in PRs):
 uv run diff-cover coverage.xml --compare-branch=origin/main --fail-under=100
 
-# Run linting check:
+# Run code linting check:
 uv run ruff check .
+
+# Run test architecture & anti-bloat linter:
+uv run python scripts/lint_tests.py
 ```
 
 ### 4. Performance Benchmarks & Corpus Verification
