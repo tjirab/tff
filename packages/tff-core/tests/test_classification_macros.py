@@ -1,123 +1,77 @@
 from pathlib import Path
 from unittest.mock import patch
+import pytest
 
+from conftest import _make_model
 from tff.core.config import FitnessFunctionsConfig
-from tff.core.model import ModelRepresentation
 from tff.core.rules.classification_macros import ClassificationMacros, find_classification_violations
 
 
-def test_inline_case_without_macro_is_violation() -> None:
-    sql = """
-    SELECT
-      CASE WHEN x = 1 THEN 'a' ELSE 'b' END AS product_type
-    FROM t
-    """
-    columns = {"product_type": r"@product_type\b"}
+@pytest.mark.parametrize(
+    ("sql", "columns", "expected_count"),
+    [
+        (
+            "SELECT CASE WHEN x = 1 THEN 'a' ELSE 'b' END AS product_type FROM t",
+            {"product_type": r"@product_type\b"},
+            1,
+        ),
+        (
+            "SELECT @product_type(col := x) AS product_type FROM t",
+            {"product_type": r"@product_type\b"},
+            0,
+        ),
+    ],
+)
+def test_find_classification_violations(sql: str, columns: dict[str, str], expected_count: int) -> None:
     violations = find_classification_violations(sql, columns)
-    assert len(violations) == 1
-    assert "product_type" in violations[0]
+    assert len(violations) == expected_count
+    if expected_count > 0:
+        assert "product_type" in violations[0]
 
 
-def test_macro_usage_is_allowed() -> None:
-    sql = "SELECT @product_type(col := x) AS product_type FROM t"
-    columns = {"product_type": r"@product_type\b"}
-    violations = find_classification_violations(sql, columns)
-    assert violations == []
-
-
-def test_classification_macros_rule_missing_file() -> None:
-    config = FitnessFunctionsConfig()
-    config.rules.classification_macros.enabled = True
-    config.rules.classification_macros.columns = {"product_type": "macro"}
-
-    # Path does not exist
-    model = ModelRepresentation(
-        name="core.model",
-        path="models/core/non_existent_file.sql",
-        dialect="bigquery",
-        query=None,
-    )
-    rule = ClassificationMacros(config=config)
-    assert rule.check_model(model) is None
-
-
-def test_classification_macros_rule_directory_path(tmp_path: Path) -> None:
-    """Ensure directory path in model.path does not raise IsADirectoryError."""
+def _make_rule() -> ClassificationMacros:
     config = FitnessFunctionsConfig()
     config.rules.classification_macros.enabled = True
     config.rules.classification_macros.columns = {"product_type": r"@product_type\b"}
+    return ClassificationMacros(config=config)
 
-    rule = ClassificationMacros(config=config)
+
+def test_classification_macros_rule_missing_file_and_directory(tmp_path: Path) -> None:
+    rule = _make_rule()
+
+    # Missing file path
+    assert rule.check_model(_make_model(path="models/core/missing.sql", query=None, dialect="bigquery")) is None
 
     # Directory path without query
-    model_dir = ModelRepresentation(
-        name="dep_pkg.model",
-        path=str(tmp_path),
-        dialect="duckdb",
-        is_symbolic=False,
-        query=None,
-    )
-    assert rule.check_model(model_dir) is None
+    assert rule.check_model(_make_model(path=str(tmp_path), query=None)) is None
 
     # Directory path with query containing violation
-    model_dir_with_query = ModelRepresentation(
-        name="dep_pkg.model_violation",
-        path=str(tmp_path),
-        dialect="duckdb",
-        is_symbolic=False,
-        query="SELECT CASE WHEN x = 1 THEN 'a' ELSE 'b' END AS product_type FROM t",
+    violation = rule.check_model(
+        _make_model(
+            path=str(tmp_path),
+            query="SELECT CASE WHEN x = 1 THEN 'a' ELSE 'b' END AS product_type FROM t",
+        )
     )
-    violation = rule.check_model(model_dir_with_query)
     assert violation is not None
     assert "product_type" in violation.violation_msg[0]
 
 
-def test_classification_macros_rule_read_text_error(tmp_path: Path) -> None:
-    """Ensure read_text exceptions are handled gracefully."""
-    config = FitnessFunctionsConfig()
-    config.rules.classification_macros.enabled = True
-    config.rules.classification_macros.columns = {"product_type": r"@product_type\b"}
+def test_classification_macros_rule_read_errors_and_disk_file(tmp_path: Path) -> None:
+    rule = _make_rule()
 
-    rule = ClassificationMacros(config=config)
-
-    sql_file = tmp_path / "models/marts/my_model.sql"
-    sql_file.parent.mkdir(parents=True, exist_ok=True)
+    sql_file = tmp_path / "my_model.sql"
     sql_file.write_text("SELECT CASE WHEN x = 1 THEN 'a' ELSE 'b' END AS product_type FROM t", encoding="utf-8")
+    model = _make_model(path=str(sql_file), query=None, dialect="bigquery")
 
-    model = ModelRepresentation(
-        name="marts.my_model",
-        path=str(sql_file),
-        dialect="bigquery",
-        is_symbolic=False,
-    )
-
+    # Read error gracefully returns None
     with patch.object(Path, "read_text", side_effect=OSError("Disk error")):
         assert rule.check_model(model) is None
 
-
-def test_classification_macros_rule_reads_file(tmp_path: Path) -> None:
-    """Ensure valid file is read from disk and inspected."""
-    config = FitnessFunctionsConfig()
-    config.rules.classification_macros.enabled = True
-    config.rules.classification_macros.columns = {"product_type": r"@product_type\b"}
-
-    rule = ClassificationMacros(config=config)
-
-    sql_file = tmp_path / "models/marts/my_model.sql"
-    sql_file.parent.mkdir(parents=True, exist_ok=True)
-    sql_file.write_text("SELECT CASE WHEN x = 1 THEN 'a' ELSE 'b' END AS product_type FROM t", encoding="utf-8")
-
-    model = ModelRepresentation(
-        name="marts.my_model",
-        path=str(sql_file),
-        dialect="bigquery",
-        is_symbolic=False,
-    )
+    # Normal disk read finds violation
     violation = rule.check_model(model)
     assert violation is not None
     assert "product_type" in violation.violation_msg[0]
 
-    # Now with macro
+    # Compliant SQL on disk returns None
     sql_file.write_text("SELECT @product_type(col := x) AS product_type FROM t", encoding="utf-8")
     assert rule.check_model(model) is None
-
