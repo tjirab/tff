@@ -38,16 +38,28 @@ git fetch origin main
 **Action:** Develop all necessary code changes inside the worktree. Adhere strictly to existing codebase patterns and style guides. Commit logical chunks of work as they are completed.
 
 ### Step 4: Add Tests (Validation)
-**Goal:** Write comprehensive tests that prove the implemented feature/fix works correctly under all specified conditions, including edge cases and failure paths.
+**Goal:** Write comprehensive, direct, and concise tests that prove the implemented feature/fix works correctly under all specified conditions without presentation coupling or LOC bloat.
 **Action:**
-1. Write unit tests for all new logic.
-2. Update integration or end-to-end tests if the change affects public interfaces.
-3. Verify linting and test coverage meets project requirements (enforce 100% diff coverage per `.githooks/pre-push`):
-   ```bash
-   uv run ruff check .
-   MAX_FORK_WORKERS=1 uv run pytest --cov=packages --cov-report=xml
-   uv run diff-cover coverage.xml --compare-branch=origin/main --fail-under=100
-   ```
+1. **"Pure Core, Thin Shell" Separation**:
+   - Decouple pure business and domain logic (AST traversal, graph analysis, rule evaluations, finding classification) from presentation shells (Rich console tables, ANSI stylers, terminal reporters, Markdown formatters).
+   - Test pure business logic directly using native Python structures (dataclasses, lists, dicts) and assertions on computed models or findings.
+   - Provide separate, minimal smoke tests for presentation formatting (verifying layout, headers, and exit codes) without repeating business logic permutations against rendered output strings.
+   - Never assert on ANSI color sequences or Rich terminal buffer strings to verify domain logic or rule violation calculations.
+2. **Mandatory Parametrization**:
+   - Use `@pytest.mark.parametrize` for permutation, boundary, and matrix testing.
+   - Prohibit writing multiple standalone test functions that differ only in literal inputs or expectations.
+3. **Mandatory Test Factory Usage**:
+   - Use shared lightweight test factories (`_make_finding`, `_make_model` from `conftest.py`) instead of declaring raw, verbose dataclass or dictionary literals across individual tests.
+   - When introducing new domain entities, define or extend factory functions with sensible defaults rather than repeating verbose constructors in test bodies.
+4. **Anti-Bloat & Diff Coverage Verification**:
+   - Ensure 100% diff test coverage against `origin/main` via `diff-cover`.
+   - Maintain strict proportionality between test lines of code (LOC) and logic LOC; avoid writing hundreds of lines of repetitive test assertions for localized logic.
+   - Run verification commands:
+     ```bash
+     uv run ruff check .
+     MAX_FORK_WORKERS=1 uv run pytest --cov=packages --cov-report=xml
+     uv run diff-cover coverage.xml --compare-branch=origin/main --fail-under=100
+     ```
 
 ### Step 5: Documentation Update (Knowledge Transfer)
 **Goal:** Ensure all relevant knowledge artifacts are updated to reflect the changes.
@@ -76,8 +88,10 @@ git fetch origin main
    ```
 
 
-## 🚨 Mandatory Principles
+## Mandatory Principles
 *   **Atomic Commits:** Each commit should represent one logical change. Do not group unrelated fixes or features into a single commit message.
+*   **Pure Core, Thin Shell:** Business logic must always be tested directly as pure data transformations. Presentation formatters must have separate, minimal smoke tests.
+*   **Concise Test Design:** Use `@pytest.mark.parametrize` and lightweight test factories to eliminate redundant test boilerplate and prevent test LOC bloat.
 *   **Test-Driven Approach:** Write tests *before* or concurrently with implementation whenever possible to ensure correctness from the start.
 *   **Review First Mindset:** Treat every step as if you are being reviewed, forcing early checks for completeness and clarity.
 
