@@ -1943,7 +1943,7 @@ def _main_impl(argv: list[str] | None = None) -> int:
 
                 scoped_models = map_files_to_model_names(
                     models,
-                    changed_files,
+                    model_candidate_files,
                     project_root=project_root,
                     repo_root=repo_root,
                 )
