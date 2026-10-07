@@ -170,7 +170,11 @@ def clean_jinja_for_parsing(sql: str, provider: str | None = None) -> str:
     # 1. Remove Jinja comments
     sql = re.sub(r"\{#.*?#\}", "", sql, flags=re.DOTALL)
 
-    # 2. Map dbt ref(...) to model name
+    # 2. Strip top-level {{ config(...) }} and {{ set(...) }} blocks cleanly
+    # so they do not get converted into dummy variable identifiers in statement positions
+    sql = re.sub(r"\{\{\s*(?:config|set)\s*\(.*?\)\s*\}\}", " ", sql, flags=re.DOTALL)
+
+    # 3. Map dbt ref(...) to model name
     # e.g. {{ ref('my_model') }} -> my_model
     # e.g. {{ ref('package', 'my_model') }} -> my_model
     sql = re.sub(

@@ -147,3 +147,19 @@ def test_read_model_sql_raw_code_and_get_raw_sql() -> None:
     assert model_both.get_sql(prefer_file=False) == "SELECT * FROM compiled;"
     assert model_both.get_sql(prefer_file=True) == "SELECT * FROM raw;"
     assert model_both.get_raw_sql() == "SELECT * FROM raw;"
+
+
+def test_model_representation_ast_memoization_on_failure() -> None:
+    # SQL syntax that fails to parse
+    bad_model = _make_model(name="bad_model", path="bad.sql", query="SELECT * FROM WHERE ;;;")
+    assert bad_model._ast_parse_attempted is False
+
+    # First attempt fails and sets _ast_parse_attempted = True
+    assert bad_model.ast is None
+    assert bad_model._ast_parse_attempted is True
+
+    # Patch parse_sql_with_cache to verify it is NOT called again on subsequent property accesses
+    with patch("tff.core.ast_cache.parse_sql_with_cache") as mock_parse:
+        assert bad_model.ast is None
+        mock_parse.assert_not_called()
+

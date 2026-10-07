@@ -185,6 +185,7 @@ def evaluate_project(
     dialect: str | None = None,
     manifest: Path | None = None,
     workers: int | None = None,
+    scoped_models: set[str] | None = None,
 ) -> dict[str, Any]:
     """Run tff health evaluation on the specified project directory."""
     project_root = Path(project_root).resolve()
@@ -196,13 +197,17 @@ def evaluate_project(
     if workers is not None:
         config.workers = workers
 
-    findings, models_checked, executed_checks = adapter.run_checks(
-        project_root=project_root,
-        config=config,
-        checks=checks,
-        dialect=dialect,
-        manifest_path=manifest,
-    )
+    kwargs: dict[str, Any] = {
+        "project_root": project_root,
+        "config": config,
+        "checks": checks,
+        "dialect": dialect,
+        "manifest_path": manifest,
+    }
+    if scoped_models is not None:
+        kwargs["scoped_models"] = scoped_models
+
+    findings, models_checked, executed_checks = adapter.run_checks(**kwargs)
 
     scores = calculate_health_scores(findings, models_checked, config, provider)
 
@@ -661,6 +666,40 @@ def execute_action(args: argparse.Namespace) -> int:
     if getattr(args, "checks", None):
         checks = [c.strip() for c in args.checks.split(",") if c.strip()]
 
+    only_changed = parse_bool(getattr(args, "only_changed", False))
+    diff_base = getattr(args, "base_ref", None) or os.environ.get("GITHUB_BASE_REF") or "main"
+    try:
+        res = subprocess.run(
+            ["git", "rev-parse", "--show-toplevel"],
+            cwd=str(project_root),
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+        repo_root = Path(res.stdout.strip()).resolve()
+    except Exception:
+        repo_root = project_root
+
+    modified_files = get_modified_files(repo_root, base_ref=diff_base)
+    modified_files_count = len(modified_files)
+    scoped_models: set[str] | None = None
+
+    if only_changed and modified_files:
+        from tff.core.git import map_files_to_model_names
+        from tff.core.adapter import get_adapter
+
+        try:
+            adapter = get_adapter(args.provider if args.provider != "auto" else detect_provider(project_root))
+            loaded_models = adapter.load_models(project_root, dialect=getattr(args, "dialect", None), manifest_path=getattr(args, "manifest", None))
+            scoped_models = map_files_to_model_names(
+                models=loaded_models,
+                files=modified_files,
+                project_root=project_root,
+                repo_root=repo_root,
+            )
+        except Exception as e:
+            logger.debug("Failed to pre-scope models for only-changed: %s", e)
+
     # 1. Evaluate current project
     try:
         current_data = evaluate_project(
@@ -671,6 +710,7 @@ def execute_action(args: argparse.Namespace) -> int:
             dialect=getattr(args, "dialect", None),
             manifest=getattr(args, "manifest", None),
             workers=getattr(args, "workers", None),
+            scoped_models=scoped_models,
         )
     except Exception as e:
         print(
@@ -680,27 +720,9 @@ def execute_action(args: argparse.Namespace) -> int:
         return 1
 
     # 2. Filter findings for only-changed files if requested
-    only_changed = parse_bool(getattr(args, "only_changed", False))
-    modified_files_count = 0
     ignored_violations_count = 0
 
     if only_changed:
-        diff_base = getattr(args, "base_ref", None) or os.environ.get("GITHUB_BASE_REF") or "main"
-        try:
-            res = subprocess.run(
-                ["git", "rev-parse", "--show-toplevel"],
-                cwd=str(project_root),
-                capture_output=True,
-                text=True,
-                check=True,
-            )
-            repo_root = Path(res.stdout.strip()).resolve()
-        except Exception:
-            repo_root = project_root
-
-        modified_files = get_modified_files(repo_root, base_ref=diff_base)
-        modified_files_count = len(modified_files)
-
         all_findings = current_data.get("findings", [])
         all_raw_findings = current_data.get("raw_findings", [])
 
