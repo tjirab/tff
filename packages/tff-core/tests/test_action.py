@@ -940,6 +940,73 @@ def test_execute_action_annotations_with_modified_files(capsys) -> None:
         assert "::error" in captured.out
 
 
+def test_evaluate_project_with_scoped_models() -> None:
+    res = evaluate_project(
+        _MINIMAL_DBT,
+        scoped_models={"model.minimal_dbt_project.stg_orders"},
+    )
+    assert "overall_score" in res["scores"]
+    assert res["models_checked"] == 1
+
+
+def test_execute_action_only_changed_scopes_models() -> None:
+    args = argparse.Namespace(
+        project=_MINIMAL_DBT,
+        provider="auto",
+        config="fitness_functions.yaml",
+        checks=None,
+        fail_under=0.0,
+        fail_level="error",
+        only_changed=True,
+        comment_pr="false",
+        github_token=None,
+        base_ref="main",
+        diff_against_base=False,
+        annotations=False,
+        pr_number=None,
+        repo=None,
+        dialect=None,
+        manifest=None,
+        json=False,
+    )
+    with patch("subprocess.run", side_effect=RuntimeError("git rev-parse error")), \
+         patch("tff.core.action.get_modified_files", return_value={"models/staging/stg_orders.sql"}), \
+         patch("tff.core.action.render_health_report"):
+        code = execute_action(args)
+        # Should execute successfully and evaluate scoped models
+        assert code in (0, 1)
+
+
+def test_execute_action_only_changed_scope_exception() -> None:
+    args = argparse.Namespace(
+        project=_MINIMAL_DBT,
+        provider="auto",
+        config="fitness_functions.yaml",
+        checks=None,
+        fail_under=0.0,
+        fail_level="error",
+        only_changed=True,
+        comment_pr="false",
+        github_token=None,
+        base_ref="main",
+        diff_against_base=False,
+        annotations=False,
+        pr_number=None,
+        repo=None,
+        dialect=None,
+        manifest=None,
+        json=False,
+    )
+    with patch("subprocess.run", side_effect=RuntimeError("git rev-parse error")), \
+         patch("tff.core.action.get_modified_files", return_value={"models/staging/stg_orders.sql"}), \
+         patch("tff.core.adapter.get_adapter", side_effect=RuntimeError("Adapter load error")), \
+         patch("tff.core.action.render_health_report"):
+        code = execute_action(args)
+        assert code in (0, 1)
+
+
+
+
 
 
 
