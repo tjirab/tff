@@ -113,22 +113,39 @@ def test_dataform_example_corpus_snapshot():
 
 def test_health_score_calibration_stability():
     """Verify health score calculations produce calibrated results within bounds."""
-    # Dataform project has 0 findings on 2 models -> 100.0 health score
+    # Dataform project has 0 findings on 2 models -> calibrated 100.0 health score
     df_path = _get_example_project("minimal-dataform-project")
     df_adapter = get_adapter("dataform")
     df_config = FitnessFunctionsConfig()
     df_findings, df_count, _ = df_adapter.run_checks(project_root=df_path, config=df_config)
     df_health = calculate_health_scores(df_findings, df_count, config=df_config, provider="dataform")
+    assert df_count == 2
+    assert len(df_findings) == 0
     assert df_health["overall_score"] == 100.0
 
-    # SQLMesh project has findings -> calibrated score should be strictly between 0 and 100
+    # SQLMesh project has findings -> calibrated score snapshot (92.67 ± 0.05)
     sm_path = _get_example_project("minimal-sqlmesh-project")
     sm_adapter = get_adapter("sqlmesh")
     sm_config = FitnessFunctionsConfig()
     sm_findings, sm_count, _ = sm_adapter.run_checks(project_root=sm_path, config=sm_config)
     sm_health = calculate_health_scores(sm_findings, sm_count, config=sm_config, provider="sqlmesh")
-    assert 0.0 <= sm_health["overall_score"] < 100.0
+    assert sm_count == 6
     assert len(sm_findings) == 8
+    assert 0.0 <= sm_health["overall_score"] <= 100.0
+    assert abs(sm_health["overall_score"] - 92.6667) < 0.05
+    assert abs(sm_health["category_scores"]["Dynamic Coupling & DAG Structure"] - 80.0) < 0.01
+
+    # dbt project has findings -> calibrated score snapshot (92.39 ± 0.05)
+    dbt_path = _get_example_project("minimal-dbt-project")
+    dbt_adapter = get_adapter("dbt")
+    dbt_config = FitnessFunctionsConfig()
+    dbt_findings, dbt_count, _ = dbt_adapter.run_checks(project_root=dbt_path, config=dbt_config)
+    dbt_health = calculate_health_scores(dbt_findings, dbt_count, config=dbt_config, provider="dbt")
+    assert dbt_count == 4
+    assert len(dbt_findings) == 7
+    assert 0.0 <= dbt_health["overall_score"] <= 100.0
+    assert abs(dbt_health["overall_score"] - 92.3913) < 0.05
+    assert abs(dbt_health["category_scores"]["Quality & Metadata (Non-Connascence)"] - 75.0) < 0.01
 
 
 def test_rule_maturity_lifecycle_metadata():
