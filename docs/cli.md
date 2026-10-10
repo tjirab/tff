@@ -10,7 +10,7 @@ The CLI provides the following subcommands:
 
 | Subcommand | Description | Primary Use Case |
 | :--- | :--- | :--- |
-| [`tff lint`](#3-tff-lint) | Evaluates fitness checks and reports violations | Local pre-commit checks, CI lint steps, autofixing |
+| [`tff lint`](#3-tff-lint) (alias: [`tff check`](#3-tff-lint)) | Evaluates fitness checks and reports violations | Local pre-commit checks, CI lint steps, autofixing |
 | [`tff health`](#4-tff-health) | Calculates overall health score (0–100) and penalties | Quality thresholds, domain health breakdowns |
 | [`tff action`](#5-tff-action) | Runs the official GitHub Action pipeline locally or in CI | Base branch diff scoring, PR comments, annotations |
 | [`tff docs`](#6-tff-docs) | Generates interactive HTML report with lineage graphs | Architectural dashboards, team documentation |
@@ -41,10 +41,12 @@ The CLI provides the following subcommands:
 
 ## 3. `tff lint`
 
-Run architectural and SQL quality fitness checks against project models.
+Run architectural and SQL quality fitness checks against project models (`tff check` is supported as a first-class alias).
 
 ```bash
 tff lint [options]
+# or
+tff check [options]
 ```
 
 ### Options Reference Table
@@ -77,6 +79,8 @@ tff lint [options]
 ```bash
 # Standard linting run (zero-config out of the box)
 tff lint
+# or
+tff check
 
 # Check only models currently staged in git (fast pre-commit checks)
 tff check --staged
