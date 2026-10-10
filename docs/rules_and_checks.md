@@ -738,6 +738,23 @@ health:
 * **Check-level weights (`weights`)**: Map check or rule names (e.g. `layer_integrity`, `ban_select_star`) to a positive float weight.
 * **Category weights (`category_weights`)**: Map categories (e.g. `connascence_of_algorithm`, `dynamic_coupling`, `metadata`) to a positive float weight. If both category and check weights are specified, check-level weights take precedence.
 
+### Weight Calibration Guidelines
+
+When introducing new lint rules or architectural checks, align their default weights and penalty bounds according to scope:
+
+| Dimension / Scope | Typical Weight Bounds | Default Error Penalty | Default Warning Penalty | Rationale |
+| :--- | :--- | :--- | :--- | :--- |
+| **Cross-Model / Architectural DAG Checks** (e.g. `layer_integrity`, `dependency_graph`, `schema_contracts`) | `2.0` – `3.0` | `100.0` (Project-level) | `50.0` (Project-level) | Structural defects span multiple pipelines or domain boundaries; failure represents system-wide architectural drift. |
+| **High-Impact Semantic Coupling** (e.g. `duplicate_ctes`, `join_type_parity`, `connascence_of_value`) | `1.5` – `2.0` | `1.0` (Model-level) | `0.5` (Model-level) | Cross-model algorithm or type mismatches that cause query bloat or type coercion degradation across downstream consumers. |
+| **Single-Model Linter Rules** (e.g. `ban_select_star`, `no_positional_group_by`, `environment_agnostic_references`) | `1.0` | `1.0` (Model-level) | `0.5` (Model-level) | Local code smells within isolated models; penalties scale with the total number of checked models ($M$). |
+| **Style & Metadata Hygiene** (e.g. `mart_naming`, `column_names`, `metadata`) | `0.5` – `1.0` | `1.0` (Model-level) | `0.5` (Model-level) | Documentation and surface naming conventions; lower impact on runtime correctness and schema stability. |
+
+#### Stability and Drift Guarantees Across Releases
+
+1. **Deterministic Bounding**: All check scores evaluate to the range $[0.0, 100.0]$. Overall scores are weighted averages bounded within $[0.0, 100.0]$.
+2. **Tolerance Bounds**: Minor releases must preserve existing check weights ($w_i = 1.0$ default) unless an explicit configuration override or migration path is provided.
+3. **Model Cardinality Invariance**: Model-level check scores use $100 \times \left(1 - \frac{\text{penalties}}{M}\right)$, ensuring that adding compliant models to a repo cannot decrease scores.
+
 ### Failure Penalties
 
 Customize the penalty points deducted for errors and warnings:

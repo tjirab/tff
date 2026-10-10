@@ -896,3 +896,112 @@ def test_nonexistent_project_root_health_report() -> None:
     )
     output = console.export_text()
     assert "PROJECT FITNESS SCORE" in output
+
+
+@pytest.mark.parametrize(
+    "graph_scenario,findings_data,models_checked,config_kwargs,expected_overall,expected_categories",
+    [
+        (
+            "clean_dag",
+            [],
+            10,
+            {
+                "enabled_checks": ["layer_integrity", "dependency_graph", "schema_contracts"],
+                "enabled_rules": ["ban_select_star", "filename_equals_modelname"],
+            },
+            100.0,
+            {
+                "Dynamic Coupling & DAG Structure": 100.0,
+                "Connascence of Name (CoN)": 100.0,
+            },
+        ),
+        (
+            "single_model_isolated_defect",
+            [
+                ("banselectstar", "error", "select * found", "stg_orders", "models/staging/stg_orders.sql"),
+            ],
+            20,
+            {
+                "enabled_checks": ["layer_integrity"],
+                "enabled_rules": ["ban_select_star"],
+            },
+            97.5,
+            {
+                "Dynamic Coupling & DAG Structure": 100.0,
+                "Connascence of Name (CoN)": 95.0,
+            },
+        ),
+        (
+            "cross_model_dag_structural_defect",
+            [
+                ("layer_integrity", "error", "upstream layer violation", "fct_orders", "models/marts/fct_orders.sql"),
+            ],
+            20,
+            {
+                "enabled_checks": ["layer_integrity"],
+                "enabled_rules": ["ban_select_star"],
+            },
+            50.0,
+            {
+                "Dynamic Coupling & DAG Structure": 0.0,
+                "Connascence of Name (CoN)": 100.0,
+            },
+        ),
+        (
+            "weighted_calibration_dag_vs_model",
+            [
+                ("layer_integrity", "warning", "layer warning", "fct_orders", "models/marts/fct_orders.sql"),
+                ("banselectstar", "error", "select *", "stg_orders", "models/staging/stg_orders.sql"),
+            ],
+            10,
+            {
+                "enabled_checks": ["layer_integrity"],
+                "enabled_rules": ["ban_select_star"],
+                "health": {
+                    "weights": {
+                        "layer_integrity": 3.0,
+                        "ban_select_star": 1.0,
+                    }
+                },
+            },
+            60.0,  # (3.0 * 50.0 + 1.0 * 90.0) / 4.0 = 240.0 / 4.0 = 60.0
+            {
+                "Dynamic Coupling & DAG Structure": 50.0,
+                "Connascence of Name (CoN)": 90.0,
+            },
+        ),
+    ],
+)
+def test_health_score_calibration_fixed_graph_snapshots(
+    graph_scenario: str,
+    findings_data: list[tuple[str, str, str, str, str]],
+    models_checked: int,
+    config_kwargs: dict[str, Any],
+    expected_overall: float,
+    expected_categories: dict[str, float],
+) -> None:
+    """Verify health score calibration snapshot stability against fixed project graphs."""
+    config = _make_config(**config_kwargs)
+    findings = [
+        _make_finding(
+            check=item[0],
+            severity=item[1],  # type: ignore[arg-type]
+            message=item[2],
+            model=item[3],
+            path=item[4],
+        )
+        for item in findings_data
+    ]
+    scores = calculate_health_scores(findings, models_checked=models_checked, config=config, provider="dbt")
+
+    assert abs(scores["overall_score"] - expected_overall) < 0.01, (
+        f"Graph scenario '{graph_scenario}' overall score drifted: got {scores['overall_score']}, expected {expected_overall}"
+    )
+
+    for cat_name, exp_cat_score in expected_categories.items():
+        actual_cat_score = scores["category_scores"].get(cat_name)
+        assert actual_cat_score is not None, f"Category '{cat_name}' missing from scenario '{graph_scenario}'"
+        assert abs(actual_cat_score - exp_cat_score) < 0.01, (
+            f"Graph scenario '{graph_scenario}' category '{cat_name}' drifted: got {actual_cat_score}, expected {exp_cat_score}"
+        )
+
