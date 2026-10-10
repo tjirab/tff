@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.26.0](https://github.com/tjirab/tff/compare/tff-core-v0.25.0...tff-core-v0.26.0) (2026-10-10)
+
+
+### Features
+
+* **health:** add health score calibration and regression drift suite ([#371](https://github.com/tjirab/tff/issues/371)) ([285fb5e](https://github.com/tjirab/tff/commit/285fb5efcf4eb0cf44f036ec2a09627b4627f214))
+
+
+### Performance Improvements
+
+* **core:** optimize ast parsing retry storms, jinja macro cleaning, and ci action ([#368](https://github.com/tjirab/tff/issues/368)) ([617e7c1](https://github.com/tjirab/tff/commit/617e7c1cce3970593bf0427249ce23bb0c7ce150))
+
 ## [0.25.0](https://github.com/tjirab/tff/compare/tff-core-v0.24.0...tff-core-v0.25.0) (2026-10-05)
 
 
