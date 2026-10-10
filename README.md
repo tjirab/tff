@@ -102,6 +102,7 @@ Complete specifications, configuration guides, and architectural documentation a
 - [**CLI Reference Guide**](https://tff.readthedocs.io/en/latest/cli/) — Command-line interface reference, options, and output formats (SARIF, JSON, HTML).
 - [**CI/CD & GitHub Actions**](https://tff.readthedocs.io/en/latest/ci_cd/) — Automated PR governance with `tjirab/tff@v1` and pre-commit hooks.
 - [**Extending tff**](https://tff.readthedocs.io/en/latest/extending_tff/) — Authoring custom rules, checks, and plugins.
+- [**Architecture Decision Records (ADRs)**](docs/adr/README.md) — Technical decision log and architecture decision records.
 - [**GitLab Case Study**](https://tff.readthedocs.io/en/latest/case_study_gitlab/) — Architectural audit of 2,200+ models in enterprise dbt pipelines.
 - [**Style Guide & Design System**](docs/style_guide.md) — Functional design principles, typography, and documentation standards.
 
