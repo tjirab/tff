@@ -32,13 +32,14 @@ For enterprise DAGs consisting of hundreds or thousands of transformation models
 # Root configuration options:
 provider: dbt           # Optional: explicitly set pipeline provider (dbt, sqlmesh, dataform)
 workers: 4              # Optional: number of worker processes (default: auto, capped at CPU count)
+chunk_size: 10          # Optional: chunk size of models per thread worker (default: dynamic or TFF_CHUNK_SIZE)
 cache_ast: true         # Optional: toggle persistent AST caching (default: true)
 cache_dir: ".tff_cache" # Optional: persistent cache directory (default: ".tff_cache")
 ```
 
-You can also override these on the CLI via `--workers <N>`, `--no-cache`, and `--clear-cache`, or via the `TFF_WORKERS` environment variable.
+You can also override these on the CLI via `--workers <N>`, `--chunk-size <N>`, `--no-cache`, and `--clear-cache`, or via the `TFF_WORKERS` / `TFF_CHUNK_SIZE` environment variables.
 
-### Task Batch Tuning (`TFF_CHUNK_SIZE`)
+### Task Batch Tuning (`--chunk-size`, `TFF_CHUNK_SIZE`)
 
 When evaluating model-level rules across large repositories (>1,000 models), creating individual tasks per model can introduce thread pool scheduling and synchronization overhead. `tff` automatically groups eligible models into task batches:
 

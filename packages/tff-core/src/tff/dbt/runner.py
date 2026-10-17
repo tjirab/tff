@@ -26,11 +26,12 @@ CHECK_COLLECTORS = {
 def collect_dbt_rules_findings(
     models: dict[str, ModelRepresentation],
     config: FitnessFunctionsConfig | None = None,
+    chunk_size: int | None = None,
 ) -> list[LintFinding]:
     """Collect findings for all registered model-level rules."""
     findings: list[LintFinding] = []
     for rule_def in registry.model_rules():
-        findings.extend(rule_def.run(models, config=config))
+        findings.extend(rule_def.run(models, config=config, chunk_size=chunk_size))
     return findings
 
 
@@ -46,6 +47,7 @@ def run_all_checks(
     models: dict[str, ModelRepresentation] | None = None,
     workers: int | None = None,
     scoped_models: set[str] | None = None,
+    chunk_size: int | None = None,
 ) -> tuple[list[LintFinding], int, list[str]]:
     roots = normalize_project_roots(project_root) if project_root is not None else [Path.cwd()]
     primary_root = roots[0]
@@ -70,6 +72,7 @@ def run_all_checks(
         provider="dbt",
         max_workers=resolved_workers,
         scoped_models=scoped_models,
+        chunk_size=chunk_size,
     )
 
     if scoped_models is not None:

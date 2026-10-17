@@ -230,6 +230,7 @@ class _MockRunnerAdapter(PipelineAdapter):
         manifest_path: str | Path | None = None,
         models: dict[str, ModelRepresentation] | None = None,
         scoped_models: set[str] | None = None,
+        chunk_size: int | None = None,
     ) -> tuple[list[LintFinding], int, list[str]]:
         roots = normalize_project_roots(project_root)
         root_arg = roots[0] if len(roots) == 1 else roots
@@ -238,6 +239,8 @@ class _MockRunnerAdapter(PipelineAdapter):
             "config": config,
             "checks": checks,
         }
+        if chunk_size is not None:
+            kwargs["chunk_size"] = chunk_size
         if self._provider == "dbt":
             kwargs["dialect"] = dialect
             if models is not None:
@@ -930,6 +933,12 @@ def _main_impl(argv: list[str] | None = None) -> int:
         help="Number of parallel worker processes for model loading and AST traversal",
     )
     lint_parser.add_argument(
+        "--chunk-size",
+        type=int,
+        default=None,
+        help="Chunk size of models per thread worker during parallel rule execution",
+    )
+    lint_parser.add_argument(
         "--no-cache",
         action="store_true",
         help="Disable disk-based AST caching",
@@ -1026,6 +1035,12 @@ def _main_impl(argv: list[str] | None = None) -> int:
         type=int,
         default=None,
         help="Number of parallel worker processes for model loading and AST traversal",
+    )
+    health_parser.add_argument(
+        "--chunk-size",
+        type=int,
+        default=None,
+        help="Chunk size of models per thread worker during parallel rule execution",
     )
     health_parser.add_argument(
         "--no-cache",
@@ -1171,6 +1186,12 @@ def _main_impl(argv: list[str] | None = None) -> int:
         default=None,
         help="Number of parallel worker processes for model loading and AST traversal",
     )
+    docs_parser.add_argument(
+        "--chunk-size",
+        type=int,
+        default=None,
+        help="Chunk size of models per thread worker during parallel rule execution",
+    )
 
     # Init subcommand
     init_parser = subparsers.add_parser(
@@ -1310,6 +1331,12 @@ def _main_impl(argv: list[str] | None = None) -> int:
         type=int,
         default=None,
         help="Number of parallel worker processes for model loading and AST traversal",
+    )
+    action_parser.add_argument(
+        "--chunk-size",
+        type=int,
+        default=None,
+        help="Chunk size of models per thread worker during parallel rule execution",
     )
 
     explain_parser = subparsers.add_parser(
@@ -1760,6 +1787,8 @@ def _main_impl(argv: list[str] | None = None) -> int:
             docs_kwargs["manifest_path"] = args.manifest
         if getattr(args, "workers", None) is not None:
             docs_kwargs["workers"] = args.workers
+        if getattr(args, "chunk_size", None) is not None:
+            docs_kwargs["chunk_size"] = args.chunk_size
         try:
             output_file = generate_docs_dashboard(**docs_kwargs)
             print(f"Successfully generated HTML dashboard at: {output_file}")
@@ -1853,6 +1882,9 @@ def _main_impl(argv: list[str] | None = None) -> int:
         if getattr(args, "workers", None) is not None:
             config.workers = args.workers
             logger.debug("Set config.workers to %d from CLI flag", args.workers)
+        if getattr(args, "chunk_size", None) is not None:
+            config.chunk_size = args.chunk_size
+            logger.debug("Set config.chunk_size to %d from CLI flag", args.chunk_size)
         if getattr(args, "no_cache", False):
             config.cache_ast = False
             os.environ["TFF_NO_CACHE"] = "1"
@@ -1963,6 +1995,15 @@ def _main_impl(argv: list[str] | None = None) -> int:
                 call_kwargs["models"] = models_arg
             if scoped_models is not None:
                 call_kwargs["scoped_models"] = scoped_models
+            chunk_size = getattr(args, "chunk_size", None)
+            if chunk_size is not None:
+                import inspect
+
+                sig = inspect.signature(adapter.run_checks)
+                if "chunk_size" in sig.parameters or any(
+                    p.kind == inspect.Parameter.VAR_KEYWORD for p in sig.parameters.values()
+                ):
+                    call_kwargs["chunk_size"] = chunk_size
             return adapter.run_checks(**call_kwargs)
 
         is_interactive = (

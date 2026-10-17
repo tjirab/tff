@@ -960,6 +960,40 @@ rules:
         load_fitness_config(tmp_path)
 
 
+def test_fitness_functions_config_chunk_size(tmp_path: Path) -> None:
+    # 1. Default is None
+    cfg = FitnessFunctionsConfig()
+    assert cfg.chunk_size is None
+
+    # 2. Valid positive integer
+    cfg = FitnessFunctionsConfig(chunk_size=10)
+    assert cfg.chunk_size == 10
+
+    # 3. String numeric converts to int
+    cfg = FitnessFunctionsConfig.model_validate({"chunk_size": "25"})
+    assert cfg.chunk_size == 25
+
+    # 4. None explicitly set
+    cfg = FitnessFunctionsConfig(chunk_size=None)
+    assert cfg.chunk_size is None
+
+    # 5. Invalid values (< 1) raise ValidationError
+    with pytest.raises(ValidationError, match="chunk_size must be at least 1"):
+        FitnessFunctionsConfig(chunk_size=0)
+
+    with pytest.raises(ValidationError, match="chunk_size must be at least 1"):
+        FitnessFunctionsConfig(chunk_size=-5)
+
+    with pytest.raises(ValidationError):
+        FitnessFunctionsConfig.model_validate({"chunk_size": "invalid"})
+
+    # 6. Load from YAML
+    yaml_file = tmp_path / "fitness_functions.yaml"
+    yaml_file.write_text("chunk_size: 15\n", encoding="utf-8")
+    loaded = load_fitness_config(tmp_path)
+    assert loaded.chunk_size == 15
+
+
 def test_validation_errors_standardized_to_tff_config_error() -> None:
     # 1. workers validation
     with pytest.raises(ValidationError) as exc_info:
@@ -1100,6 +1134,16 @@ def test_validation_errors_standardized_to_tff_config_error() -> None:
     assert err.hint == "Set 'grain: true' or 'grain: false' under 'rules.metadata'."
     assert err.details["rule"] == "metadata"
     assert err.details["field"] == "grain"
+
+    # 12. chunk_size validation
+    with pytest.raises(ValidationError) as exc_info:
+        FitnessFunctionsConfig(chunk_size=0)
+    err = exc_info.value.errors()[0]["ctx"]["error"]
+    assert isinstance(err, TffConfigError)
+    assert isinstance(err, ValueError)
+    assert "chunk_size must be at least 1" in err.message
+    assert err.hint == "Set chunk_size to an integer >= 1 in fitness_functions.yaml or CLI flag."
+    assert err.details == {"field": "chunk_size", "chunk_size": 0, "min_chunk_size": 1}
 
 
 

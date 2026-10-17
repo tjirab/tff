@@ -53,6 +53,7 @@ class SQLMeshAdapter(PipelineAdapter):
         manifest_path: str | Path | None = None,
         models: dict[str, ModelRepresentation] | None = None,
         scoped_models: set[str] | None = None,
+        chunk_size: int | None = None,
     ) -> tuple[list[LintFinding], int, list[str]]:
         from typing import Any
         from tff.sqlmesh.runner import run_all_checks
@@ -65,6 +66,8 @@ class SQLMeshAdapter(PipelineAdapter):
         }
         if scoped_models is not None:
             kwargs["scoped_models"] = scoped_models
+        if chunk_size is not None:
+            kwargs["chunk_size"] = chunk_size
         return run_all_checks(**kwargs)
 
     def apply_metadata_fix(

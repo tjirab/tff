@@ -185,6 +185,7 @@ def evaluate_project(
     dialect: str | None = None,
     manifest: Path | None = None,
     workers: int | None = None,
+    chunk_size: int | None = None,
     scoped_models: set[str] | None = None,
 ) -> dict[str, Any]:
     """Run tff health evaluation on the specified project directory."""
@@ -196,6 +197,8 @@ def evaluate_project(
     config = load_fitness_config(project_root, config_path=config_path)
     if workers is not None:
         config.workers = workers
+    if chunk_size is not None:
+        config.chunk_size = chunk_size
 
     kwargs: dict[str, Any] = {
         "project_root": project_root,
@@ -206,6 +209,14 @@ def evaluate_project(
     }
     if scoped_models is not None:
         kwargs["scoped_models"] = scoped_models
+    if chunk_size is not None:
+        import inspect
+
+        sig = inspect.signature(adapter.run_checks)
+        if "chunk_size" in sig.parameters or any(
+            p.kind == inspect.Parameter.VAR_KEYWORD for p in sig.parameters.values()
+        ):
+            kwargs["chunk_size"] = chunk_size
 
     findings, models_checked, executed_checks = adapter.run_checks(**kwargs)
 
@@ -710,6 +721,7 @@ def execute_action(args: argparse.Namespace) -> int:
             dialect=getattr(args, "dialect", None),
             manifest=getattr(args, "manifest", None),
             workers=getattr(args, "workers", None),
+            chunk_size=getattr(args, "chunk_size", None),
             scoped_models=scoped_models,
         )
     except Exception as e:

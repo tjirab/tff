@@ -5,6 +5,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+from conftest import _make_model
 from tff.core.cli import _detect_provider, _get_runner, main
 from tff.core.health import _domain_key
 from tff.core.utils.jinja import clean_dataform_for_parsing
@@ -920,6 +921,59 @@ def test_dataform_run_all_checks_with_no_cache(tmp_path: Path):
     findings, checked, _ = run_all_checks(project_root=tmp_path, config=config)
     assert checked == 1
     assert not (tmp_path / ".tff_cache").exists()
+
+
+def test_dataform_runner_and_adapter_propagate_chunk_size() -> None:
+    from unittest.mock import patch
+    from tff.core.config import FitnessFunctionsConfig
+    from tff.dataform.runner import collect_dataform_rules_findings, run_all_checks
+    from tff.dataform.adapter import DataformAdapter
+
+    models = {
+        "m1": _make_model(name="m1", path="definitions/m1.sqlx", dialect="bigquery"),
+    }
+    cfg = FitnessFunctionsConfig()
+
+    # 1. collect_dataform_rules_findings
+    with patch("tff.core.registry.CheckDefinition.run", return_value=[]) as mock_run:
+        res = collect_dataform_rules_findings(models, config=cfg, chunk_size=8)
+        assert res == []
+        if mock_run.called:
+            assert mock_run.call_args.kwargs.get("chunk_size") == 8
+
+    # 2. run_all_checks
+    with patch("tff.core.registry.CheckRegistry.run_checks", return_value=([], ["rules"])) as mock_registry_run:
+        findings, count, sel = run_all_checks(
+            models=models,
+            config=cfg,
+            chunk_size=14,
+        )
+        assert findings == []
+        assert sel == ["rules"]
+        mock_registry_run.assert_called_once_with(
+            models=models,
+            config=cfg,
+            checks=None,
+            provider="dataform",
+            max_workers=None,
+            scoped_models=None,
+            chunk_size=14,
+        )
+
+    # 3. DataformAdapter.run_checks
+    adapter = DataformAdapter()
+    with patch("tff.dataform.runner.run_all_checks", return_value=([], 1, ["rules"])) as mock_runner_all:
+        findings, count, sel = adapter.run_checks(
+            project_root=Path.cwd(),
+            config=cfg,
+            models=models,
+            chunk_size=16,
+        )
+        assert findings == []
+        assert count == 1
+        assert sel == ["rules"]
+        assert mock_runner_all.call_args.kwargs.get("chunk_size") == 16
+
 
 
 

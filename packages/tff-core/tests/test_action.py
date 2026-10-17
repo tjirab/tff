@@ -911,6 +911,12 @@ def test_evaluate_project_with_workers() -> None:
     assert "overall_score" in res["scores"]
 
 
+def test_evaluate_project_with_chunk_size() -> None:
+    res = evaluate_project(_MINIMAL_DBT, chunk_size=4)
+    assert res["config"].chunk_size == 4
+    assert "overall_score" in res["scores"]
+
+
 def test_execute_action_annotations_with_modified_files(capsys) -> None:
     args = argparse.Namespace(
         project=_MINIMAL_DBT,
