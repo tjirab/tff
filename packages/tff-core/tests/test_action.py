@@ -14,7 +14,10 @@ import pytest
 import yaml
 
 from tff.core.action import (
+    AUTOFIXABLE_CHECKS,
     PR_COMMENT_MARKER,
+    REMEDIATION_SNIPPET,
+    _format_finding_row,
     compare_findings,
     detect_pr_context,
     evaluate_pass_fail,
@@ -24,6 +27,7 @@ from tff.core.action import (
     generate_pr_comment_markdown,
     get_finding_fingerprint,
     get_modified_files,
+    is_autofixable,
     is_finding_in_files,
     parse_bool,
     post_or_update_pr_comment,
@@ -32,6 +36,7 @@ from tff.core.action import (
 )
 from tff.core.cli import main
 from tff.core.report import LintFinding
+from conftest import _make_finding
 
 _REPO_ROOT = Path(__file__).resolve().parents[3]
 _MINIMAL_DBT = _REPO_ROOT / "examples" / "minimal-dbt-project"
@@ -200,9 +205,8 @@ def test_generate_pr_comment_markdown_clean_run() -> None:
     md = generate_pr_comment_markdown(clean_data, base_data=None, fail_under=80.0, fail_level="error")
     assert PR_COMMENT_MARKER in md
     assert "100.0%" in md
-    assert "PASSED" in md
-    assert "All architectural fitness functions and linter checks passed without any violations!" in md
-    assert "### DIMENSION DISTRIBUTION" in md
+    assert "**tff Quality Gate Passed** — Health Score: 100.0%" in md
+    assert "### DIMENSION DISTRIBUTION" not in md
 
 
 def test_generate_pr_comment_markdown_with_diff_and_violations() -> None:
@@ -299,7 +303,7 @@ def test_generate_pr_comment_markdown_zero_diff() -> None:
         "warnings_count": 0,
     }
     md = generate_pr_comment_markdown(current_data, base_data=base_data, fail_under=80.0, fail_level="error", base_ref="main")
-    assert "0.0% vs main" in md
+    assert "**tff Quality Gate Passed** — Health Score: 85.0% (0.0%)" in md
 
 
 def test_post_or_update_pr_comment_no_token() -> None:
@@ -457,7 +461,7 @@ def test_execute_action_cli_json_and_annotations(tmp_path: Path) -> None:
         code = execute_action(args)
         assert code == 0
         assert "passed=true" in out_file.read_text(encoding="utf-8")
-        assert "## ■ ▲ ● TFF ARCHITECTURE AUDIT" in summary_file.read_text(encoding="utf-8")
+        assert "**tff Quality Gate Passed**" in summary_file.read_text(encoding="utf-8")
 
 
 def test_execute_action_cli_with_annotations_and_findings(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
@@ -1253,10 +1257,405 @@ def test_execute_action_project_as_list_and_fallback_cwd() -> None:
         assert code_none == 0
 
 
+@pytest.mark.parametrize(
+    ("check", "message", "expected"),
+    [
+        ("banselectstar", "SELECT * is prohibited", True),
+        ("ban_select_star", "SELECT * is prohibited", True),
+        ("nopositionalgroupby", "Positional GROUP BY prohibited", True),
+        ("nopositionalorderby", "Positional ORDER BY prohibited", True),
+        ("nopositionalgroupbyororderby", "Positional GROUP BY prohibited", True),
+        ("nomissingowner", "Missing model owner", True),
+        ("nomissingdescription", "Missing model description", True),
+        ("martmodelnamingconvention", "Invalid mart model name", True),
+        ("mart_naming", "Invalid mart model name", True),
+        ("filenameequalsmodelname", "Filename mismatch", True),
+        ("filename_equals_modelname", "Filename mismatch", True),
+        (
+            "sqlcomplexity",
+            "Complex query with nested subquery in final SELECT",
+            True,
+        ),
+        ("sqlcomplexity", "Too many CTEs in model", False),
+        ("layer_integrity", "Upstream layer dependency violated", False),
+        ("join_type_parity", "Mismatched join types", False),
+        ("unknown_check", "Unknown violation", False),
+    ],
+)
+def test_is_autofixable_checks(check: str, message: str, expected: bool) -> None:
+    dict_finding = {"check": check, "message": message}
+    obj_finding = _make_finding(
+        check=check, severity="error", message=message, model="orders"
+    )
+    assert is_autofixable(dict_finding) is expected
+    assert is_autofixable(obj_finding) is expected
 
 
+def test_generate_pr_comment_diff_first_triage_callout() -> None:
+    current_data = {
+        "overall_score": 78.0,
+        "findings": [
+            {
+                "check": "banselectstar",
+                "severity": "error",
+                "message": "SELECT * not allowed",
+                "model": "stg_orders",
+                "path": "models/staging/stg_orders.sql",
+            },
+            {
+                "check": "layer_integrity",
+                "severity": "error",
+                "message": "Direct marts access prohibited",
+                "model": "dim_customers",
+                "path": "models/marts/dim_customers.sql",
+            },
+            {
+                "check": "nomissingowner",
+                "severity": "warning",
+                "message": "Owner required",
+                "model": "stg_orders",
+                "path": "models/staging/stg_orders.sql",
+            },
+        ],
+        "errors_count": 2,
+        "warnings_count": 1,
+        "category_scores": {},
+    }
+    base_data = {
+        "overall_score": 85.0,
+        "findings": [],
+        "errors_count": 0,
+        "warnings_count": 0,
+    }
+
+    md = generate_pr_comment_markdown(
+        current_data,
+        base_data=base_data,
+        fail_under=80.0,
+        fail_level="error",
+        base_ref="main",
+        modified_files={
+            "models/staging/stg_orders.sql",
+            "models/marts/dim_customers.sql",
+        },
+    )
+
+    # 1. Callout box at top
+    assert "> [!CAUTION]" in md
+    assert "> ### New Violations Introduced in This PR" in md
+
+    # 2. Grouped by touched model file first (dim_customers before stg_orders, error before warning)
+    dim_pos = md.find("dim_customers")
+    stg_pos = md.find("stg_orders")
+    assert dim_pos != -1 and stg_pos != -1
+    assert dim_pos < stg_pos
+
+    # 3. Autofixable badge and copyable remediation snippet
+    assert "`[Autofixable]`" in md
+    assert "tff lint --fix --staged" in md
 
 
+def test_generate_pr_comment_collapsible_baseline_debt() -> None:
+    current_data = {
+        "overall_score": 82.0,
+        "findings": [
+            {
+                "check": "nomissingowner",
+                "severity": "warning",
+                "message": "Missing owner",
+                "model": "untouched_dim",
+                "path": "models/marts/untouched_dim.sql",
+            },
+            {
+                "check": "banselectstar",
+                "severity": "error",
+                "message": "SELECT * in touched model",
+                "model": "touched_model",
+                "path": "models/staging/touched_model.sql",
+            },
+            {
+                "check": "duplicate_ctes",
+                "severity": "warning",
+                "message": "Duplicate CTE in touched path",
+                "model": None,
+                "path": "models/staging/touched_model.sql",
+            },
+        ],
+        "errors_count": 1,
+        "warnings_count": 1,
+        "category_scores": {},
+    }
+    base_data = {
+        "overall_score": 85.0,
+        "findings": [
+            {
+                "check": "nomissingowner",
+                "severity": "warning",
+                "message": "Missing owner",
+                "model": "untouched_dim",
+                "path": "models/marts/untouched_dim.sql",
+            },
+            {
+                "check": "duplicate_ctes",
+                "severity": "warning",
+                "message": "Duplicate CTE in touched path",
+                "model": None,
+                "path": "models/staging/touched_model.sql",
+            },
+        ],
+        "errors_count": 0,
+        "warnings_count": 2,
+    }
+
+    md = generate_pr_comment_markdown(
+        current_data,
+        base_data=base_data,
+        fail_under=80.0,
+        fail_level="error",
+        base_ref="main",
+        modified_files={"models/staging/touched_model.sql"},
+    )
+
+    # Untouched baseline debt collapsed into closed details
+    assert (
+        "<summary>View 1 pre-existing violations across untouched models</summary>"
+        in md
+    )
+    # Must NOT have <details open> for untouched debt
+    assert (
+        "<details>\n<summary>View 1 pre-existing violations across untouched models</summary>"
+        in md
+    )
 
 
+@pytest.mark.parametrize(
+    ("score", "base_score", "expected_card"),
+    [
+        (96.2, 95.4, "**tff Quality Gate Passed** — Health Score: 96.2% (+0.8%)"),
+        (90.0, 92.5, "**tff Quality Gate Passed** — Health Score: 90.0% (-2.5%)"),
+        (85.0, 85.0, "**tff Quality Gate Passed** — Health Score: 85.0% (0.0%)"),
+    ],
+)
+def test_generate_pr_comment_compact_green_pass_card(
+    score: float, base_score: float, expected_card: str
+) -> None:
+    current_data = {
+        "overall_score": score,
+        "findings": [],
+        "errors_count": 0,
+        "warnings_count": 0,
+        "category_scores": {},
+    }
+    base_data = {
+        "overall_score": base_score,
+        "findings": [],
+        "errors_count": 0,
+        "warnings_count": 0,
+    }
+    md = generate_pr_comment_markdown(
+        current_data,
+        base_data=base_data,
+        fail_under=80.0,
+        fail_level="error",
+        base_ref="main",
+    )
+    assert PR_COMMENT_MARKER in md
+    assert expected_card in md
+    assert "### DIMENSION DISTRIBUTION" not in md
 
+
+def test_generate_pr_comment_pass_with_baseline_debt() -> None:
+    """When all checks pass and no new violations exist, render pass card + collapsible baseline debt."""
+    pre_existing_finding = {
+        "check": "nomissingowner",
+        "severity": "warning",
+        "message": "Missing owner on legacy model",
+        "model": "legacy_untouched",
+        "path": "models/legacy_untouched.sql",
+    }
+    current_data = {
+        "overall_score": 96.2,
+        "findings": [pre_existing_finding],
+        "errors_count": 0,
+        "warnings_count": 1,
+        "category_scores": {},
+    }
+    base_data = {
+        "overall_score": 95.4,
+        "findings": [pre_existing_finding],
+        "errors_count": 0,
+        "warnings_count": 1,
+    }
+    md = generate_pr_comment_markdown(
+        current_data,
+        base_data=base_data,
+        fail_under=80.0,
+        fail_level="error",
+        base_ref="main",
+        modified_files={"models/marts/new_feature.sql"},
+    )
+    # Celebratory badge card
+    assert "**tff Quality Gate Passed** — Health Score: 96.2% (+0.8%)" in md
+    # Closed details baseline debt
+    assert (
+        "<summary>View 1 pre-existing violations across untouched models</summary>"
+        in md
+    )
+    # Remediation snippet
+    assert "tff lint --fix --staged" in md
+
+
+def test_generate_pr_comment_zero_emoji_guarantee() -> None:
+    """Ensure zero decorative emojis appear in any generated PR comments per revised style guide."""
+    prohibited_emojis = ["📁", "🔧", "📈", "📉", "🚀", "🎉", "❌", "⚠️", "✅"]
+    test_data = {
+        "overall_score": 96.2,
+        "findings": [
+            {
+                "check": "banselectstar",
+                "severity": "error",
+                "message": "SELECT * prohibited",
+                "model": "model_a",
+                "path": "models/model_a.sql",
+            }
+        ],
+        "errors_count": 1,
+        "warnings_count": 0,
+        "category_scores": {},
+    }
+    md = generate_pr_comment_markdown(test_data, base_data=None, fail_under=80.0)
+    for emoji in prohibited_emojis:
+        assert emoji not in md, f"Prohibited emoji '{emoji}' found in PR comment"
+
+
+def test_format_finding_row_types() -> None:
+    finding_obj = _make_finding(
+        check="banselectstar",
+        severity="error",
+        message="SELECT * is prohibited",
+        model="stg_orders",
+        path=Path("models/staging/stg_orders.sql"),
+    )
+    row_obj = _format_finding_row(finding_obj)
+    assert "`ERR`" in row_obj
+    assert "`stg_orders`" in row_obj
+    assert "`[Autofixable]`" in row_obj
+
+    finding_obj_no_model = _make_finding(
+        check="columnnames",
+        severity="warning",
+        message="Invalid column",
+        model=None,
+        path=Path("models/marts/dim_users.sql"),
+    )
+    row_no_model = _format_finding_row(finding_obj_no_model)
+    assert "`WRN`" in row_no_model
+    assert "models/marts/dim_users.sql" in row_no_model
+
+    finding_dict = {
+        "check": "nomissingowner",
+        "severity": "warning",
+        "message": "Missing owner",
+        "model": "dim_users",
+    }
+    row_dict = _format_finding_row(finding_dict)
+    assert "`WRN`" in row_dict
+    assert "`dim_users`" in row_dict
+
+
+def test_generate_pr_comment_collapsible_baseline_debt_truncation() -> None:
+    """Test truncation of pre-existing violations across untouched models when > 50."""
+    pre_existing_55 = [
+        {
+            "check": "nomissingowner",
+            "severity": "warning",
+            "message": f"Missing owner on legacy model {i}",
+            "model": f"legacy_model_{i}",
+            "path": f"models/legacy_model_{i}.sql",
+        }
+        for i in range(55)
+    ]
+    # 1. In pass mode (> 50 truncated)
+    current_pass = {
+        "overall_score": 95.0,
+        "findings": pre_existing_55,
+        "errors_count": 0,
+        "warnings_count": 55,
+        "category_scores": {},
+    }
+    base_data = {
+        "overall_score": 95.0,
+        "findings": pre_existing_55,
+        "errors_count": 0,
+        "warnings_count": 55,
+    }
+    md_pass = generate_pr_comment_markdown(
+        current_pass,
+        base_data=base_data,
+        fail_under=80.0,
+        fail_level="error",
+        base_ref="main",
+        modified_files={"models/marts/feature.sql"},
+    )
+    assert "View 55 pre-existing violations across untouched models" in md_pass
+    assert "... and 5 more pre-existing violations truncated." in md_pass
+
+    # 2. In fail mode (> 50 truncated)
+    current_fail = {
+        "overall_score": 70.0,
+        "findings": pre_existing_55,
+        "errors_count": 0,
+        "warnings_count": 55,
+        "category_scores": {},
+    }
+    md_fail = generate_pr_comment_markdown(
+        current_fail,
+        base_data=base_data,
+        fail_under=80.0,
+        fail_level="error",
+        base_ref="main",
+        modified_files={"models/marts/feature.sql"},
+    )
+    assert "View 55 pre-existing violations across untouched models" in md_fail
+    assert "... and 5 more pre-existing violations truncated." in md_fail
+
+
+def test_generate_pr_comment_untouched_no_modified_files() -> None:
+    """When base_data is present, modified_files=None, and 0 new violations exist, all pre-existing findings are untouched."""
+    pre_existing = [
+        {
+            "check": "nomissingowner",
+            "severity": "warning",
+            "message": "Missing owner on model",
+            "model": "model_x",
+            "path": "models/model_x.sql",
+        }
+    ]
+    current = {
+        "overall_score": 95.0,
+        "findings": pre_existing,
+        "errors_count": 0,
+        "warnings_count": 1,
+        "category_scores": {},
+    }
+    base = {
+        "overall_score": 95.0,
+        "findings": pre_existing,
+        "errors_count": 0,
+        "warnings_count": 1,
+    }
+    md = generate_pr_comment_markdown(
+        current,
+        base_data=base,
+        fail_under=80.0,
+        fail_level="error",
+        base_ref="main",
+        modified_files=None,
+    )
+    assert "View 1 pre-existing violations across untouched models" in md
+
+
+def test_autofixable_constants() -> None:
+    assert "banselectstar" in AUTOFIXABLE_CHECKS
+    assert "nopositionalgroupby" in AUTOFIXABLE_CHECKS
+    assert "tff lint --fix --staged" in REMEDIATION_SNIPPET
