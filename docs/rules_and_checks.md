@@ -430,7 +430,7 @@ Architectural checks evaluate the structure, dependencies, and layout of your en
 * **What it checks**:
   * Validates data type parity for joined columns across SQL queries to eliminate **Connascence of Type (CoT)**.
   * Walks join condition expressions (`ON left.col = right.col` and `USING (col)`), extracts columns on both sides, resolves their data types from project model metadata, and flags any incompatible type mismatches.
-  * Honors explicit casts (e.g. `CAST(id AS VARCHAR) = user_id`) and recognizes dialect-equivalent type families (e.g. `VARCHAR` $\leftrightarrow$ `TEXT`, `INT` $\leftrightarrow$ `BIGINT`).
+  * Honors explicit casts (e.g. `CAST(id AS VARCHAR) = user_id`), infers return types of common scalar and wrapper functions (e.g. `LOWER`, `UPPER`, `TRIM`, `CONCAT`, `DATE_TRUNC`, `DATE`, `TIMESTAMP`, `COALESCE`, `IF`, `CASE`), and recognizes dialect-equivalent type families (e.g. `VARCHAR` $\leftrightarrow$ `TEXT`, `INT` $\leftrightarrow$ `BIGINT`).
 
 * **Why it matters (The "Why")**:
   Joining columns with mismatching data types (e.g. `VARCHAR` joined to `INTEGER`) causes dynamic type casting overhead across every processed row, disables database index and partition scans, or leads to runtime execution failures. It introduces **Connascence of Type (CoT)** where models are tightly and invisibly coupled to upstream internal type representations.
