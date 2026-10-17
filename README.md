@@ -1,8 +1,5 @@
 <p align="center">
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="docs/assets/tff-white.svg">
-    <img alt="tff logo" src="docs/assets/tff.svg" width="160">
-  </picture>
+  <img src="docs/assets/tff.svg" alt="tff logo" width="160">
 </p>
 
 # tff
