@@ -67,22 +67,6 @@ class SQLMeshAdapter(PipelineAdapter):
             kwargs["scoped_models"] = scoped_models
         return run_all_checks(**kwargs)
 
-    def apply_metadata_fix(
-        self,
-        project_root: Path,
-        abs_path: Path,
-        model_name: str,
-        missing_owner: bool,
-        missing_description: bool,
-    ) -> str | None:
-        from tff.core.autofix import fix_sqlmesh_metadata
-
-        return fix_sqlmesh_metadata(
-            abs_path=abs_path,
-            missing_owner=missing_owner,
-            missing_description=missing_description,
-        )
-
     def get_diagnostic_files(
         self, project_root: Path | Sequence[Path]
     ) -> list[tuple[str, str]]:

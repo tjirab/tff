@@ -1,6 +1,5 @@
 import json
 import os
-import re
 import sys
 from pathlib import Path
 from unittest.mock import MagicMock, patch
@@ -817,13 +816,13 @@ def test_cli_version_fallback():
 def test_cli_main_lint_with_fix(tmp_path: Path):
     from tff.core.report import LintFinding
     from tff.core.model import ModelRepresentation
-    # Create dbt_project.yml to auto-detect provider
-    (tmp_path / "dbt_project.yml").touch()
+    # Create workflow_settings.yaml to auto-detect provider as Dataform
+    (tmp_path / "workflow_settings.yaml").touch()
 
-    # Create a sql file containing positional GROUP BY
-    sql_file = tmp_path / "models/marts/my_model.sql"
+    # Create a sqlx file containing mismatched name
+    sql_file = tmp_path / "definitions/my_model.sqlx"
     sql_file.parent.mkdir(parents=True, exist_ok=True)
-    sql_file.write_text("SELECT a FROM t GROUP BY 1", encoding="utf-8")
+    sql_file.write_text('config {\n  name: "wrong_model"\n}\nSELECT 1', encoding="utf-8")
 
     # Mock runner run_all_checks to return initial findings
     mock_runner = MagicMock()
@@ -832,11 +831,11 @@ def test_cli_main_lint_with_fix(tmp_path: Path):
         (
             [
                 LintFinding(
-                    check="nopositionalgroupbyororderby",
+                    check="filename_equals_modelname",
                     severity="error",
-                    model="my_model",
-                    path="models/marts/my_model.sql",
-                    message="Use column name instead."
+                    model="wrong_model",
+                    path="definitions/my_model.sqlx",
+                    message="Model name does not match file stem."
                 )
             ],
             1,
@@ -855,13 +854,12 @@ def test_cli_main_lint_with_fix(tmp_path: Path):
         
         mock_load_config.return_value = MagicMock()
         
-        # We need to mock load_dbt_models to return ModelRepresentation
-        with patch("tff.dbt.manifest.load_dbt_models") as mock_load_dbt_models:
-            mock_load_dbt_models.return_value = {
+        with patch("tff.dataform.manifest.load_dataform_models") as mock_load_df_models:
+            mock_load_df_models.return_value = {
                 "my_model": ModelRepresentation(
                     name="my_model",
                     path=str(sql_file),
-                    dialect="ansi"
+                    dialect="bigquery"
                 )
             }
             
@@ -869,7 +867,7 @@ def test_cli_main_lint_with_fix(tmp_path: Path):
             
             assert exit_code == 0
             # Verify file was updated
-            assert sql_file.read_text(encoding="utf-8") == "SELECT a FROM t GROUP BY a"
+            assert 'name: "my_model"' in sql_file.read_text(encoding="utf-8")
             assert mock_runner.run_all_checks.call_count == 2
 
 
@@ -885,7 +883,7 @@ def test_cli_main_lint_with_fix_sqlmesh(tmp_path: Path):
     # Create a SQL file
     sql_file = tmp_path / "models/my_model.sql"
     sql_file.parent.mkdir(parents=True, exist_ok=True)
-    sql_file.write_text("SELECT a FROM t GROUP BY 1", encoding="utf-8")
+    sql_file.write_text("MODEL (\n  name wrong_model\n);\nSELECT 1", encoding="utf-8")
     
     # Mock runner
     mock_runner = MagicMock()
@@ -893,11 +891,11 @@ def test_cli_main_lint_with_fix_sqlmesh(tmp_path: Path):
         (
             [
                 LintFinding(
-                    check="nopositionalgroupbyororderby",
+                    check="filenameequalsmodelname",
                     severity="error",
-                    model="my_model",
+                    model="wrong_model",
                     path="models/my_model.sql",
-                    message="Use column name instead."
+                    message="Model name does not match file stem."
                 )
             ],
             1,
@@ -927,7 +925,7 @@ def test_cli_main_lint_with_fix_sqlmesh(tmp_path: Path):
         
         exit_code = main(["lint", "--project", str(tmp_path), "--fix"])
         assert exit_code == 0
-        assert sql_file.read_text(encoding="utf-8") == "SELECT a FROM t GROUP BY a"
+        assert "name my_model" in sql_file.read_text(encoding="utf-8")
         assert mock_runner.run_all_checks.call_count == 2
 
 
@@ -964,36 +962,37 @@ def test_cli_main_lint_with_fix_load_models_exception(tmp_path: Path):
 def test_cli_main_lint_with_fix_rerun_exception(tmp_path: Path):
     from tff.core.report import LintFinding
     from tff.core.model import ModelRepresentation
-    (tmp_path / "dbt_project.yml").touch()
+    (tmp_path / "config.py").write_text("from sqlmesh.core.config import Config\nconfig = Config()")
     
     sql_file = tmp_path / "models/my_model.sql"
     sql_file.parent.mkdir(parents=True, exist_ok=True)
-    sql_file.write_text("SELECT a FROM t GROUP BY 1", encoding="utf-8")
+    sql_file.write_text("MODEL (\n  name wrong_model\n);\nSELECT 1", encoding="utf-8")
     
     mock_runner = MagicMock()
     mock_runner.run_all_checks.side_effect = [
         (
             [
                 LintFinding(
-                    check="nopositionalgroupbyororderby",
+                    check="filenameequalsmodelname",
                     severity="error",
-                    model="my_model",
+                    model="wrong_model",
                     path="models/my_model.sql",
-                    message="Use column name instead."
+                    message="Model name mismatch"
                 )
             ],
             1,
-            ["rules"]
+            ["sqlmesh"]
         ),
         Exception("Re-run failed")
     ]
     
     with patch("tff.core.cli._get_runner", return_value=mock_runner), \
          patch("tff.core.cli.load_fitness_config") as mock_load_config, \
-         patch("tff.dbt.manifest.load_dbt_models") as mock_load_dbt_models:
+         patch("sqlmesh.core.context.Context"), \
+         patch("tff.sqlmesh.runner.map_sqlmesh_context_models") as mock_map_models:
         
         mock_load_config.return_value = MagicMock()
-        mock_load_dbt_models.return_value = {
+        mock_map_models.return_value = {
             "my_model": ModelRepresentation(
                 name="my_model",
                 path=str(sql_file),
@@ -1878,9 +1877,9 @@ def test_cli_lint_autofix_interactive_spinner(tmp_path: Path):
     from tff.core.report import LintFinding
 
     finding = LintFinding(
-        check="nomissingowner",
+        check="filenameequalsmodelname",
         severity="error",
-        message="Missing owner",
+        message="Filename does not match model name",
         model="user_model",
         path="models/marts/user_model.sql",
     )
@@ -1907,74 +1906,22 @@ def test_cli_lint_autofix_interactive_spinner(tmp_path: Path):
     mock_adapter.provider_name = "dbt"
     # First run returns finding, second run returns clean
     mock_adapter.run_checks.side_effect = [
-        ([finding], 1, ["nomissingowner"]),
-        ([], 1, ["nomissingowner"]),
+        ([finding], 1, ["filenameequalsmodelname"]),
+        ([], 1, ["filenameequalsmodelname"]),
     ]
     mock_adapter.load_models.return_value = {"user_model": model}
-    mock_adapter.apply_metadata_fix.return_value = "Fixed owner"
 
     with patch("tff.core.cli._get_adapter", return_value=mock_adapter), \
          patch("tff.core.cli._detect_provider", return_value="dbt"), \
          patch("sys.stderr.isatty", return_value=True), \
          patch.dict(os.environ, {"TERM": "xterm-256color", "CI": ""}, clear=False), \
-         patch("tff.core.autofix.apply_autofixes", return_value=["Fixed owner"]), \
+         patch("tff.core.autofix.apply_autofixes", return_value=["Synchronized model name to 'user_model' in user_model.sql"]), \
          patch("tff.core.cli.render_lint_report", return_value=True) as mock_render:
         exit_code = main(["lint", "--project", str(tmp_path), "--fix"])
         assert exit_code == 0
         assert mock_adapter.run_checks.call_count == 2
         assert mock_render.call_count == 1
         assert mock_render.call_args[1]["duration"] is not None
-
-
-def test_cli_autofix_rename_prints_downstream_ref_note(tmp_path: Path, capsys):
-    from tff.core.model import ModelRepresentation
-    from tff.core.report import LintFinding
-
-    finding = LintFinding(
-        model="ad_performance",
-        check="martmodelnamingconvention",
-        severity="error",
-        message="Model must be prefixed.",
-        path="models/marts/marketing/ad_performance.sql",
-    )
-    model = ModelRepresentation(
-        name="ad_performance",
-        path=str(tmp_path / "models/marts/marketing/ad_performance.sql"),
-        dialect="duckdb",
-        is_symbolic=False,
-        is_external=False,
-        columns_to_types={},
-        depends_on=set(),
-        description=None,
-        owner=None,
-        grains=[],
-        audits=[],
-        materialized="table",
-        expression=None,
-        tags=[],
-        meta={},
-        provider="dbt",
-    )
-
-    mock_adapter = MagicMock()
-    mock_adapter.provider_name = "dbt"
-    mock_adapter.run_checks.side_effect = [
-        ([finding], 1, ["martmodelnamingconvention"]),
-        ([], 1, ["martmodelnamingconvention"]),
-    ]
-    mock_adapter.load_models.return_value = {"ad_performance": model}
-
-    rename_log = "Renamed model file ad_performance.sql -> marketing_ad_performance.sql"
-    with patch("tff.core.cli._get_adapter", return_value=mock_adapter), \
-         patch("tff.core.cli._detect_provider", return_value="dbt"), \
-         patch("tff.core.autofix.apply_autofixes", return_value=[rename_log]), \
-         patch("tff.core.cli.render_lint_report", return_value=True):
-        exit_code = main(["lint", "--project", str(tmp_path), "--fix"])
-        assert exit_code == 0
-        captured = capsys.readouterr()
-        clean_err = re.sub(r"\x1b\[[0-9;]*[a-zA-Z]", "", captured.err)
-        assert "Renamed model file ad_performance.sql -> marketing_ad_performance.sql" in clean_err
-        assert "Please verify downstream ref() references to renamed models" in " ".join(clean_err.split())
 
 
 
@@ -2017,19 +1964,24 @@ def test_cli_explain_single_check(capsys):
 
 
 def test_cli_explain_fixable_check(capsys):
-    assert main(["explain", "no_positional_group_by_or_order_by"]) == 0
+    assert main(["explain", "filename_equals_modelname"]) == 0
     captured = capsys.readouterr()
     assert "Auto-fix:   Yes (run 'tff lint --fix')" in captured.out
     assert "Severity:   Error (Default)" in captured.out
 
+    assert main(["explain", "no_positional_group_by_or_order_by"]) == 0
+    captured_pos = capsys.readouterr()
+    assert "Auto-fix:" not in captured_pos.out
+    assert "no_positional_group_by_or_order_by" in captured_pos.out
+
     assert main(["explain", "no_positional_group_by"]) == 0
     captured_grp = capsys.readouterr()
-    assert "Auto-fix:   Yes (run 'tff lint --fix')" in captured_grp.out
+    assert "Auto-fix:" not in captured_grp.out
     assert "no_positional_group_by" in captured_grp.out
 
     assert main(["explain", "no_positional_order_by"]) == 0
     captured_ord = capsys.readouterr()
-    assert "Auto-fix:   Yes (run 'tff lint --fix')" in captured_ord.out
+    assert "Auto-fix:" not in captured_ord.out
     assert "no_positional_order_by" in captured_ord.out
 
 

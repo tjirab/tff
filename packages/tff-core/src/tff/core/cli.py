@@ -258,33 +258,6 @@ class _MockRunnerAdapter(PipelineAdapter):
                 kwargs["scoped_models"] = scoped_models
         return self._runner.run_all_checks(**kwargs)
 
-    def apply_metadata_fix(
-        self,
-        project_root: Path,
-        abs_path: Path,
-        model_name: str,
-        missing_owner: bool,
-        missing_description: bool,
-    ) -> str | None:
-        if self._provider == "dbt":
-            from tff.core.autofix import fix_dbt_metadata
-
-            return fix_dbt_metadata(
-                abs_path=abs_path,
-                model_name=model_name,
-                missing_owner=missing_owner,
-                missing_description=missing_description,
-            )
-        elif self._provider == "sqlmesh":
-            from tff.core.autofix import fix_sqlmesh_metadata
-
-            return fix_sqlmesh_metadata(
-                abs_path=abs_path,
-                missing_owner=missing_owner,
-                missing_description=missing_description,
-            )
-        return None
-
     def get_diagnostic_files(
         self, project_root: Path | Sequence[Path]
     ) -> list[tuple[str, str]]:
@@ -2032,11 +2005,6 @@ def _main_impl(argv: list[str] | None = None) -> int:
                         console = Console(stderr=True)
                         for log in fix_logs:
                             console.print(f"[green]✓[/green] {log}", highlight=False)
-                        if any("Renamed model file" in log for log in fix_logs):
-                            console.print(
-                                "[yellow]Note: Model file(s) renamed. Please verify downstream ref() references to renamed models.[/yellow]",
-                                highlight=False,
-                            )
                     # Re-run checks to get the final state of the files (pass models_arg=None so adapter reloads from disk)
                     try:
                         rerun_start = time.perf_counter()

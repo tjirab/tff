@@ -106,24 +106,7 @@ def _format_connascence_tag(category_str: str) -> str:
 
 
 def _is_fixable_finding(f: LintFinding) -> bool:
-    if f.check in (
-        "nopositionalgroupby",
-        "nopositionalorderby",
-        "nopositionalgroupbyororderby",
-        "nomissingdescription",
-        "nomissingowner",
-        "nomissingcolumns",
-        "banselectstar",
-        "ban_select_star",
-        "martmodelnamingconvention",
-        "mart_naming",
-        "filenameequalsmodelname",
-        "filename_equals_modelname",
-    ):
-        return True
-    if f.check == "sqlcomplexity" and "nested subquery in final SELECT" in f.message:
-        return True
-    return False
+    return f.check in ("filenameequalsmodelname", "filename_equals_modelname")
 
 
 def _append_check_tag(text: Text, check: str) -> None:

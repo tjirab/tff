@@ -12,7 +12,7 @@ from tff.core.utils.paths import get_layer_from_path
 class BanSelectStar(Rule):
     """Ban SELECT * expressions in configured layers."""
     name = "banselectstar"
-    is_fixable = True
+    is_fixable = False
 
     def check_model(self, model: ModelRepresentation) -> RuleViolation | None:
         rule_config = self.config.rules.ban_select_star

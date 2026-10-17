@@ -6,14 +6,20 @@ tff runs two categories of quality guardrails: **Architectural Checks** and **Li
 
 ## 🛠️ Auto-Fixer (`--fix`)
 
-tff includes a built-in auto-fixer that can automatically resolve simple violations. By running `tff lint --fix`, tff will modify your source files to fix the following issues:
+tff includes a focused, safe auto-fixer for model declarations. By running `tff lint --fix`, tff safely synchronizes model declarations to match their file stems on disk:
 
-*   **[No Positional GROUP BY/ORDER BY](#no-positional-group-byorder-by-no_positional_group_by_or_order_by-auto-fixable)** (`nopositionalgroupby`, `nopositionalorderby`, `nopositionalgroupbyororderby`): Rewrites integer positional references in `GROUP BY` and `ORDER BY` clauses to explicit column names or select aliases using AST modification.
-*   **[Nested Subqueries in Final SELECT](#sql-complexity-sql_complexity)** (`sqlcomplexity`): Refactors inline subqueries in `FROM (SELECT ...) alias` and `JOIN (SELECT ...) alias` clauses of the final `SELECT` statement into named Common Table Expressions (`WITH alias AS (...)`).
-*   **Metadata (`nomissingowner`, `nomissingdescription`)**:
-    *   **dbt**: Automatically appends or scaffolds `schema.yml` metadata configs with `"TODO: Add owner"` and `"TODO: Add description"` templates.
-    *   **SQLMesh**: Inline-updates the `MODEL` block in the model `.sql` file to add `owner` and `description` headers.
-    *   **Dataform**: Injects `description: "TODO: Add description"` and `bigquery: { labels: { owner: "TODO: Add owner" } }` inside `.sqlx` `config { ... }` blocks, or scaffolds a minimal `config { ... }` header if absent.
+*   **[Filename Equals Model Name](#filename-equals-model-name-filename_equals_modelname)** (`filenameequalsmodelname`, `filename_equals_modelname`):
+    *   **SQLMesh**: Updates the model name identifier in the `MODEL (name ...)` declaration block within `.sql` model files.
+    *   **Dataform**: Updates or injects the `name: "..."` property inside the `config { ... }` declaration block within `.sqlx` files.
+
+### Design Principles: Safe & Atomic Remediation
+
+To ensure zero risk to production data pipelines, `tff` adheres to strict safety boundaries for automated remediation:
+
+1.  **Atomic File Writes**: All fixes are executed using atomic temporary file creation followed by an atomic filesystem replace operation. Even in the event of an unexpected process interruption, files are never left in a partially written or corrupted state.
+2.  **No Lossy SQL AST Rewrites**: Destructive code transformations—such as expanding `SELECT *` across schemas, lifting subqueries into CTEs, or rewriting positional `GROUP BY`/`ORDER BY` clauses—are intentionally not auto-fixed. AST re-serialization can strip comments, introduce whitespace irregularities, or subtly alter query execution semantics.
+3.  **No Superficial Metadata Placeholders**: Rules requiring team domain context (such as model owners or descriptions) are not filled with dummy placeholder strings (`"TODO: Add owner"`). Violations remain visible until authors provide meaningful documentation and ownership.
+4.  **No Destructive Renames**: `tff` never renames files on disk during linting, preventing broken downstream references or version control churn.
 
 ---
 
@@ -492,11 +498,10 @@ For SQLMesh projects, these rules run dynamically inside SQLMesh (e.g., `sqlmesh
   ```
   * **SQLMesh Rule Name**: `banselectstar`
   * Default `skip_layers`: `["sources"]`
-  * **Auto-fix**: Supported via `tff lint --fix` when upstream relation schema or CTE projection is statically available in the project context. Uncataloged sources are gracefully skipped.
 
 ---
 
-### No Positional GROUP BY/ORDER BY (`no_positional_group_by_or_order_by`) [Auto-fixable]
+### No Positional GROUP BY/ORDER BY (`no_positional_group_by_or_order_by`) <a id="no-positional-group-byorder-by-no_positional_group_by_or_order_by-auto-fixable"></a>
 
 * **What it checks**:
   * Prevents using ordinal integers (e.g., `GROUP BY 1, 2` or `ORDER BY 1 DESC`) instead of explicit column name references.
@@ -577,7 +582,7 @@ For SQLMesh projects, these rules run dynamically inside SQLMesh (e.g., `sqlmesh
     * `join_count`: Number of `JOIN` statements.
     * `line_count`: Total lines of code (ignoring empty lines and SQLMesh `MODEL` blocks).
     * `decision_points`: Number of logical conditional statements (`CASE`, `IF` and boolean operators `AND`/`OR` in `WHERE` clauses).
-    * `nested_subquery_in_final_select`: Warns if a subquery is nested in the final SELECT statement FROM or JOIN clauses. (Auto-fixable via `tff lint --fix`)
+    * `nested_subquery_in_final_select`: Warns if a subquery is nested in the final SELECT statement FROM or JOIN clauses.
 * **How to configure**:
   Defined under `rules.sql_complexity` in `fitness_functions.yaml`.
   ```yaml
@@ -662,12 +667,12 @@ For SQLMesh projects, these rules run dynamically inside SQLMesh (e.g., `sqlmesh
 
 ---
 
-### Metadata (`metadata`) [Partially Auto-fixable]
+### Metadata (`metadata`) <a id="metadata-metadata-partially-auto-fixable"></a>
 
 * **What it checks**:
   * Enforces model metadata documentation and testing:
-    * **`owner`** [Auto-fixable]: Validates that the model config has a specified owner.
-    * **`description`** [Auto-fixable]: Validates that the model description is defined and non-empty.
+    * **`owner`**: Validates that the model config has a specified owner.
+    * **`description`**: Validates that the model description is defined and non-empty.
     * **`grain`**: Validates that grains (primary key/grain definition) are specified.
     * **`not_null`**: Validates that the model has a `not_null` audit (SQLMesh) or test (dbt).
     * **`unique_values`**: Validates that the model has a `unique_values` audit (SQLMesh) or `unique` test (dbt).
@@ -692,10 +697,11 @@ For SQLMesh projects, these rules run dynamically inside SQLMesh (e.g., `sqlmesh
 
 ---
 
-### Filename Equals Model Name (`filename_equals_modelname`)
+### Filename Equals Model Name (`filename_equals_modelname`) [Auto-fixable] <a id="filename-equals-model-name-filename_equals_modelname"></a>
 
 * **What it checks**:
   * Validates that the model's catalog identifier matches the stem of its source SQL file on disk.
+* **Auto-fix**: Supported via `tff lint --fix` to safely update the model declaration (`MODEL (name ...)` in SQLMesh or `config { name: "..." }` in Dataform) to match the file stem.
 * **How to configure**:
   Defined under `rules.filename_equals_modelname` in `fitness_functions.yaml`.
   ```yaml

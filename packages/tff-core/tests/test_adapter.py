@@ -50,10 +50,6 @@ def test_pipeline_adapter_base_defaults():
     assert adapter.is_applicable(Path.cwd()) is True
     assert adapter.load_models(Path.cwd()) == {}
     assert adapter.run_checks(Path.cwd(), MagicMock()) == ([], 0, [])
-    assert (
-        adapter.apply_metadata_fix(Path.cwd(), Path("foo.sql"), "foo", True, True)
-        is None
-    )
     assert adapter.get_diagnostic_files(Path.cwd()) == []
 
 
@@ -182,13 +178,6 @@ def test_dbt_adapter(tmp_path: Path):
             models=models,
         )
 
-    with patch("tff.core.autofix.fix_dbt_metadata", return_value="fixed") as mock_fix:
-        res = adapter.apply_metadata_fix(
-            tmp_path, tmp_path / "models/m.sql", "m", True, False
-        )
-        assert res == "fixed"
-        mock_fix.assert_called_once()
-
     diag = adapter.get_diagnostic_files(tmp_path)
     assert len(diag) == 2
     assert diag[0][0] == "dbt_project.yml"
@@ -239,15 +228,6 @@ def test_sqlmesh_adapter(tmp_path: Path):
             models=models,
             scoped_models={"m"},
         )
-
-    with patch(
-        "tff.core.autofix.fix_sqlmesh_metadata", return_value="fixed"
-    ) as mock_fix:
-        res = adapter.apply_metadata_fix(
-            tmp_path, tmp_path / "models/m.sql", "m", True, False
-        )
-        assert res == "fixed"
-        mock_fix.assert_called_once()
 
     diag = adapter.get_diagnostic_files(tmp_path)
     assert len(diag) == 2
@@ -319,13 +299,6 @@ def test_dataform_adapter(tmp_path: Path):
             scoped_models={"m"},
         )
 
-    assert (
-        adapter.apply_metadata_fix(
-            tmp_path, tmp_path / "definitions/m.sqlx", "m", True, False
-        )
-        is None
-    )
-
     diag = adapter.get_diagnostic_files(tmp_path)
     assert len(diag) == 2
     assert diag[0][0] == "workflow_settings.yaml"
@@ -360,13 +333,6 @@ def test_mock_runner_adapter_all_methods(tmp_path: Path):
     assert dbt_adapter.run_checks(
         tmp_path, cfg, dialect="duckdb", models={"m1": MagicMock()}, scoped_models={"m1"}
     ) == ([], 3, ["rules"])
-    with patch("tff.core.autofix.fix_dbt_metadata", return_value="fixed"):
-        assert (
-            dbt_adapter.apply_metadata_fix(
-                tmp_path, tmp_path / "models/m.sql", "m", True, True
-            )
-            == "fixed"
-        )
     assert len(dbt_adapter.get_diagnostic_files(tmp_path)) == 2
 
     # sqlmesh
@@ -387,13 +353,6 @@ def test_mock_runner_adapter_all_methods(tmp_path: Path):
         3,
         ["rules"],
     )
-    with patch("tff.core.autofix.fix_sqlmesh_metadata", return_value="fixed_sm"):
-        assert (
-            sqlmesh_adapter.apply_metadata_fix(
-                tmp_path, tmp_path / "models/m.sql", "m", True, True
-            )
-            == "fixed_sm"
-        )
     assert len(sqlmesh_adapter.get_diagnostic_files(tmp_path)) == 2
 
     # dataform
@@ -415,10 +374,6 @@ def test_mock_runner_adapter_all_methods(tmp_path: Path):
     # other/unknown provider
     other_adapter = _MockRunnerAdapter("other", mock_runner)
     assert other_adapter.load_models(tmp_path) == {}
-    assert (
-        other_adapter.apply_metadata_fix(tmp_path, tmp_path / "x", "m", True, True)
-        is None
-    )
     assert other_adapter.get_diagnostic_files(tmp_path) == []
 
 

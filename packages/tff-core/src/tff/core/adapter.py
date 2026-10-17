@@ -64,17 +64,6 @@ class PipelineAdapter(ABC):
         """Run all enabled fitness functions and linter checks."""
         raise NotImplementedError
 
-    def apply_metadata_fix(
-        self,
-        project_root: Path,
-        abs_path: Path,
-        model_name: str,
-        missing_owner: bool,
-        missing_description: bool,
-    ) -> str | None:
-        """Apply metadata fixes (owner, description) to model definition file if supported."""
-        return None
-
     def get_diagnostic_files(
         self, project_root: Path | Sequence[Path]
     ) -> list[tuple[str, str]]:

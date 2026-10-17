@@ -649,9 +649,9 @@ def test_render_lint_report_tree_branches_and_footer() -> None:
     console = Console(record=True, width=120)
     findings = [
         _make_finding(
-            check="banselectstar",
+            check="filenameequalsmodelname",
             severity="error",
-            message="SELECT * is prohibited.",
+            message="Model name does not match file stem.",
             model="dim_users",
             path="models/core/dim_users.sql",
             line=42,
@@ -685,7 +685,7 @@ def test_render_lint_report_tree_branches_and_footer() -> None:
     assert "models/core/dim_users.sql" in output
     assert "42:1" in output
     assert "50:1" in output
-    assert "banselectstar" in output
+    assert "filenameequalsmodelname" in output
     assert "name" in output
     assert "position" in output
     assert "FAIL — 1 error block merge. Run `tff --fix` for auto-correctable rules." in output
@@ -712,16 +712,16 @@ def test_format_connascence_tag_helper(category: str, expected_tag: str) -> None
 @pytest.mark.parametrize(
     "check,message,expected_fixable",
     [
-        ("nopositionalgroupbyororderby", "pos", True),
-        ("nomissingdescription", "desc", True),
-        ("martmodelnamingconvention", "mart", True),
-        ("mart_naming", "mart", True),
+        ("nopositionalgroupbyororderby", "pos", False),
+        ("nomissingdescription", "desc", False),
+        ("martmodelnamingconvention", "mart", False),
+        ("mart_naming", "mart", False),
         ("filenameequalsmodelname", "name", True),
         ("filename_equals_modelname", "name", True),
-        ("sqlcomplexity", "nested subquery in final SELECT", True),
+        ("sqlcomplexity", "nested subquery in final SELECT", False),
         ("sqlcomplexity", "too many CTEs", False),
-        ("banselectstar", "select *", True),
-        ("ban_select_star", "select *", True),
+        ("banselectstar", "select *", False),
+        ("ban_select_star", "select *", False),
         ("jointypeparity", "type mismatch", False),
     ],
 )
