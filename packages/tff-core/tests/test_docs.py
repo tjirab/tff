@@ -1,6 +1,8 @@
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
+import pytest
+
 from tff.core.cli import main
 from tff.core.docs import generate_docs_dashboard
 
@@ -72,6 +74,8 @@ def test_generate_docs_dashboard_dbt(
     assert "const TFF_DATA =" in html_content
     assert "model_1" in html_content
     assert "model_2" in html_content
+    assert "This is an external source or seed not directly checked by tff rules." in html_content
+    assert "checked by TFF rules" not in html_content
 
 
 @patch("tff.core.cli._get_runner")
@@ -346,6 +350,29 @@ def test_generate_docs_dashboard_chunk_size(tmp_path: Path):
         res = generate_docs_dashboard(r, chunk_size=8, no_log=True)
         assert res.exists()
         assert spy_run_checks.call_args.kwargs.get("chunk_size") == 8
+
+
+@pytest.mark.parametrize(
+    ("root_asset", "docs_asset"),
+    [
+        ("assets/favicon.svg", "docs/assets/favicon.svg"),
+        ("assets/tff.svg", "docs/assets/tff.svg"),
+    ],
+)
+def test_branding_assets_sync(root_asset: str, docs_asset: str) -> None:
+    repo_root = Path(__file__).resolve().parents[3]
+    root_file = repo_root / root_asset
+    docs_file = repo_root / docs_asset
+    assert root_file.exists(), f"{root_asset} does not exist"
+    assert docs_file.exists(), f"{docs_asset} does not exist"
+    assert root_file.read_text(encoding="utf-8") == docs_file.read_text(encoding="utf-8")
+
+
+def test_readme_branding_asset_references() -> None:
+    repo_root = Path(__file__).resolve().parents[3]
+    readme = (repo_root / "README.md").read_text(encoding="utf-8")
+    assert "tff-white.svg" not in readme
+    assert '<img src="docs/assets/tff.svg" alt="tff logo" width="160">' in readme
 
 
 
