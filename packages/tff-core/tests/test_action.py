@@ -6,6 +6,7 @@ import argparse
 import json
 import os
 from pathlib import Path
+import shutil
 from unittest.mock import MagicMock, patch
 import urllib.error
 
@@ -1003,6 +1004,255 @@ def test_execute_action_only_changed_scope_exception() -> None:
          patch("tff.core.action.render_health_report"):
         code = execute_action(args)
         assert code in (0, 1)
+
+
+def test_evaluate_project_multiple_roots(tmp_path: Path) -> None:
+    p1 = tmp_path / "proj1"
+    p2 = tmp_path / "proj2"
+    shutil.copytree(_MINIMAL_DBT, p1)
+    shutil.copytree(_MINIMAL_DBT, p2)
+    res = evaluate_project([p1, p2], provider="dbt")
+    assert res["provider"] == "dbt"
+    assert res["models_checked"] == 8
+    assert res["overall_score"] > 0.0
+    assert res["project_roots"] == [str(p1), str(p2)]
+
+
+def test_execute_action_multi_project_json(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    p1 = tmp_path / "proj1"
+    p2 = tmp_path / "proj2"
+    shutil.copytree(_MINIMAL_DBT, p1)
+    shutil.copytree(_MINIMAL_DBT, p2)
+    args = argparse.Namespace(
+        projects=[p1, p2],
+        project=None,
+        provider="dbt",
+        config="fitness_functions.yaml",
+        checks="layer_integrity",
+        fail_under=0.0,
+        fail_level="error",
+        comment_pr="false",
+        github_token=None,
+        base_ref=None,
+        diff_against_base=False,
+        annotations=False,
+        pr_number=None,
+        repo=None,
+        dialect=None,
+        manifest=None,
+        json=True,
+    )
+    code = execute_action(args)
+    assert code == 0
+    captured = capsys.readouterr()
+    data = json.loads(captured.out)
+    assert "project_roots" in data
+    assert data["project_roots"] == [str(p1), str(p2)]
+    assert data["current"]["models_checked"] == 8
+
+
+def test_execute_action_multi_project_annotations(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    p1 = tmp_path / "proj1"
+    p2 = tmp_path / "proj2"
+    shutil.copytree(_MINIMAL_DBT, p1)
+    shutil.copytree(_MINIMAL_DBT, p2)
+    args = argparse.Namespace(
+        projects=[p1, p2],
+        project=None,
+        provider="dbt",
+        config="fitness_functions.yaml",
+        checks=None,
+        fail_under=0.0,
+        fail_level="error",
+        comment_pr="false",
+        github_token=None,
+        base_ref=None,
+        diff_against_base=False,
+        annotations=True,
+        pr_number=None,
+        repo=None,
+        dialect=None,
+        manifest=None,
+        json=False,
+    )
+    code = execute_action(args)
+    assert code == 1
+    captured = capsys.readouterr()
+    assert "::error file=" in captured.out
+
+
+def test_execute_action_multi_project_only_changed(tmp_path: Path) -> None:
+    p1 = tmp_path / "proj1"
+    p2 = tmp_path / "proj2"
+    shutil.copytree(_MINIMAL_DBT, p1)
+    shutil.copytree(_MINIMAL_DBT, p2)
+    args = argparse.Namespace(
+        projects=[p1, p2],
+        project=None,
+        provider="dbt",
+        config="fitness_functions.yaml",
+        checks=None,
+        fail_under=0.0,
+        fail_level="error",
+        comment_pr="false",
+        github_token=None,
+        base_ref="main",
+        diff_against_base=False,
+        annotations=False,
+        pr_number=None,
+        repo=None,
+        dialect=None,
+        manifest=None,
+        json=True,
+        only_changed=True,
+    )
+    # 1. When modified file is unrelated (e.g. README.md) -> 0 violations gated -> passes with 0
+    with patch("subprocess.run") as mock_subproc, \
+         patch("tff.core.action.get_modified_files", return_value={"README.md"}):
+        mock_subproc.side_effect = lambda cmd, **kwargs: (
+            MagicMock(stdout=str(tmp_path.resolve()) + "\n", returncode=0)
+            if "rev-parse" in cmd
+            else MagicMock(returncode=0)
+        )
+        code = execute_action(args)
+        assert code == 0
+
+    # 2. When modified file belongs to proj2 model with violations -> fails with 1
+    with patch("subprocess.run") as mock_subproc, \
+         patch("tff.core.action.get_modified_files", return_value={"proj2/models/staging/stg_orders.sql"}):
+        mock_subproc.side_effect = lambda cmd, **kwargs: (
+            MagicMock(stdout=str(tmp_path.resolve()) + "\n", returncode=0)
+            if "rev-parse" in cmd
+            else MagicMock(returncode=0)
+        )
+        code_fail = execute_action(args)
+        assert code_fail == 1
+
+
+def test_fetch_base_scores_multi_project(tmp_path: Path) -> None:
+    p1 = tmp_path / "proj1"
+    p2 = tmp_path / "proj2"
+    p1.mkdir()
+    p2.mkdir()
+    dummy_scores = {"overall_score": 95.0, "findings": []}
+    with patch("subprocess.run") as mock_subproc, \
+         patch("tempfile.mkdtemp", return_value=str(tmp_path / "temp-base")), \
+         patch("tff.core.action.evaluate_project", return_value=dummy_scores) as mock_eval:
+        mock_subproc.side_effect = lambda cmd, **kwargs: (
+            MagicMock(stdout=str(tmp_path.resolve()) + "\n", returncode=0)
+            if "rev-parse" in cmd
+            else MagicMock(returncode=0)
+        )
+        temp_base = tmp_path / "temp-base"
+        (temp_base / "proj1").mkdir(parents=True)
+        (temp_base / "proj2").mkdir(parents=True)
+
+        res = fetch_base_scores([p1, p2], base_ref="main")
+        assert res == dummy_scores
+        mock_eval.assert_called_once()
+        called_roots = mock_eval.call_args.kwargs["project_root"]
+        assert len(called_roots) == 2
+
+
+def test_fetch_base_scores_multi_project_none_exist(tmp_path: Path) -> None:
+    p1 = tmp_path / "proj1"
+    p2 = tmp_path / "proj2"
+    p1.mkdir()
+    p2.mkdir()
+    with patch("subprocess.run") as mock_subproc, \
+         patch("tempfile.mkdtemp", return_value=str(tmp_path / "temp-base-empty")):
+        mock_subproc.side_effect = lambda cmd, **kwargs: (
+            MagicMock(stdout=str(tmp_path.resolve()) + "\n", returncode=0)
+            if "rev-parse" in cmd
+            else MagicMock(returncode=0)
+        )
+        res = fetch_base_scores([p1, p2], base_ref="main")
+        assert res is None
+
+
+def test_fetch_base_scores_multi_project_outside_repo(tmp_path: Path) -> None:
+    p1 = tmp_path / "repo" / "proj1"
+    p1.mkdir(parents=True)
+    p_outside = Path("/other/outside/directory")
+    dummy_scores = {"overall_score": 95.0, "findings": []}
+    with patch("subprocess.run") as mock_subproc, \
+         patch("tempfile.mkdtemp", return_value=str(tmp_path / "temp-base")), \
+         patch("tff.core.action.evaluate_project", return_value=dummy_scores) as mock_eval:
+        mock_subproc.side_effect = lambda cmd, **kwargs: (
+            MagicMock(stdout=str((tmp_path / "repo").resolve()) + "\n", returncode=0)
+            if "rev-parse" in cmd
+            else MagicMock(returncode=0)
+        )
+        temp_base = tmp_path / "temp-base"
+        (temp_base / "proj1").mkdir(parents=True)
+
+        res = fetch_base_scores([p1, p_outside], base_ref="main")
+        assert res == dummy_scores
+        mock_eval.assert_called_once()
+        called_roots = mock_eval.call_args.kwargs["project_root"]
+        assert called_roots == [temp_base / "proj1"]
+
+
+def test_execute_action_project_as_list_and_fallback_cwd() -> None:
+    # 1. args.project as list (line 695)
+    args_list = argparse.Namespace(
+        project=[_MINIMAL_DBT],
+        projects=None,
+        provider="dbt",
+        config="fitness_functions.yaml",
+        checks="layer_integrity",
+        fail_under=0.0,
+        fail_level="error",
+        comment_pr="false",
+        github_token=None,
+        base_ref=None,
+        diff_against_base=False,
+        annotations=False,
+        pr_number=None,
+        repo=None,
+        dialect=None,
+        manifest=None,
+        json=True,
+    )
+    code = execute_action(args_list)
+    assert code == 0
+
+    # 2. Both projects and project are None (fallback to Path.cwd(), line 699)
+    args_none = argparse.Namespace(
+        project=None,
+        projects=None,
+        provider="dbt",
+        config="fitness_functions.yaml",
+        checks="layer_integrity",
+        fail_under=0.0,
+        fail_level="error",
+        comment_pr="false",
+        github_token=None,
+        base_ref=None,
+        diff_against_base=False,
+        annotations=False,
+        pr_number=None,
+        repo=None,
+        dialect=None,
+        manifest=None,
+        json=True,
+    )
+    with patch(
+        "tff.core.action.evaluate_project",
+        return_value={
+            "overall_score": 100.0,
+            "findings": [],
+            "errors_count": 0,
+            "warnings_count": 0,
+            "scores": {},
+            "config": MagicMock(),
+            "provider": "dbt",
+        },
+    ):
+        code_none = execute_action(args_none)
+        assert code_none == 0
+
+
 
 
 

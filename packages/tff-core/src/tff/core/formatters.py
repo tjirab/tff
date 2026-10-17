@@ -5,25 +5,30 @@ from __future__ import annotations
 from datetime import datetime
 from pathlib import Path
 import sys
-from typing import Any
+from typing import Any, Sequence
 import xml.dom.minidom as minidom
 import xml.etree.ElementTree as ET
 
 from tff.core.report import CHECK_LABELS, LintFinding, format_message
 
 
-def _get_relative_path(file_path: str | Path, project_root: Path | None = None) -> str:
+def _get_relative_path(
+    file_path: str | Path,
+    project_root: Path | Sequence[Path] | None = None,
+) -> str:
     """Normalize file path to a relative path with forward slashes."""
     path_obj = Path(file_path)
     if project_root is not None:
-        try:
-            if path_obj.is_absolute():
-                rel = path_obj.relative_to(project_root.resolve())
-            else:
-                rel = path_obj
-            return str(rel).replace("\\", "/")
-        except ValueError:
-            pass
+        roots = [project_root] if isinstance(project_root, Path) else list(project_root)
+        for r in roots:
+            try:
+                if path_obj.is_absolute():
+                    rel = path_obj.relative_to(r.resolve())
+                else:
+                    rel = path_obj
+                return str(rel).replace("\\", "/")
+            except ValueError:
+                pass
     try:
         if path_obj.is_absolute():
             rel = path_obj.relative_to(Path.cwd().resolve())
@@ -48,7 +53,7 @@ def _format_annotation_title(check: str, severity: str = "error") -> str:
 
 def format_github_annotation(
     finding: LintFinding,
-    project_root: Path | None = None,
+    project_root: Path | Sequence[Path] | None = None,
 ) -> str:
     """Format a LintFinding as a GitHub Actions workflow command annotation with status signals."""
     from tff.core.registry import registry
@@ -89,7 +94,7 @@ def format_github_annotation(
 def _is_finding_in_modified_files(
     finding: LintFinding,
     modified_files: set[str],
-    project_root: Path | None = None,
+    project_root: Path | Sequence[Path] | None = None,
 ) -> bool:
     """Check whether a finding matches any file in modified_files."""
     if not modified_files:
@@ -97,14 +102,21 @@ def _is_finding_in_modified_files(
 
     raw_path = finding.path
     path_str = str(raw_path or "").replace("\\", "/")
-    rel_proj_str = _get_relative_path(path_str, project_root) if (path_str and project_root is not None) else path_str
+    roots = []
+    if project_root is not None:
+        roots = [project_root] if isinstance(project_root, Path) else list(project_root)
+
+    rel_proj_strs = [
+        _get_relative_path(path_str, r) for r in roots
+    ] if (path_str and roots) else ([path_str] if path_str else [])
 
     for mf in modified_files:
         norm_mf = mf.replace("\\", "/")
         if path_str and (norm_mf == path_str or norm_mf.endswith(f"/{path_str}")):
             return True
-        if rel_proj_str and (norm_mf == rel_proj_str or norm_mf.endswith(f"/{rel_proj_str}")):
-            return True
+        for rel_proj_str in rel_proj_strs:
+            if rel_proj_str and (norm_mf == rel_proj_str or norm_mf.endswith(f"/{rel_proj_str}")):
+                return True
         if finding.model and Path(norm_mf).stem == finding.model:
             return True
     return False
@@ -112,7 +124,7 @@ def _is_finding_in_modified_files(
 
 def emit_github_annotations(
     findings: list[LintFinding],
-    project_root: Path | None = None,
+    project_root: Path | Sequence[Path] | None = None,
     stream: Any = None,
     modified_files: set[str] | None = None,
     max_annotations: int = 50,

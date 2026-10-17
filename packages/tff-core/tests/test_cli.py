@@ -2173,6 +2173,22 @@ def test_render_rules_table_direct_call():
     _render_rules_table([c])
 
 
+@pytest.mark.parametrize("flag", ["-p", "--project"])
+def test_cli_action_multi_project_flags(flag: str, tmp_path: Path) -> None:
+    p1 = tmp_path / "p1"
+    p2 = tmp_path / "p2"
+    p1.mkdir()
+    p2.mkdir()
+    with patch("tff.core.action.execute_action", return_value=0) as mock_action:
+        exit_code = main(["action", flag, str(p1), flag, str(p2)])
+        assert exit_code == 0
+        mock_action.assert_called_once()
+        args = mock_action.call_args[0][0]
+        assert args.projects == [p1.resolve(), p2.resolve()]
+        assert args.project == p1.resolve()
+
+
+
 
 
 

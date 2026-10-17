@@ -6,7 +6,7 @@ import os
 import logging
 from pathlib import Path
 import subprocess
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Sequence
 
 from tff.core.exceptions import TffGitError
 from tff.core.report import normalize_model_name
@@ -109,7 +109,7 @@ def get_changed_files_since(repo_root: Path, ref: str) -> set[str]:
 def map_files_to_model_names(
     models: dict[str, ModelRepresentation],
     files: set[str],
-    project_root: Path,
+    project_root: Path | Sequence[Path],
     repo_root: Path,
 ) -> set[str]:
     """Map a set of repo-relative file paths to model names present in the project.
@@ -125,13 +125,17 @@ def map_files_to_model_names(
     norm_files = {f.replace("\\", "/").strip() for f in files if f.strip()}
     file_stems = {Path(f).stem.lower(): f for f in norm_files}
 
-    try:
-        rel_project = project_root.resolve().relative_to(repo_root.resolve())
-        rel_proj_str = str(rel_project).replace("\\", "/")
-        if rel_proj_str == ".":
-            rel_proj_str = ""
-    except Exception:
-        rel_proj_str = ""
+    roots: list[Path] = [project_root] if isinstance(project_root, Path) else list(project_root)
+    rel_proj_strs: list[str] = []
+    for r in roots:
+        try:
+            rel_project = r.resolve().relative_to(repo_root.resolve())
+            rel_proj_str = str(rel_project).replace("\\", "/")
+            if rel_proj_str == ".":
+                rel_proj_str = ""
+            rel_proj_strs.append(rel_proj_str)
+        except Exception:
+            rel_proj_strs.append("")
 
     matched_models: set[str] = set()
 
@@ -142,12 +146,15 @@ def map_files_to_model_names(
 
         # 1. Path match against model.path
         if m_path_str:
-            full_rel = f"{rel_proj_str}/{m_path_str}".strip("/") if rel_proj_str else m_path_str
-            if (
-                full_rel in norm_files
-                or m_path_str in norm_files
+            matches = (
+                m_path_str in norm_files
                 or any(nf.endswith(f"/{m_path_str}") for nf in norm_files)
-            ):
+                or any(
+                    (f"{rel}/{m_path_str}".strip("/") if rel else m_path_str) in norm_files
+                    for rel in rel_proj_strs
+                )
+            )
+            if matches:
                 matched_models.add(model_name)
                 continue
 

@@ -5,6 +5,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+from conftest import _make_model
 from tff.core.config import FitnessFunctionsConfig
 from tff.core.exceptions import TffGitError
 from tff.core.git import (
@@ -173,6 +174,21 @@ def test_map_files_to_model_names() -> None:
     # 5. Project outside repo root (triggers relative_to exception)
     matched_diff_root = map_files_to_model_names(models, {"stg_orders.sql"}, Path("/other/dir"), Path("/repo"))
     assert matched_diff_root == {"stg_orders"}
+
+    # 6. Multiple project roots
+    root1 = Path("/repo/proj1")
+    root2 = Path("/repo/proj2")
+    models_multi = {
+        "m1": _make_model(name="m1", path="models/m1.sql", dialect="duckdb"),
+        "m2": _make_model(name="m2", path="models/m2.sql", dialect="duckdb"),
+    }
+    matched_multi = map_files_to_model_names(
+        models_multi,
+        {"proj2/models/m2.sql"},
+        [root1, root2],
+        repo_root,
+    )
+    assert matched_multi == {"m2"}
 
 
 def test_check_definition_run_scoped_models() -> None:

@@ -12,11 +12,11 @@ import shutil
 import subprocess
 import sys
 import tempfile
-from typing import Any
+from typing import Any, Sequence
 import urllib.error
 import urllib.request
 
-from tff.core.adapter import detect_provider, get_adapter
+from tff.core.adapter import detect_provider, get_adapter, normalize_project_roots
 from tff.core.config import load_fitness_config
 from tff.core.formatters import emit_github_annotations
 from tff.core.health import _get_action_phrase, calculate_health_scores, render_health_report
@@ -141,7 +141,7 @@ def get_modified_files(
 def is_finding_in_files(
     finding: dict[str, Any] | LintFinding,
     modified_files: set[str],
-    project_root: Path,
+    project_root: Path | Sequence[Path],
     repo_root: Path,
 ) -> bool:
     """Check whether a finding belongs to one of the modified files."""
@@ -152,33 +152,39 @@ def is_finding_in_files(
     model = finding.model if isinstance(finding, LintFinding) else finding.get("model")
 
     path_str = str(raw_path or "").replace("\\", "/")
+    roots: list[Path] = (
+        [project_root]
+        if isinstance(project_root, Path)
+        else list(project_root)
+    )
 
-    try:
-        rel_project = project_root.resolve().relative_to(repo_root.resolve())
-        rel_proj_str = str(rel_project).replace("\\", "/")
-        if rel_proj_str == ".":
+    for r in roots:
+        try:
+            rel_project = r.resolve().relative_to(repo_root.resolve())
+            rel_proj_str = str(rel_project).replace("\\", "/")
+            if rel_proj_str == ".":
+                path_rel_repo = path_str
+            else:
+                path_rel_repo = f"{rel_proj_str}/{path_str}" if path_str else ""
+        except Exception:
             path_rel_repo = path_str
-        else:
-            path_rel_repo = f"{rel_proj_str}/{path_str}" if path_str else ""
-    except Exception:
-        path_rel_repo = path_str
 
-    for mf in modified_files:
-        norm_mf = mf.replace("\\", "/")
-        if path_rel_repo and (norm_mf == path_rel_repo or norm_mf.endswith(f"/{path_str}")):
-            return True
-        if path_str and (norm_mf == path_str or norm_mf.endswith(f"/{path_str}")):
-            return True
-        if model:
-            mf_stem = Path(norm_mf).stem
-            if mf_stem == model:
+        for mf in modified_files:
+            norm_mf = mf.replace("\\", "/")
+            if path_rel_repo and (norm_mf == path_rel_repo or norm_mf.endswith(f"/{path_str}")):
                 return True
+            if path_str and (norm_mf == path_str or norm_mf.endswith(f"/{path_str}")):
+                return True
+            if model:
+                mf_stem = Path(norm_mf).stem
+                if mf_stem == model:
+                    return True
 
     return False
 
 
 def evaluate_project(
-    project_root: Path,
+    project_root: Path | Sequence[Path],
     provider: str = "auto",
     config_path: str = "fitness_functions.yaml",
     checks: list[str] | None = None,
@@ -187,18 +193,22 @@ def evaluate_project(
     workers: int | None = None,
     scoped_models: set[str] | None = None,
 ) -> dict[str, Any]:
-    """Run tff health evaluation on the specified project directory."""
-    project_root = Path(project_root).resolve()
+    """Run tff health evaluation on the specified project directory (or directories)."""
+    roots = normalize_project_roots(project_root)
+    primary_root = roots[0]
+    target_root: Path | list[Path] = roots if len(roots) > 1 else primary_root
+
     if provider == "auto":
-        provider = detect_provider(project_root)
+        cfg_path = config_path if config_path != "fitness_functions.yaml" else None
+        provider = detect_provider(roots, config_path=cfg_path)
 
     adapter = get_adapter(provider)
-    config = load_fitness_config(project_root, config_path=config_path)
+    config = load_fitness_config(roots, config_path=config_path)
     if workers is not None:
         config.workers = workers
 
     kwargs: dict[str, Any] = {
-        "project_root": project_root,
+        "project_root": target_root,
         "config": config,
         "checks": checks,
         "dialect": dialect,
@@ -226,7 +236,7 @@ def evaluate_project(
     errors_count = sum(1 for f in findings if f.severity == "error")
     warnings_count = sum(1 for f in findings if f.severity == "warning")
 
-    return {
+    res: dict[str, Any] = {
         "overall_score": float(scores.get("overall_score", 100.0)),
         "models_checked": models_checked,
         "category_scores": scores.get("category_scores", {}),
@@ -239,6 +249,9 @@ def evaluate_project(
         "scores": scores,
         "config": config,
     }
+    if len(roots) > 1:
+        res["project_roots"] = [str(r) for r in roots]
+    return res
 
 
 def evaluate_pass_fail(
@@ -265,24 +278,24 @@ def evaluate_pass_fail(
 
 
 def fetch_base_scores(
-    project_dir: Path,
+    project_dir: Path | Sequence[Path],
     base_ref: str,
     provider: str = "auto",
     config_path: str = "fitness_functions.yaml",
     checks: list[str] | None = None,
 ) -> dict[str, Any] | None:
     """Attempt to checkout base_ref in a temp git worktree and calculate baseline health score."""
-    project_dir = Path(project_dir).resolve()
+    roots = normalize_project_roots(project_dir)
+    primary_root = roots[0]
     try:
         res = subprocess.run(
             ["git", "rev-parse", "--show-toplevel"],
-            cwd=str(project_dir),
+            cwd=str(primary_root),
             capture_output=True,
             text=True,
             check=True,
         )
         repo_root = Path(res.stdout.strip()).resolve()
-        rel_project = project_dir.relative_to(repo_root)
     except Exception as e:
         logger.debug("Failed to find git repo root: %s", e)
         return None
@@ -317,16 +330,29 @@ def fetch_base_scores(
                 logger.debug("git worktree add failed: %s", res.stderr)
                 return None
 
-        base_project_dir = Path(temp_dir) / rel_project
-        if not base_project_dir.exists():
+        base_project_dirs: list[Path] = []
+        for r in roots:
+            try:
+                rel = r.relative_to(repo_root)
+                base_p = Path(temp_dir) / rel
+                if base_p.exists():
+                    base_project_dirs.append(base_p)
+            except ValueError:
+                pass
+
+        if not base_project_dirs:
             logger.debug(
-                "Base project path does not exist in base ref: %s",
-                base_project_dir,
+                "Base project path(s) do not exist in base ref: %s",
+                roots,
             )
             return None
 
+        target_base_root: Path | list[Path] = (
+            base_project_dirs if len(roots) > 1 else base_project_dirs[0]
+        )
+
         return evaluate_project(
-            project_root=base_project_dir,
+            project_root=target_base_root,
             provider=provider,
             config_path=config_path,
             checks=checks,
@@ -661,7 +687,21 @@ def write_github_step_summary(content: str) -> None:
 
 def execute_action(args: argparse.Namespace) -> int:
     """Execute tff GitHub Action pipeline."""
-    project_root = Path(args.project).resolve()
+    projects_val = getattr(args, "projects", None)
+    project_val = getattr(args, "project", None)
+    if isinstance(projects_val, (list, tuple)) and projects_val:
+        project_roots = [Path(p).resolve() for p in projects_val]
+    elif isinstance(project_val, (list, tuple)) and project_val:
+        project_roots = [Path(p).resolve() for p in project_val]
+    elif isinstance(project_val, (str, Path)):
+        project_roots = [Path(project_val).resolve()]
+    else:
+        project_roots = [Path.cwd()]
+    primary_root = project_roots[0]
+    target_project_root: Path | list[Path] = (
+        project_roots if len(project_roots) > 1 else primary_root
+    )
+
     checks = None
     if getattr(args, "checks", None):
         checks = [c.strip() for c in args.checks.split(",") if c.strip()]
@@ -671,14 +711,14 @@ def execute_action(args: argparse.Namespace) -> int:
     try:
         res = subprocess.run(
             ["git", "rev-parse", "--show-toplevel"],
-            cwd=str(project_root),
+            cwd=str(primary_root),
             capture_output=True,
             text=True,
             check=True,
         )
         repo_root = Path(res.stdout.strip()).resolve()
     except Exception:
-        repo_root = project_root
+        repo_root = primary_root
 
     modified_files = get_modified_files(repo_root, base_ref=diff_base)
     modified_files_count = len(modified_files)
@@ -689,12 +729,12 @@ def execute_action(args: argparse.Namespace) -> int:
         from tff.core.adapter import get_adapter
 
         try:
-            adapter = get_adapter(args.provider if args.provider != "auto" else detect_provider(project_root))
-            loaded_models = adapter.load_models(project_root, dialect=getattr(args, "dialect", None), manifest_path=getattr(args, "manifest", None))
+            adapter = get_adapter(args.provider if args.provider != "auto" else detect_provider(target_project_root))
+            loaded_models = adapter.load_models(target_project_root, dialect=getattr(args, "dialect", None), manifest_path=getattr(args, "manifest", None))
             scoped_models = map_files_to_model_names(
                 models=loaded_models,
                 files=modified_files,
-                project_root=project_root,
+                project_root=target_project_root,
                 repo_root=repo_root,
             )
         except Exception as e:
@@ -703,7 +743,7 @@ def execute_action(args: argparse.Namespace) -> int:
     # 1. Evaluate current project
     try:
         current_data = evaluate_project(
-            project_root=project_root,
+            project_root=target_project_root,
             provider=args.provider,
             config_path=args.config,
             checks=checks,
@@ -729,12 +769,12 @@ def execute_action(args: argparse.Namespace) -> int:
         filtered_findings = [
             f
             for f in all_findings
-            if is_finding_in_files(f, modified_files, project_root, repo_root)
+            if is_finding_in_files(f, modified_files, target_project_root, repo_root)
         ]
         filtered_raw_findings = [
             f
             for f in all_raw_findings
-            if is_finding_in_files(f, modified_files, project_root, repo_root)
+            if is_finding_in_files(f, modified_files, target_project_root, repo_root)
         ]
 
         ignored_violations_count = len(all_findings) - len(filtered_findings)
@@ -751,14 +791,14 @@ def execute_action(args: argparse.Namespace) -> int:
         try:
             res = subprocess.run(
                 ["git", "rev-parse", "--show-toplevel"],
-                cwd=str(project_root),
+                cwd=str(primary_root),
                 capture_output=True,
                 text=True,
                 check=True,
             )
             repo_root = Path(res.stdout.strip()).resolve()
         except Exception:
-            repo_root = project_root
+            repo_root = primary_root
         modified_files = get_modified_files(repo_root, base_ref=diff_base)
 
     # 3. Emit GitHub Actions annotations
@@ -767,7 +807,7 @@ def execute_action(args: argparse.Namespace) -> int:
         if raw_findings:
             emit_github_annotations(
                 raw_findings,
-                project_root=project_root,
+                project_root=target_project_root,
                 stream=sys.stdout,
                 modified_files=modified_files,
             )
@@ -779,7 +819,7 @@ def execute_action(args: argparse.Namespace) -> int:
     )
     if getattr(args, "diff_against_base", True) and base_ref:
         base_data = fetch_base_scores(
-            project_dir=project_root,
+            project_dir=target_project_root,
             base_ref=base_ref,
             provider=args.provider,
             config_path=args.config,
@@ -821,6 +861,8 @@ def execute_action(args: argparse.Namespace) -> int:
                 fail_level=args.fail_level,
             ),
         }
+        if len(project_roots) > 1:
+            out_json["project_roots"] = [str(p) for p in project_roots]
         print(json.dumps(out_json, indent=2))
     else:
         render_health_report(

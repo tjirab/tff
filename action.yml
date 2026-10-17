@@ -202,8 +202,11 @@ runs:
         INPUT_DIFF_AGAINST_BASE: ${{ inputs.diff-against-base }}
         INPUT_ONLY_CHANGED: ${{ inputs.only-changed }}
       run: |
-        ARGS=(
-          "--project" "${INPUT_PROJECT}"
+        ARGS=()
+        while IFS= read -r p; do
+          [ -n "$p" ] && ARGS+=("--project" "$p")
+        done <<< "${INPUT_PROJECT}"
+        ARGS+=(
           "--provider" "${INPUT_PROVIDER}"
           "--fail-under" "${INPUT_FAIL_UNDER}"
           "--fail-level" "${INPUT_FAIL_LEVEL}"

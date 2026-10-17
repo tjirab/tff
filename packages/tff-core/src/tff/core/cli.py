@@ -1201,9 +1201,12 @@ def _main_impl(argv: list[str] | None = None) -> int:
     )
     action_parser.add_argument(
         "--project",
+        "-p",
+        action="append",
+        dest="projects",
         type=Path,
-        default=Path.cwd(),
-        help="Project root directory (default: current directory)",
+        default=None,
+        help="Project root directory (can be specified multiple times; default: current directory)",
     )
     action_parser.add_argument(
         "--provider",

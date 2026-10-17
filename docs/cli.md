@@ -168,7 +168,7 @@ tff action [options]
 
 | Option | Type / Choices | Default | Description |
 | :--- | :--- | :--- | :--- |
-| `--project PATH` | Directory Path | `.` | Project root directory. |
+| `--project PATH`, `-p PATH` | Directory Path | `.` | Project root directory (can be specified multiple times for multi-repo projects). |
 | `--provider` | `auto`, `dbt`, `sqlmesh`, `dataform` | `auto` | Pipeline engine provider. |
 | `--fail-under SCORE` | Float (`0.0` - `100.0`) | `0.0` | Minimum overall health score required to pass. |
 | `--fail-level` | `error`, `warning` | `error` | Failure severity level triggering exit code `1`. |
@@ -192,6 +192,9 @@ tff action --base-ref main --fail-under 80
 
 # Only gate modified files in the current branch
 tff action --base-ref main --only-changed --fail-under 85
+
+# Multi-project workspace execution
+tff action -p packages/proj1 -p packages/proj2 --base-ref main
 ```
 
 ---
