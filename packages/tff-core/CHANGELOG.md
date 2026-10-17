@@ -1,5 +1,26 @@
 # Changelog
 
+## [0.26.0](https://github.com/tjirab/tff/compare/tff-core-v0.25.0...tff-core-v0.26.0) (2026-10-17)
+
+
+### Features
+
+* **action:** diff-first PR comment hierarchy, collapsible baseline debt, and actionable remediation ([#385](https://github.com/tjirab/tff/issues/385)) ([ad73090](https://github.com/tjirab/tff/commit/ad73090cf20fe58874e5fe187d9b2a85bea8c894))
+* **cli:** support multi-project flags (-p / --project) in action subcommand ([#383](https://github.com/tjirab/tff/issues/383)) ([80db99e](https://github.com/tjirab/tff/commit/80db99e085b2985504c62da2c52b3d4306aa5802))
+* **core:** infer return types for common scalar functions in join_type_parity ([#384](https://github.com/tjirab/tff/issues/384)) ([d179102](https://github.com/tjirab/tff/commit/d179102b43fbe4160c4cb3c8c5f4362c9e9a96d9))
+* **health:** add health score calibration and regression drift suite ([#371](https://github.com/tjirab/tff/issues/371)) ([285fb5e](https://github.com/tjirab/tff/commit/285fb5efcf4eb0cf44f036ec2a09627b4627f214))
+
+
+### Bug Fixes
+
+* **core:** handle paths with spaces and Windows separators in terminal file hyperlinks ([#381](https://github.com/tjirab/tff/issues/381)) ([341b30d](https://github.com/tjirab/tff/commit/341b30d3b76c7150ba3efeb21878ed104fa5a865))
+* **git:** validate git reference argument against leading dashes ([#380](https://github.com/tjirab/tff/issues/380)) ([87f934a](https://github.com/tjirab/tff/commit/87f934ab9e2e7446f86f94dae0e8c6744c4c263f))
+
+
+### Performance Improvements
+
+* **core:** optimize ast parsing retry storms, jinja macro cleaning, and ci action ([#368](https://github.com/tjirab/tff/issues/368)) ([617e7c1](https://github.com/tjirab/tff/commit/617e7c1cce3970593bf0427249ce23bb0c7ce150))
+
 ## [0.25.0](https://github.com/tjirab/tff/compare/tff-core-v0.24.0...tff-core-v0.25.0) (2026-10-05)
 
 
