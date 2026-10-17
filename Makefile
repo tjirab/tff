@@ -19,12 +19,13 @@ init:
 
 lint:
 	uv run ruff check .
+	uv run python scripts/lint_tests.py
 
 test:
-	uv run pytest
+	uv run pytest -n auto
 
 coverage:
-	uv run pytest --cov=src --cov-report=xml
+	uv run pytest -n auto --cov --cov-report=xml
 	uv run diff-cover coverage.xml --compare-branch=origin/main
 
 docs-serve:

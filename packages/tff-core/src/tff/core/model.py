@@ -169,6 +169,8 @@ class ModelRepresentation:
     tags: list[str] = field(default_factory=list)
     meta: dict[str, Any] = field(default_factory=dict)
     provider: str | None = None
+    _ast_parse_attempted: bool = field(default=False, repr=False, compare=False)
+    _raw_ast: sqlglot.expressions.Expression | None = field(default=None, repr=False, compare=False)
 
     def get_sql(
         self,
@@ -214,7 +216,10 @@ class ModelRepresentation:
         """Get the cached AST (expression) or parse the query/file if not already cached."""
         if self.expression is not None:
             return self.expression
+        if self._ast_parse_attempted:
+            return None
 
+        self._ast_parse_attempted = True
         sql = self.get_sql()
         if sql is None:
             return None

@@ -411,18 +411,18 @@ def test_collect_stats_chronological_traversal_edge_cases(tmp_path: Path):
     lint_dir.mkdir(parents=True)
 
     import json
-    now = datetime.now()
+    base = datetime.now().replace(hour=12, minute=0, second=0, microsecond=0)
 
     # 4 days ago: run 1
-    t_4d = (now - timedelta(days=4)).astimezone()
+    t_4d = (base - timedelta(days=4)).astimezone()
     with open(health_dir / "h_4d.log", "w", encoding="utf-8") as f:
         json.dump({"timestamp": t_4d.isoformat(), "overall_score": 60.0, "models_checked": 5}, f)
     with open(lint_dir / "l_4d.log", "w", encoding="utf-8") as f:
         json.dump({"timestamp": t_4d.isoformat(), "errors_count": 5, "warnings_count": 10}, f)
 
     # 2 days ago: run 1 (morning) and run 2 (evening)
-    t_2d_am = (now - timedelta(days=2, hours=8)).astimezone()
-    t_2d_pm = (now - timedelta(days=2, hours=2)).astimezone()
+    t_2d_am = (base - timedelta(days=2)).replace(hour=9).astimezone()
+    t_2d_pm = (base - timedelta(days=2)).replace(hour=18).astimezone()
     with open(health_dir / "h_2d_am.log", "w", encoding="utf-8") as f:
         json.dump({"timestamp": t_2d_am.isoformat(), "overall_score": 75.0, "models_checked": 5}, f)
     with open(health_dir / "h_2d_pm.log", "w", encoding="utf-8") as f:
@@ -433,9 +433,9 @@ def test_collect_stats_chronological_traversal_edge_cases(tmp_path: Path):
         json.dump({"timestamp": t_2d_pm.isoformat(), "errors_count": 1, "warnings_count": 2}, f)
 
     # Today: run 1, run 2, run 3
-    t_today_1 = (now - timedelta(hours=3)).astimezone()
-    t_today_2 = (now - timedelta(hours=1)).astimezone()
-    t_today_3 = now.astimezone()
+    t_today_1 = base.replace(hour=10).astimezone()
+    t_today_2 = base.replace(hour=11).astimezone()
+    t_today_3 = base.replace(hour=12).astimezone()
     with open(health_dir / "h_today_1.log", "w", encoding="utf-8") as f:
         json.dump({"timestamp": t_today_1.isoformat(), "overall_score": 90.0, "models_checked": 5}, f)
     with open(health_dir / "h_today_2.log", "w", encoding="utf-8") as f:

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import re
 import shutil
 import subprocess
@@ -94,6 +95,9 @@ def _find_manifest_file(project_root: Path, manifest_path: Path | str | None = N
 
 def _compile_via_cli(project_root: Path) -> dict[str, Any] | None:
     """Attempt to compile Dataform project using local CLI (dataform or npx @dataform/cli)."""
+    if os.environ.get("TFF_DISABLE_DATAFORM_CLI_COMPILATION") in ("1", "true", "True"):
+        return None
+
     cmd = None
     if shutil.which("dataform"):
         cmd = ["dataform", "compile", "--json"]

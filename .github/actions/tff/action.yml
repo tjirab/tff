@@ -58,6 +58,10 @@ inputs:
     description: "Only gate and report violations for models/files modified in this pull request"
     required: false
     default: "false"
+  cache:
+    description: "Enable caching of .tff_cache (AST cache) across GitHub Actions workflows"
+    required: false
+    default: "true"
 
 outputs:
   health-score:
@@ -172,6 +176,15 @@ runs:
         else
           pip install --upgrade "${PKG}"
         fi
+
+    - name: Cache tff AST Cache
+      if: ${{ inputs.cache == 'true' }}
+      uses: actions/cache@v4
+      with:
+        path: ${{ inputs.project }}/.tff_cache
+        key: tff-cache-${{ runner.os }}-${{ hashFiles(format('{0}/dbt_project.yml', inputs.project), format('{0}/models/**/*.sql', inputs.project), format('{0}/models/**/*.sqlmesh', inputs.project)) }}
+        restore-keys: |
+          tff-cache-${{ runner.os }}-
 
     - name: Run tff Action
       id: run-tff

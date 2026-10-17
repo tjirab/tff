@@ -22,18 +22,17 @@ logger = logging.getLogger(__name__)
 
 
 def is_complex_cte(cte_query: exp.Expression, min_nodes: int) -> bool:
-    """Determine if a CTE query meets structural complexity heuristics."""
-    # Heuristic 1: Check node count
-    node_count = sum(1 for _ in cte_query.walk())
-    if node_count < min_nodes:
-        return False
+    """Determine if a CTE query meets structural complexity heuristics in a single AST pass."""
+    node_count = 0
+    has_complex_structure = False
+    complex_types = (exp.Join, exp.Where, exp.Group, exp.Having, exp.Window, exp.Case, exp.If)
 
-    # Heuristic 2: Check structural complexity (Join, Where, Group/Having, Window, Case/If)
-    has_complex_structure = any(
-        cte_query.find(cls) is not None
-        for cls in (exp.Join, exp.Where, exp.Group, exp.Having, exp.Window, exp.Case, exp.If)
-    )
-    return has_complex_structure
+    for node in cte_query.walk():
+        node_count += 1
+        if not has_complex_structure and isinstance(node, complex_types):
+            has_complex_structure = True
+
+    return has_complex_structure and (node_count >= min_nodes)
 
 
 def _extract_paren_content(sql: str, open_paren_idx: int) -> str | None:

@@ -30,10 +30,17 @@ def main():
     # Run pip-audit with json formatting.
     try:
         result = subprocess.run(
-            ["uv", "run", "--with", "pip-audit", "pip-audit", "-f", "json"],
+            ["uv", "run", "pip-audit", "-f", "json"],
             capture_output=True,
             text=True
         )
+        if result.returncode != 0 and "No such file or directory" in result.stderr:
+            # Fallback to uv run --with pip-audit if not installed in the current environment
+            result = subprocess.run(
+                ["uv", "run", "--with", "pip-audit", "pip-audit", "-f", "json"],
+                capture_output=True,
+                text=True
+            )
     except FileNotFoundError:
         # Fallback to direct pip-audit run if uv is not present
         try:

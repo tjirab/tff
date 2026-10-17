@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
+from functools import lru_cache
 from typing import TYPE_CHECKING, Any, Callable, Literal
 
 logger = logging.getLogger(__name__)
@@ -19,6 +20,7 @@ if TYPE_CHECKING:
 Scope = Literal["model", "dag"]
 
 
+@lru_cache(maxsize=512)
 def normalize_check_name(name: str) -> str:
     """Normalize a check name/alias for case-insensitive and separator-agnostic lookups."""
     return name.lower().replace("-", "").replace("_", "").replace(" ", "")
@@ -129,20 +131,30 @@ class CheckDefinition:
         if self.rule_cls is not None:
             return self.rule_cls
         if self.rule_module and self.rule_class_name:
+            cached = getattr(self, "_cached_rule_cls", None)
+            if cached is not None:
+                return cached
             import importlib
 
             mod = importlib.import_module(self.rule_module)
-            return getattr(mod, self.rule_class_name)
+            cls = getattr(mod, self.rule_class_name)
+            object.__setattr__(self, "_cached_rule_cls", cls)
+            return cls
         return None
 
     def get_collector_fn(self) -> Callable | None:
         if self.collector_fn is not None:
             return self.collector_fn
         if self.collector_module and self.collector_func_name:
+            cached = getattr(self, "_cached_collector_fn", None)
+            if cached is not None:
+                return cached
             import importlib
 
             mod = importlib.import_module(self.collector_module)
-            return getattr(mod, self.collector_func_name)
+            fn = getattr(mod, self.collector_func_name)
+            object.__setattr__(self, "_cached_collector_fn", fn)
+            return fn
         return None
 
     def get_severity(self, config: FitnessFunctionsConfig | None = None) -> Severity:

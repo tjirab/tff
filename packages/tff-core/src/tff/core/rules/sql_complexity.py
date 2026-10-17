@@ -67,6 +67,23 @@ def has_nested_subquery_in_final_select(expression: exp.Expression) -> bool:
     return False
 
 
+def _collect_ast_metrics(expression: exp.Expression) -> tuple[int, int, int]:
+    """Collect decision points, CTE counts, and Join counts in a single AST traversal."""
+    decision_points = 0
+    cte_count = 0
+    join_count = 0
+    for node in expression.walk():
+        if isinstance(node, (exp.Case, exp.If)):
+            decision_points += 1
+        elif isinstance(node, exp.Where):
+            decision_points += _count_boolean_branches(node.this)
+        elif isinstance(node, exp.CTE):
+            cte_count += 1
+        elif isinstance(node, exp.Join):
+            join_count += 1
+    return decision_points, cte_count, join_count
+
+
 def analyze_sql(
     sql: str,
     dialect: str,
@@ -89,9 +106,10 @@ def analyze_sql(
         except Exception:
             return metrics
 
-    metrics["decision_points"] = count_decision_points(parsed)
-    metrics["cte_count"] = count_ctes(parsed)
-    metrics["join_count"] = count_joins(parsed)
+    d_points, c_count, j_count = _collect_ast_metrics(parsed)
+    metrics["decision_points"] = d_points
+    metrics["cte_count"] = c_count
+    metrics["join_count"] = j_count
     metrics["nested_subquery_in_final_select"] = has_nested_subquery_in_final_select(
         parsed
     )

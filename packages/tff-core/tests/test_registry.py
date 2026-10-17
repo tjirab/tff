@@ -4,6 +4,7 @@ from pathlib import Path
 from unittest.mock import MagicMock
 import pytest
 
+from conftest import _make_model
 from tff.core.config import FitnessFunctionsConfig
 from tff.core.model import ModelRepresentation
 from tff.core.registry import (
@@ -1109,7 +1110,7 @@ def test_check_registry_run_checks_propagates_chunk_size_sequential() -> None:
     reg.register(mock_check)
 
     models = {
-        "m1": ModelRepresentation(name="m1", path="models/m1.sql", dialect="duckdb"),
+        "m1": _make_model(name="m1", path="models/m1.sql", dialect="duckdb"),
     }
     cfg = FitnessFunctionsConfig(workers=1)
     findings, executed = reg.run_checks(
@@ -1158,7 +1159,7 @@ def test_check_registry_run_checks_propagates_chunk_size_parallel() -> None:
     reg.register(mock_c2)
 
     models = {
-        "m1": ModelRepresentation(name="m1", path="models/m1.sql", dialect="duckdb"),
+        "m1": _make_model(name="m1", path="models/m1.sql", dialect="duckdb"),
     }
     cfg = FitnessFunctionsConfig(workers=2)
     findings, executed = reg.run_checks(

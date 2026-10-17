@@ -1,4 +1,27 @@
-"""Scoring logic and Rich report rendering for project health."""
+"""Scoring logic and Rich report rendering for project health.
+ 
+ Formula Weight Calibration Guidelines:
+ --------------------------------------
+ When implementing new checks or rules, adhere to the following weight calibration bounds:
+ 1. Architectural DAG / Cross-Model Checks (e.g. layer_integrity, dependency_graph):
+    - Typical weights: 2.0 - 3.0
+    - Project-level penalties: 100.0 (error), 50.0 (warning)
+ 2. Semantic & Connascence Coupling Checks (e.g. duplicate_ctes, join_type_parity, connascence_of_value):
+    - Typical weights: 1.5 - 2.0
+    - Model-level penalties: 1.0 (error), 0.5 (warning)
+ 3. Single-Model Linter Rules (e.g. ban_select_star, no_positional_group_by):
+    - Typical weights: 1.0
+    - Model-level penalties: 1.0 (error), 0.5 (warning)
+ 4. Style & Metadata Hygiene (e.g. mart_naming, metadata, column_names):
+    - Typical weights: 0.5 - 1.0
+    - Model-level penalties: 1.0 (error), 0.5 (warning)
+ 
+ Stability and Drift Tolerances:
+ -------------------------------
+ - Overall and check-level scores must strictly fall within [0.0, 100.0].
+ - Minor releases must maintain mathematical score determinism; calibrated reference
+   graphs (examples/minimal-*) must remain invariant within a tolerance of ±0.01 points.
+ """
 
 from __future__ import annotations
 

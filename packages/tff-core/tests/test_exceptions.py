@@ -8,11 +8,13 @@ import pytest
 from tff.core.config import FitnessFunctionsConfig, load_fitness_config, resolve_project_path
 from tff.core.exceptions import (
     TffConfigError,
+    TffDependencyError,
     TffError,
     TffFileError,
     TffManifestError,
     TffManifestNotFoundError,
     TffModelError,
+    TffProviderError,
     handle_os_errors,
     normalize_os_error,
     translate_os_error,
@@ -113,6 +115,64 @@ def test_tff_manifest_not_found_error():
     assert isinstance(err, FileNotFoundError)
     assert isinstance(err, OSError)
     assert isinstance(err, TffError)
+
+
+def test_tff_provider_error():
+    root = Path("/path/to/project")
+    err = TffProviderError(
+        "Could not detect project type",
+        hint="Specify --provider explicitly",
+        provider="dbt",
+        project_root=root,
+        details={"extra": "val"},
+    )
+    assert isinstance(err, TffError)
+    assert isinstance(err, ValueError)
+    assert err.message == "Could not detect project type"
+    assert err.provider == "dbt"
+    assert err.project_root == root
+    assert err.details["provider"] == "dbt"
+    assert err.details["project_root"] == str(root)
+    assert err.details["extra"] == "val"
+    assert "Hint: Specify --provider explicitly" in str(err)
+
+    # Test multi-root sequence
+    multi_err = TffProviderError(
+        "Conflict across roots",
+        project_root=[Path("/p1"), Path("/p2")],
+    )
+    assert multi_err.details["project_root"] == "/p1, /p2"
+
+
+def test_tff_dependency_error():
+    root = Path("/path/to/dbt_project")
+    # Default hint generation
+    err = TffDependencyError(
+        "dbt project detected, but tff is not installed with dbt support.",
+        provider="dbt",
+        project_root=root,
+    )
+    assert isinstance(err, TffError)
+    assert isinstance(err, ImportError)
+    assert err.provider == "dbt"
+    assert err.project_root == root
+    assert err.package_hint is None
+    assert 'pip install "tff-core[dbt]"' in err.hint
+    assert err.details["provider"] == "dbt"
+    assert err.details["project_root"] == str(root)
+
+    # Explicit hint and custom package_hint
+    custom_err = TffDependencyError(
+        "Missing custom engine adapter",
+        hint="Install my-adapter",
+        provider="custom",
+        package_hint="my-adapter-pkg",
+        project_root=[Path("/p1")],
+    )
+    assert custom_err.hint == "Install my-adapter"
+    assert custom_err.package_hint == "my-adapter-pkg"
+    assert custom_err.details["package_hint"] == "my-adapter-pkg"
+    assert custom_err.details["project_root"] == "/p1"
 
 
 def test_normalize_os_error_eisdir():
@@ -413,3 +473,33 @@ def test_config_loader_exceptions(tmp_path: Path):
         resolve_project_path(cfg, "../../outside.json")
     assert isinstance(exc_info.value, ValueError)
     assert "resolves outside project root" in exc_info.value.message
+
+
+def test_config_validation_exceptions():
+    from pydantic import ValidationError
+    from tff.core.config import MetadataRuleConfig, SqlComplexityRuleConfig
+
+    # Workers validation
+    with pytest.raises(ValidationError) as exc_info:
+        FitnessFunctionsConfig(workers=0)
+    err = exc_info.value.errors()[0]["ctx"]["error"]
+    assert isinstance(err, TffConfigError)
+    assert err.hint == "Set workers to an integer >= 1 in fitness_functions.yaml or CLI flag."
+    assert err.details == {"field": "workers", "workers": 0, "min_workers": 1}
+
+    # Threshold boundaries validation
+    with pytest.raises(ValidationError) as exc_info:
+        SqlComplexityRuleConfig.model_validate({"thresholds": {"cte_count": [15, 10]}})
+    err = exc_info.value.errors()[0]["ctx"]["error"]
+    assert isinstance(err, TffConfigError)
+    assert "Warn threshold (15) cannot be greater than fail threshold (10)" in err.message
+    assert err.details == {"rule": "sql_complexity", "metric": "cte_count", "warn": 15, "fail": 10}
+
+    # Model grain validation
+    with pytest.raises(ValidationError) as exc_info:
+        MetadataRuleConfig(grain=123)  # type: ignore[arg-type]
+    err = exc_info.value.errors()[0]["ctx"]["error"]
+    assert isinstance(err, TffConfigError)
+    assert "Invalid configuration for 'rules.metadata.grain': expected boolean" in err.message
+    assert err.details == {"rule": "metadata", "field": "grain", "value": 123, "provided_type": "int"}
+

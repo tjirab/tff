@@ -30,21 +30,29 @@ class EnvironmentAgnosticReferences(Rule):
         if not rule_config.should_run(layer):
             return None
 
-        # Always parse the raw SQL file on disk if possible,
-        # otherwise fall back to model.query.
-        # This is because model.query in dbt could contain compiled code
-        # which has dynamically injected environments that we don't want to flag.
-        sql = model.get_sql(prefer_file=True)
-        if sql is None:
-            return None
+        # If raw_ast was already parsed, reuse it.
+        # Otherwise, if model.raw_code is None and model.path was read for model.ast, reuse model.ast
+        parsed = model._raw_ast
+        if parsed is None:
+            raw_sql = model.raw_code
+            if raw_sql is None and model.expression is not None:
+                # model.expression was parsed from disk or query
+                parsed = model.expression
+            else:
+                sql = model.get_sql(prefer_file=True)
+                if sql is None:
+                    return None
+                try:
+                    # Strip SQLMesh MODEL block if present
+                    sql = re.sub(r"^MODEL\s*\(.*?\)\s*;", "", sql, flags=re.DOTALL | re.IGNORECASE).strip()
+                    # Clean Jinja and SQLMesh macro templates
+                    sql_clean = clean_jinja_for_parsing(sql, provider=model.provider)
+                    parsed = sqlglot.parse_one(sql_clean, read=model.dialect)
+                    model._raw_ast = parsed
+                except Exception:
+                    return None
 
-        try:
-            # Strip SQLMesh MODEL block if present
-            sql = re.sub(r"^MODEL\s*\(.*?\)\s*;", "", sql, flags=re.DOTALL | re.IGNORECASE).strip()
-            # Clean Jinja and SQLMesh macro templates
-            sql_clean = clean_jinja_for_parsing(sql, provider=model.provider)
-            parsed = sqlglot.parse_one(sql_clean, read=model.dialect)
-        except Exception:
+        if parsed is None:
             return None
 
         banned_envs = []

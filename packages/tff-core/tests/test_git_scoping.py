@@ -273,6 +273,16 @@ def test_cli_lint_staged_with_violation(tmp_path: Path) -> None:
                 ret_bad = main(["check", "-p", str(tmp_path), "--staged", "--checks", "ban_select_star"])
                 assert ret_bad == 1
 
+        # 3. Stage clean model + non-model file whose stem matches violating model -> passes (non-model stem collision avoided)
+        with patch(
+            "tff.core.git.get_staged_files",
+            return_value={"models/marts/dim_clean.sql", "seeds/dim_users.csv", "docs/dim_users.md"},
+        ):
+            with patch("sys.stdout"):
+                ret_stem_collision = main(["check", "-p", str(tmp_path), "--staged", "--checks", "ban_select_star"])
+                assert ret_stem_collision == 0
+
+
 
 def test_cli_lint_since_ref(tmp_path: Path) -> None:
     (tmp_path / "dbt_project.yml").write_text("name: test_proj\nversion: '1.0.0'\n", encoding="utf-8")

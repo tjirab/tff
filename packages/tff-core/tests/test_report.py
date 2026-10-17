@@ -16,39 +16,36 @@ from tff.core.report import (
 )
 
 
-def test_summary_shows_only_executed_architectural_check() -> None:
-    names = _summary_check_names(["layer_integrity"], {})
-    assert names == ["layer_integrity"]
-
-
-def test_summary_expands_sqlmesh_when_no_findings() -> None:
-    names = _summary_check_names(["sqlmesh"], {})
-    assert set(names) == {"classificationmacros", "sqlcomplexity"}
-
-
-def test_summary_uses_sqlmesh_finding_rule_names() -> None:
-    by_check = {"nomissinggrain": {"error": 2, "warning": 0}}
-    names = _summary_check_names(["sqlmesh"], by_check)
-    assert names == ["nomissinggrain"]
-
-
-def test_summary_full_run_includes_architectural_and_sqlmesh() -> None:
-    executed = [
-        "sqlmesh",
-        "layer_integrity",
-        "custom_exclusions",
-        "schema_contracts",
-        "dependency_graph",
-    ]
-    names = _summary_check_names(executed, {})
-    assert set(names) == {
-        "layer_integrity",
-        "custom_exclusions",
-        "schema_contracts",
-        "dependency_graph",
-        "classificationmacros",
-        "sqlcomplexity",
-    }
+@pytest.mark.parametrize(
+    ("executed", "by_check", "expected"),
+    [
+        (["layer_integrity"], {}, ["layer_integrity"]),
+        (["sqlmesh"], {}, ["classificationmacros", "sqlcomplexity"]),
+        (["sqlmesh"], {"nomissinggrain": {"error": 2, "warning": 0}}, ["nomissinggrain"]),
+        (
+            [
+                "sqlmesh",
+                "layer_integrity",
+                "custom_exclusions",
+                "schema_contracts",
+                "dependency_graph",
+            ],
+            {},
+            [
+                "layer_integrity",
+                "custom_exclusions",
+                "schema_contracts",
+                "dependency_graph",
+                "classificationmacros",
+                "sqlcomplexity",
+            ],
+        ),
+    ],
+)
+def test_summary_check_names(
+    executed: list[str], by_check: dict[str, Any], expected: list[str]
+) -> None:
+    assert set(_summary_check_names(executed, by_check)) == set(expected)
 
 
 @pytest.mark.parametrize("group_by", ["connascence", "model"])
@@ -760,30 +757,34 @@ def test_render_lint_report_connascence_model_without_path_and_custom_rule() -> 
     assert "custom_rule_without_url" in output
 
 
-def test_render_lint_report_pass_and_warn_fail_level() -> None:
-    """Verify footer text for zero findings (PASS) and fail_level='warning'."""
+@pytest.mark.parametrize(
+    ("findings", "models_checked", "fail_level", "expected_success", "expected_text"),
+    [
+        ([], 5, "error", True, "PASS — all fitness functions satisfied."),
+        (
+            [_make_finding(check="sqlcomplexity", severity="warning", message="High complexity", model="orders")],
+            1,
+            "warning",
+            False,
+            "FAIL — 1 warning block merge.",
+        ),
+    ],
+)
+def test_render_lint_report_status_footers(
+    findings: list[Any],
+    models_checked: int,
+    fail_level: str,
+    expected_success: bool,
+    expected_text: str,
+) -> None:
     from rich.console import Console
 
-    # 1. Zero findings -> PASS
-    console_pass = Console(record=True, width=120)
-    passed = render_lint_report([], models_checked=5, console=console_pass)
-    assert passed is True
-    assert "PASS — all fitness functions satisfied." in console_pass.export_text()
-
-    # 2. Only warning with fail_level='warning' -> FAIL
-    console_warn_fail = Console(record=True, width=120)
-    warning_finding = _make_finding(
-        check="sqlcomplexity",
-        severity="warning",
-        message="High complexity",
-        model="orders",
-        path="models/orders.sql",
+    console = Console(record=True, width=120)
+    passed = render_lint_report(
+        findings,
+        models_checked=models_checked,
+        fail_level=fail_level,
+        console=console,
     )
-    failed = render_lint_report(
-        [warning_finding],
-        models_checked=1,
-        fail_level="warning",
-        console=console_warn_fail,
-    )
-    assert failed is False
-    assert "FAIL — 1 warning block merge." in console_warn_fail.export_text()
+    assert passed is expected_success
+    assert expected_text in console.export_text()

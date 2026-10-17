@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from functools import lru_cache
 import re
 from typing import TYPE_CHECKING
 
@@ -59,16 +60,25 @@ DEFAULT_EQUIVALENT_TYPES: dict[str, set[str]] = {
 }
 
 
+_RE_PARENS = re.compile(r"\(.*?\)")
+_RE_BRACKETS = re.compile(r"\[\]")
+
+
+@lru_cache(maxsize=512)
+def _normalize_type_str(s: str) -> str:
+    s = s.strip().lower()
+    s = _RE_PARENS.sub("", s).strip()
+    s = _RE_BRACKETS.sub("", s).strip()
+    return s
+
+
 def normalize_type_string(raw_type: str | exp.DataType | None) -> str:
     """Normalize raw SQL data type string (e.g. VARCHAR(255) -> varchar)."""
     if raw_type is None:
         return ""
     if isinstance(raw_type, exp.DataType):
         raw_type = raw_type.sql()
-    s = str(raw_type).strip().lower()
-    s = re.sub(r"\(.*?\)", "", s).strip()
-    s = re.sub(r"\[\]", "", s).strip()
-    return s
+    return _normalize_type_str(str(raw_type))
 
 
 def are_types_equivalent(

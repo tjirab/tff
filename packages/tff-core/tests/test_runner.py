@@ -1,5 +1,6 @@
 from pathlib import Path
 
+from conftest import _make_model
 from tff.sqlmesh.cli import main
 from tff.sqlmesh.runner import run_all_checks
 
@@ -169,12 +170,11 @@ def test_collect_sqlmesh_findings_coordinates():
 def test_sqlmesh_runner_and_adapter_propagate_chunk_size() -> None:
     from unittest.mock import patch, MagicMock
     from tff.core.config import FitnessFunctionsConfig
-    from tff.core.model import ModelRepresentation
     from tff.core.registry import CheckDefinition
     from tff.sqlmesh.adapter import SQLMeshAdapter
 
     models = {
-        "m1": ModelRepresentation(name="m1", path="models/m1.sql", dialect="duckdb"),
+        "m1": _make_model(name="m1", path="models/m1.sql", dialect="duckdb"),
     }
     cfg = FitnessFunctionsConfig()
 
