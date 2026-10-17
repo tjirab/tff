@@ -101,6 +101,29 @@ def test_get_changed_files_since_invalid_ref() -> None:
             get_changed_files_since(fake_root, "nonexistent-branch")
 
 
+@pytest.mark.parametrize(
+    "invalid_ref",
+    [
+        "-o",
+        "--output",
+        "-r",
+        "--diff",
+        "--staged",
+        "-",
+        "--",
+        "  --flag  ",
+    ],
+)
+def test_get_changed_files_since_leading_dash(invalid_ref: str) -> None:
+    fake_root = Path("/fake/repo")
+    with patch("subprocess.run") as mock_run:
+        with pytest.raises(TffGitError, match=r"Invalid git reference '.*': reference names cannot begin with '-'") as exc_info:
+            get_changed_files_since(fake_root, invalid_ref)
+        mock_run.assert_not_called()
+        assert exc_info.value.hint is not None
+        assert "Specify a valid branch, tag, or commit SHA" in exc_info.value.hint
+
+
 def test_map_files_to_model_names() -> None:
     models = {
         "dim_users": ModelRepresentation(
@@ -312,6 +335,15 @@ def test_cli_lint_since_ref(tmp_path: Path) -> None:
             with patch("sys.stdout"):
                 ret = main(["check", "-p", str(tmp_path), "--since", "HEAD~1", "--checks", "ban_select_star"])
                 assert ret == 0
+
+
+def test_cli_lint_since_ref_leading_dash(tmp_path: Path) -> None:
+    (tmp_path / "dbt_project.yml").write_text("name: test_proj\nversion: '1.0.0'\n", encoding="utf-8")
+    with patch("tff.core.git.get_git_root", return_value=tmp_path):
+        with patch("subprocess.run") as mock_run:
+            ret = main(["check", "-p", str(tmp_path), "--since=-o"])
+            assert ret == 1
+            mock_run.assert_not_called()
 
 
 def test_cli_health_staged(tmp_path: Path) -> None:

@@ -8,6 +8,7 @@ from pathlib import Path
 import subprocess
 from typing import TYPE_CHECKING
 
+from tff.core.exceptions import TffGitError
 from tff.core.report import normalize_model_name
 
 if TYPE_CHECKING:
@@ -66,10 +67,20 @@ def get_changed_files_since(repo_root: Path, ref: str) -> set[str]:
 
     Attempts standard 3-dot diff (merge-base) first, followed by direct 2-dot/ref diff,
     and handles remote origin branches if needed.
+
+    Raises:
+        TffGitError: If ref begins with '-' (potential option injection) or
+            if git fails to resolve the revision.
     """
     clean_ref = ref.strip()
     if not clean_ref:
         return set()
+
+    if clean_ref.startswith("-"):
+        raise TffGitError(
+            f"Invalid git reference '{clean_ref}': reference names cannot begin with '-'.",
+            hint="Specify a valid branch, tag, or commit SHA that does not begin with '-'.",
+        )
 
     diff_targets = [f"{clean_ref}...HEAD", clean_ref]
     if not clean_ref.startswith("origin/"):
@@ -88,8 +99,6 @@ def get_changed_files_since(repo_root: Path, ref: str) -> set[str]:
                 for line in res.stdout.splitlines()
                 if line.strip()
             }
-
-    from tff.core.exceptions import TffGitError
 
     raise TffGitError(
         f"Unknown or invalid git reference: '{clean_ref}'.",
