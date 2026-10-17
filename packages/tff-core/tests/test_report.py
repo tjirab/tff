@@ -467,16 +467,43 @@ def test_render_lint_report_with_duration() -> None:
 
 
 @pytest.mark.parametrize(
-    "kwargs,expected_plain",
+    "kwargs,expected_plain,expected_link_substr,has_link",
     [
-        ({"path": "models/core/dim_users.sql"}, "models/core/dim_users.sql"),
-        ({"path": "models/core/dim_users.sql", "line": 42}, "models/core/dim_users.sql:42"),
+        ({"path": "models/core/dim_users.sql"}, "models/core/dim_users.sql", "/models/core/dim_users.sql", True),
+        ({"path": "models/core/dim_users.sql", "line": 42}, "models/core/dim_users.sql:42", "/models/core/dim_users.sql", True),
+        ({"path": "models/sub dir/dim users.sql"}, "models/sub dir/dim users.sql", "/models/sub%20dir/dim%20users.sql", True),
+        ({"path": "models/core/dim_users.sql", "display_text": "custom:123"}, "custom:123", "/models/core/dim_users.sql", True),
+        ({"path": ""}, "", None, False),
     ],
 )
-def test_format_file_reference(kwargs: dict[str, Any], expected_plain: str) -> None:
+def test_format_file_reference(
+    kwargs: dict[str, Any],
+    expected_plain: str,
+    expected_link_substr: str | None,
+    has_link: bool,
+) -> None:
     ref = _format_file_reference(**kwargs)
     assert ref.plain == expected_plain
-    assert "link file://" in str(ref.style)
+    if has_link:
+        assert ref.style is not None
+        assert str(ref.style.link).startswith("file://")
+        assert expected_link_substr is not None and expected_link_substr in str(ref.style.link)
+    else:
+        assert ref.style is None
+
+
+def test_format_file_reference_windows_path(monkeypatch: pytest.MonkeyPatch) -> None:
+    from pathlib import PureWindowsPath
+
+    mock_resolved = PureWindowsPath(r"C:\Users\Jane Doe\project\models\model.sql")
+    monkeypatch.setattr(
+        "tff.core.report.Path.resolve",
+        lambda self: mock_resolved,
+    )
+    ref = _format_file_reference(r"models\model.sql")
+    assert ref.plain == r"models\model.sql"
+    assert ref.style is not None
+    assert ref.style.link == "file:///C:/Users/Jane%20Doe/project/models/model.sql"
 
 
 @pytest.mark.parametrize(

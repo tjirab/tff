@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from typing import Any, Literal, Sequence
 
 from rich.console import Console
+from rich.style import Style
 from rich.text import Text
 from pathlib import Path
 
@@ -78,10 +79,9 @@ def _format_file_reference(
     ``file://`` hyperlink so that modern terminals allow ``Cmd+Click`` navigation.
     """
     display = display_text if display_text is not None else (f"{path}:{line}" if line is not None else path)
-    abs_path = str(Path(path).resolve()) if path else ""
-    link_url = f"file://{abs_path}" if abs_path else ""
+    link_url = Path(path).resolve().as_uri() if path else ""
 
-    return Text(display, style=f"link {link_url}" if link_url else None)
+    return Text(display, style=Style(link=link_url) if link_url else None)
 
 
 def _format_connascence_tag(category_str: str) -> str:
