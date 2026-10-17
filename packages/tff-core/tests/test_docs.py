@@ -72,6 +72,8 @@ def test_generate_docs_dashboard_dbt(
     assert "const TFF_DATA =" in html_content
     assert "model_1" in html_content
     assert "model_2" in html_content
+    assert "This is an external source or seed not directly checked by tff rules." in html_content
+    assert "checked by TFF rules" not in html_content
 
 
 @patch("tff.core.cli._get_runner")

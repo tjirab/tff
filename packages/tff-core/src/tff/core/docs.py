@@ -777,7 +777,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         
         document.getElementById('detail-materialized').textContent = 'External Source';
         document.getElementById('detail-owner').textContent = 'N/A';
-        document.getElementById('detail-description').textContent = 'This is an external source or seed not directly checked by TFF rules.';
+        document.getElementById('detail-description').textContent = 'This is an external source or seed not directly checked by tff rules.';
         document.getElementById('detail-grains-container').classList.add('hidden');
         document.getElementById('detail-upstream').innerHTML = '<span class="text-xs text-slate-400">None</span>';
         
