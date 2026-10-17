@@ -10,6 +10,7 @@ from tff.core.report import (
     _format_file_reference,
     _is_fixable_finding,
     _summary_check_names,
+    DisjointSet,
     group_findings_by_model,
     normalize_model_name,
     render_lint_report,
@@ -645,6 +646,83 @@ def test_group_findings_by_model_same_stem_different_folders_remain_isolated() -
     groups, _ = group_findings_by_model(findings)
     assert len(groups) == 2
     assert {g["name"] for g in groups} == {"staging.users", "marts.users"}
+
+
+@pytest.mark.parametrize(
+    ("operations", "expected_roots", "expected_connected"),
+    [
+        (
+            [("union", "a", "b"), ("union", "b", "c")],
+            {"a": "a", "b": "a", "c": "a"},
+            [("a", "c", True), ("a", "d", False)],
+        ),
+        (
+            [("union", "a", "b"), ("union", "c", "d"), ("union", "b", "d")],
+            {"a": "a", "b": "a", "c": "a", "d": "a"},
+            [("a", "d", True), ("b", "c", True)],
+        ),
+        (
+            [("union", "a", "a")],
+            {"a": "a"},
+            [("a", "a", True)],
+        ),
+    ],
+)
+def test_disjoint_set_operations(
+    operations: list[tuple[str, str, str]],
+    expected_roots: dict[str, str],
+    expected_connected: list[tuple[str, str, bool]],
+) -> None:
+    dsu = DisjointSet()
+    for op, x, y in operations:
+        if op == "union":
+            dsu.union(x, y)
+    for elem, root in expected_roots.items():
+        assert dsu.find(elem) == dsu.find(root)
+    for x, y, connected in expected_connected:
+        assert (dsu.find(x) == dsu.find(y)) is connected
+
+
+@pytest.mark.parametrize(
+    ("findings_data", "expected_groups_count", "expected_names"),
+    [
+        (
+            [
+                {"model": "staging.users", "path": None},
+                {"model": "marts.users", "path": None},
+            ],
+            2,
+            {"staging.users", "marts.users"},
+        ),
+        (
+            [
+                {"model": "", "path": ""},
+                {"model": None, "path": None},
+            ],
+            0,
+            set(),
+        ),
+        (
+            [
+                {"model": "staging.users", "path": None},
+                {"model": None, "path": "models/staging/users.sql"},
+            ],
+            1,
+            {"staging.users"},
+        ),
+    ],
+)
+def test_group_findings_by_model_permutations(
+    findings_data: list[dict[str, Any]],
+    expected_groups_count: int,
+    expected_names: set[str],
+) -> None:
+    findings = [_make_finding(**data) for data in findings_data]
+    groups, repo = group_findings_by_model(findings)
+    assert len(groups) == expected_groups_count
+    assert {g["name"] for g in groups} == expected_names
+    if not expected_groups_count:
+        assert len(repo) == len(findings_data)
 
 
 def test_render_lint_report_model_grouping_e2e() -> None:

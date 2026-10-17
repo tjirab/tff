@@ -2,13 +2,14 @@
 
 from __future__ import annotations
 
+from collections import defaultdict
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any, Literal, Sequence
 
 from rich.console import Console
 from rich.style import Style
 from rich.text import Text
-from pathlib import Path
 
 from tff.core.config import Severity
 from tff.core.registry import registry
@@ -147,6 +148,45 @@ def _summary_check_names(
     return sorted(set(names), key=lambda name: CHECK_LABELS.get(name, name).lower())
 
 
+class DisjointSet:
+    """Disjoint-Set / Union-Find data structure with path compression and union by rank."""
+
+    def __init__(self) -> None:
+        self.parent: dict[Any, Any] = {}
+        self.rank: dict[Any, int] = {}
+
+    def find(self, item: Any) -> Any:
+        if item not in self.parent:
+            self.parent[item] = item
+            self.rank[item] = 0
+            return item
+        root = item
+        while self.parent[root] != root:
+            root = self.parent[root]
+        curr = item
+        while curr != root:
+            nxt = self.parent[curr]
+            self.parent[curr] = root
+            curr = nxt
+        return root
+
+    def union(self, item1: Any, item2: Any) -> Any:
+        root1 = self.find(item1)
+        root2 = self.find(item2)
+        if root1 == root2:
+            return root1
+        if self.rank[root1] < self.rank[root2]:
+            self.parent[root1] = root2
+            return root2
+        elif self.rank[root1] > self.rank[root2]:
+            self.parent[root2] = root1
+            return root1
+        else:
+            self.parent[root2] = root1
+            self.rank[root1] += 1
+            return root1
+
+
 def group_findings_by_model(
     findings: Sequence[LintFinding],
 ) -> tuple[list[dict[str, Any]], list[LintFinding]]:
@@ -154,100 +194,118 @@ def group_findings_by_model(
 
     Returns a tuple of (sorted_model_groups, repo_level_findings).
     """
-    model_groups: dict[str, dict[str, Any]] = {}
-    path_to_key: dict[str, str] = {}
-    name_to_key: dict[str, str] = {}
     repo_level: list[LintFinding] = []
+    finding_entries: list[tuple[Any, LintFinding]] = []
+    dsu = DisjointSet()
+
+    stem_to_items: dict[str, list[tuple[str, str]]] = defaultdict(list)
+    qualified_to_items: dict[tuple[str, str], list[tuple[str, str]]] = defaultdict(list)
 
     for finding in findings:
-        if not finding.model and not finding.path:
+        raw_model = finding.model or ""
+        norm_name = normalize_model_name(raw_model) if raw_model else ""
+        raw_path = finding.path or ""
+        norm_path = raw_path.replace("\\", "/").strip() if raw_path else ""
+
+        if not norm_name and not norm_path:
             repo_level.append(finding)
             continue
+
+        path_node = ("path", norm_path) if norm_path else None
+        name_node = ("name", norm_name) if norm_name else None
+
+        if path_node and name_node:
+            dsu.union(path_node, name_node)
+            primary_node = path_node
+        elif path_node:
+            dsu.find(path_node)
+            primary_node = path_node
+        else:
+            dsu.find(name_node)
+            primary_node = name_node
+
+        finding_entries.append((primary_node, finding))
+
+        if norm_path:
+            p = Path(norm_path)
+            stem = p.stem
+            stem_to_items[stem].append(path_node)
+            parent_dir = p.parent.name
+            if parent_dir:
+                qualified_to_items[(parent_dir, stem)].append(path_node)
+
+        if norm_name:
+            parts = norm_name.split(".")
+            stem = parts[-1]
+            stem_to_items[stem].append(name_node)
+            if len(parts) >= 2:
+                qualified_to_items[(parts[-2], parts[-1])].append(name_node)
+
+    # First pass: unify items sharing qualified (namespace/folder, stem) if no conflicting path roots
+    for q_items in qualified_to_items.values():
+        path_roots = {dsu.find(item) for item in q_items if item[0] == "path"}
+        if len(path_roots) <= 1:
+            first = q_items[0]
+            for other in q_items[1:]:
+                dsu.union(first, other)
+
+    # Second pass: unify items sharing bare stem if no conflicting path roots or qualified names
+    for s_items in stem_to_items.values():
+        path_roots = {dsu.find(item) for item in s_items if item[0] == "path"}
+        qualified_names = {
+            item[1] for item in s_items if item[0] == "name" and "." in item[1]
+        }
+        if len(path_roots) <= 1 and len(qualified_names) <= 1:
+            first = s_items[0]
+            for other in s_items[1:]:
+                dsu.union(first, other)
+
+    # Aggregate findings and metadata by root component
+    component_findings: dict[Any, list[LintFinding]] = defaultdict(list)
+    component_names: dict[Any, set[str]] = defaultdict(set)
+    component_paths: dict[Any, list[str]] = defaultdict(list)
+    first_seen_name: dict[Any, str] = {}
+
+    for primary_node, finding in finding_entries:
+        root = dsu.find(primary_node)
+        component_findings[root].append(finding)
 
         raw_model = finding.model or ""
         norm_name = normalize_model_name(raw_model) if raw_model else ""
         raw_path = finding.path or ""
         norm_path = raw_path.replace("\\", "/").strip() if raw_path else ""
 
-        target_key: str | None = None
-        if norm_path and norm_path in path_to_key:
-            target_key = path_to_key[norm_path]
-        elif norm_name and norm_name in name_to_key:
-            target_key = name_to_key[norm_name]
-        elif norm_path:
-            stem = Path(norm_path).stem
-            if stem in name_to_key:
-                cand = name_to_key[stem]
-                if not model_groups[cand]["path"] or model_groups[cand]["path"] == norm_path:
-                    target_key = cand
-        elif norm_name:
-            stem = norm_name.split(".")[-1]
-            if stem in name_to_key:
-                cand = name_to_key[stem]
-                if not norm_path or model_groups[cand]["path"] == norm_path:
-                    target_key = cand
-
-        # If this finding bridges two previously distinct groups, merge other_group into target_group
-        if (
-            target_key
-            and norm_name
-            and norm_name in name_to_key
-            and name_to_key[norm_name] != target_key
-        ):
-            other_key = name_to_key[norm_name]
-            other_group = model_groups.pop(other_key)
-            target_group = model_groups[target_key]
-            target_group["findings"].extend(other_group["findings"])
-            target_group["names"].update(other_group["names"])
-            if not target_group["name"] and other_group.get("name"):
-                target_group["name"] = other_group["name"]
-            if other_group.get("path"):
-                target_group["path"] = other_group["path"]
-
-            # Re-point all name and path lookups from other_key to target_key
-            for n, k in list(name_to_key.items()):
-                if k == other_key:
-                    name_to_key[n] = target_key
-            for p, k in list(path_to_key.items()):
-                if k == other_key:
-                    path_to_key[p] = target_key
-
-        if target_key is None:
-            target_key = norm_path if norm_path else norm_name
-            model_groups[target_key] = {
-                "name": norm_name,
-                "path": norm_path or None,
-                "names": {norm_name} if norm_name else set(),
-                "findings": [],
-            }
-
-        group = model_groups[target_key]
-        group["findings"].append(finding)
-        if norm_path:
-            if not group["path"]:
-                group["path"] = norm_path
-            path_to_key[norm_path] = target_key
-            stem = Path(norm_path).stem
-            if stem not in name_to_key:
-                name_to_key[stem] = target_key
         if norm_name:
-            group["names"].add(norm_name)
-            name_to_key[norm_name] = target_key
-            if not group["name"]:
-                group["name"] = norm_name
-            stem = norm_name.split(".")[-1]
-            if stem not in name_to_key:
-                name_to_key[stem] = target_key
+            component_names[root].add(norm_name)
+            if root not in first_seen_name:
+                first_seen_name[root] = norm_name
 
-    # Determine canonical display name and sort
-    for group in model_groups.values():
-        if group["path"]:
-            stem = Path(group["path"]).stem
-            if stem in group["names"] or not group["name"]:
-                group["name"] = stem
+        if norm_path and norm_path not in component_paths[root]:
+            component_paths[root].append(norm_path)
+
+    groups: list[dict[str, Any]] = []
+    for root, group_findings in component_findings.items():
+        names = component_names[root]
+        paths = component_paths[root]
+        primary_path = paths[0] if paths else None
+        display_name = first_seen_name.get(root, "")
+
+        if primary_path:
+            stem = Path(primary_path).stem
+            if stem in names or not display_name:
+                display_name = stem
+
+        groups.append(
+            {
+                "name": display_name,
+                "path": primary_path,
+                "names": names,
+                "findings": group_findings,
+            }
+        )
 
     sorted_groups = sorted(
-        model_groups.values(),
+        groups,
         key=lambda g: (g["name"] or "", g["path"] or ""),
     )
     return sorted_groups, repo_level
