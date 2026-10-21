@@ -1,7 +1,3 @@
-<p align="center">
-  <img src="docs/assets/tff.svg" alt="tff logo" width="160">
-</p>
-
 # tff
 
 ### Fast, zero-warehouse-cost architectural linter & health dashboard for dbt, SQLMesh & Dataform.
@@ -14,10 +10,6 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
 SQL linters check syntax and formatting in individual files, but they do not analyze the transformation graph. **tff** evaluates transformation models holistically—enforcing layer boundaries, domain contracts, and logic deduplication across the entire data warehouse DAG.
-
-<p align="center">
-  <img width="850" alt="tff catching layer violations and duplicate CTEs" src="docs/assets/demo-sqlmesh.gif" />
-</p>
 
 ```text
 $ tff check
@@ -74,6 +66,13 @@ tff check
 # Calculate your repository architecture health score (0–100)
 tff health
 ```
+
+---
+
+## Demo
+
+- [Terminal audit demo recording (GIF)](docs/assets/demo-sqlmesh.gif) — live capture of layer integrity enforcement and duplicate CTE detection.
+- [Terminal demo recording suite](demos/README.md) — automated VHS session scripts across dbt, SQLMesh, and health index reporting.
 
 ---
 

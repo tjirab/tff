@@ -362,7 +362,7 @@ def test_readme_branding_asset_references() -> None:
     repo_root = Path(__file__).resolve().parents[3]
     readme = (repo_root / "README.md").read_text(encoding="utf-8")
     assert "tff-white.svg" not in readme
-    assert '<img src="docs/assets/tff.svg" alt="tff logo" width="160">' in readme
+    assert "docs/assets/tff.svg" not in readme
 
 
 def test_dashboard_template_resource_loading() -> None:
