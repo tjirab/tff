@@ -893,3 +893,31 @@ def test_render_lint_report_status_footers(
     )
     assert passed is expected_success
     assert expected_text in console.export_text()
+
+
+@pytest.mark.parametrize(
+    ("findings_severities", "fail_level", "expected_passed"),
+    [
+        ([], "error", True),
+        ([], "warning", True),
+        (["warning"], "error", True),
+        (["warning"], "warning", False),
+        (["error"], "error", False),
+        (["error"], "warning", False),
+        (["error", "warning"], "error", False),
+        (["error", "warning"], "warning", False),
+    ],
+)
+def test_render_lint_report_fail_level_permutations(
+    findings_severities: list[Any],
+    fail_level: Any,
+    expected_passed: bool,
+) -> None:
+    findings = [_make_finding(severity=sev) for sev in findings_severities]
+    passed = render_lint_report(
+        findings,
+        models_checked=1,
+        fail_level=fail_level,
+    )
+    assert passed is expected_passed
+

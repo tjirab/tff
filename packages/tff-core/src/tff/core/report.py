@@ -328,6 +328,7 @@ def render_lint_report(
     errors = [f for f in findings if f.severity == "error"]
     warnings = [f for f in findings if f.severity == "warning"]
     has_errors = bool(errors)
+    has_warnings = bool(warnings)
 
     width = min(console.width - 2, 86) if console.width else 78
 
@@ -439,7 +440,7 @@ def render_lint_report(
     console.print("─" * width, style="dim")
 
     fixable_count = sum(1 for f in findings if _is_fixable_finding(f))
-    failed = any(f.severity == fail_level for f in findings)
+    failed = has_errors or (fail_level == "warning" and has_warnings)
 
     footer = Text()
     if has_errors:
