@@ -1266,21 +1266,21 @@ def test_execute_action_project_as_list_and_fallback_cwd() -> None:
 @pytest.mark.parametrize(
     ("check", "message", "expected"),
     [
-        ("banselectstar", "SELECT * is prohibited", True),
-        ("ban_select_star", "SELECT * is prohibited", True),
-        ("nopositionalgroupby", "Positional GROUP BY prohibited", True),
-        ("nopositionalorderby", "Positional ORDER BY prohibited", True),
-        ("nopositionalgroupbyororderby", "Positional GROUP BY prohibited", True),
-        ("nomissingowner", "Missing model owner", True),
-        ("nomissingdescription", "Missing model description", True),
-        ("martmodelnamingconvention", "Invalid mart model name", True),
-        ("mart_naming", "Invalid mart model name", True),
+        ("banselectstar", "SELECT * is prohibited", False),
+        ("ban_select_star", "SELECT * is prohibited", False),
+        ("nopositionalgroupby", "Positional GROUP BY prohibited", False),
+        ("nopositionalorderby", "Positional ORDER BY prohibited", False),
+        ("nopositionalgroupbyororderby", "Positional GROUP BY prohibited", False),
+        ("nomissingowner", "Missing model owner", False),
+        ("nomissingdescription", "Missing model description", False),
+        ("martmodelnamingconvention", "Invalid mart model name", False),
+        ("mart_naming", "Invalid mart model name", False),
         ("filenameequalsmodelname", "Filename mismatch", True),
         ("filename_equals_modelname", "Filename mismatch", True),
         (
             "sqlcomplexity",
             "Complex query with nested subquery in final SELECT",
-            True,
+            False,
         ),
         ("sqlcomplexity", "Too many CTEs in model", False),
         ("layer_integrity", "Upstream layer dependency violated", False),
@@ -1297,14 +1297,45 @@ def test_is_autofixable_checks(check: str, message: str, expected: bool) -> None
     assert is_autofixable(obj_finding) is expected
 
 
+@pytest.mark.parametrize(
+    ("is_fixable", "expected"),
+    [
+        (True, True),
+        (False, False),
+    ],
+)
+def test_is_autofixable_dynamic_registry(is_fixable: bool, expected: bool) -> None:
+    from tff.core.registry import CheckDefinition, registry
+
+    custom_id = f"custom_action_rule_{is_fixable}"
+    registry.register(
+        CheckDefinition(
+            id=custom_id,
+            label="Custom Action Rule",
+            category="Custom Rules",
+            scope="model",
+            is_fixable=is_fixable,
+        )
+    )
+    try:
+        dict_finding = {"check": custom_id, "message": "Custom violation"}
+        obj_finding = _make_finding(
+            check=custom_id, severity="error", message="Custom violation", model="orders"
+        )
+        assert is_autofixable(dict_finding) is expected
+        assert is_autofixable(obj_finding) is expected
+    finally:
+        registry.unregister(custom_id)
+
+
 def test_generate_pr_comment_diff_first_triage_callout() -> None:
     current_data = {
         "overall_score": 78.0,
         "findings": [
             {
-                "check": "banselectstar",
+                "check": "filenameequalsmodelname",
                 "severity": "error",
-                "message": "SELECT * not allowed",
+                "message": "Model name does not match filename",
                 "model": "stg_orders",
                 "path": "models/staging/stg_orders.sql",
             },
@@ -1473,9 +1504,9 @@ def test_generate_pr_comment_compact_green_pass_card(
 def test_generate_pr_comment_pass_with_baseline_debt() -> None:
     """When all checks pass and no new violations exist, render pass card + collapsible baseline debt."""
     pre_existing_finding = {
-        "check": "nomissingowner",
+        "check": "filenameequalsmodelname",
         "severity": "warning",
-        "message": "Missing owner on legacy model",
+        "message": "Filename mismatch on legacy model",
         "model": "legacy_untouched",
         "path": "models/legacy_untouched.sql",
     }
@@ -1536,9 +1567,9 @@ def test_generate_pr_comment_zero_emoji_guarantee() -> None:
 
 def test_format_finding_row_types() -> None:
     finding_obj = _make_finding(
-        check="banselectstar",
+        check="filenameequalsmodelname",
         severity="error",
-        message="SELECT * is prohibited",
+        message="Filename does not match model name",
         model="stg_orders",
         path=Path("models/staging/stg_orders.sql"),
     )
@@ -1573,7 +1604,7 @@ def test_generate_pr_comment_collapsible_baseline_debt_truncation() -> None:
     """Test truncation of pre-existing violations across untouched models when > 50."""
     pre_existing_55 = [
         {
-            "check": "nomissingowner",
+            "check": "filenameequalsmodelname",
             "severity": "warning",
             "message": f"Missing owner on legacy model {i}",
             "model": f"legacy_model_{i}",
@@ -1662,6 +1693,6 @@ def test_generate_pr_comment_untouched_no_modified_files() -> None:
 
 
 def test_autofixable_constants() -> None:
-    assert "banselectstar" in AUTOFIXABLE_CHECKS
-    assert "nopositionalgroupby" in AUTOFIXABLE_CHECKS
+    assert "filenameequalsmodelname" in AUTOFIXABLE_CHECKS
+    assert "filename_equals_modelname" in AUTOFIXABLE_CHECKS
     assert "tff lint --fix --staged" in REMEDIATION_SNIPPET

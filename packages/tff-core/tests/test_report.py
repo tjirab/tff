@@ -793,7 +793,7 @@ def test_render_lint_report_tree_branches_and_footer() -> None:
     assert "filenameequalsmodelname" in output
     assert "name" in output
     assert "position" in output
-    assert "FAIL — 1 error block merge. Run `tff --fix` for auto-correctable rules." in output
+    assert "FAIL — 1 error block merge. Run `tff lint --fix` for auto-correctable rules." in output
 
 
 @pytest.mark.parametrize(
@@ -833,6 +833,33 @@ def test_format_connascence_tag_helper(category: str, expected_tag: str) -> None
 def test_is_fixable_finding_helper(check: str, message: str, expected_fixable: bool) -> None:
     f = _make_finding(check=check, message=message)
     assert _is_fixable_finding(f) is expected_fixable
+
+
+@pytest.mark.parametrize(
+    ("is_fixable", "expected"),
+    [
+        (True, True),
+        (False, False),
+    ],
+)
+def test_is_fixable_finding_dynamic_registry(is_fixable: bool, expected: bool) -> None:
+    from tff.core.registry import CheckDefinition, registry
+
+    custom_id = f"custom_dynamic_rule_{is_fixable}"
+    registry.register(
+        CheckDefinition(
+            id=custom_id,
+            label="Custom Dynamic Rule",
+            category="Custom Rules",
+            scope="model",
+            is_fixable=is_fixable,
+        )
+    )
+    try:
+        finding = _make_finding(check=custom_id, message="Custom violation")
+        assert _is_fixable_finding(finding) is expected
+    finally:
+        registry.unregister(custom_id)
 
 
 def test_render_lint_report_connascence_model_without_path_and_custom_rule() -> None:

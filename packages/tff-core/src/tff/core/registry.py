@@ -852,7 +852,7 @@ def create_default_registry() -> CheckRegistry:
                 and cfg.rules.no_positional_group_by_or_order_by.enabled
                 and cfg.rules.no_positional_group_by_or_order_by.group_by
             ),
-            docs_url=f"{docs_base}no-positional-group-by-no_positional_group_by-auto-fixable",
+            docs_url=f"{docs_base}no-positional-group-by-no_positional_group_by",
             description="Prevents using ordinal integers (e.g. GROUP BY 1, 2) instead of explicit column name references.",
             why_it_matters="Positional grouping introduces Connascence of Position (CoP). Modifying the SELECT list order unintentionally alters grouping semantics without syntax errors.",
             how_to_fix="Replace positional integers with explicit column names or aliases.",
@@ -876,7 +876,7 @@ def create_default_registry() -> CheckRegistry:
                 and cfg.rules.no_positional_group_by_or_order_by.enabled
                 and cfg.rules.no_positional_group_by_or_order_by.order_by
             ),
-            docs_url=f"{docs_base}no-positional-order-by-no_positional_order_by-auto-fixable",
+            docs_url=f"{docs_base}no-positional-order-by-no_positional_order_by",
             description="Prevents using ordinal integers (e.g. ORDER BY 1 DESC) instead of explicit column name references.",
             why_it_matters="Positional sorting introduces Connascence of Position (CoP). Modifying the SELECT list order unintentionally alters ordering semantics without syntax errors.",
             how_to_fix="Replace positional integers with explicit column names or aliases.",
@@ -896,7 +896,7 @@ def create_default_registry() -> CheckRegistry:
             rule_module="tff.core.rules.no_positional_group_by_or_order_by",
             rule_class_name="NoPositionalGroupByOrOrderBy",
             is_enabled_fn=lambda cfg, p: False,
-            docs_url=f"{docs_base}no-positional-group-byorder-by-no_positional_group_by_or_order_by-auto-fixable",
+            docs_url=f"{docs_base}no-positional-group-byorder-by-no_positional_group_by_or_order_by",
             description="Prevents using ordinal integers (e.g. GROUP BY 1, 2 or ORDER BY 1 DESC) instead of explicit column name references.",
             why_it_matters="Positional grouping introduces Connascence of Position (CoP). Modifying the SELECT list order unintentionally alters grouping and sorting semantics without syntax errors.",
             how_to_fix="Replace positional integers with explicit column names or aliases.",
@@ -1080,7 +1080,7 @@ def create_default_registry() -> CheckRegistry:
             is_enabled_fn=lambda cfg, p: bool(
                 cfg.rules.metadata.enabled and cfg.rules.metadata.owner
             ),
-            docs_url=f"{docs_base}metadata-metadata-partially-auto-fixable",
+            docs_url=f"{docs_base}metadata-metadata",
             description="Validates that every model has an assigned owner in its configuration or metadata.",
             why_it_matters="Unowned models lead to data pipeline abandonment, untracked bugs, and unclear escalation paths during data quality incidents.",
             how_to_fix="Assign an owner to the model in schema.yml or model config.",
@@ -1102,7 +1102,7 @@ def create_default_registry() -> CheckRegistry:
             is_enabled_fn=lambda cfg, p: bool(
                 cfg.rules.metadata.enabled and cfg.rules.metadata.description
             ),
-            docs_url=f"{docs_base}metadata-metadata-partially-auto-fixable",
+            docs_url=f"{docs_base}metadata-metadata",
             description="Validates that every model has a non-empty description documented in its metadata.",
             why_it_matters="Undocumented models create knowledge silos, slow down team onboarding, and make data discovery difficult.",
             how_to_fix="Add a clear description explaining the model's purpose and business context.",
@@ -1124,7 +1124,7 @@ def create_default_registry() -> CheckRegistry:
             is_enabled_fn=lambda cfg, p: bool(
                 cfg.rules.metadata.enabled and cfg.rules.metadata.grain
             ),
-            docs_url=f"{docs_base}metadata-metadata-partially-auto-fixable",
+            docs_url=f"{docs_base}metadata-metadata",
             description="Validates that model primary keys / grains are explicitly documented in metadata.",
             why_it_matters="Without documented grains, downstream users cannot verify uniqueness, leading to unexpected duplicates in fan-out joins.",
             how_to_fix="Define the model grain column(s) in model metadata or configuration.",
@@ -1146,7 +1146,7 @@ def create_default_registry() -> CheckRegistry:
             is_enabled_fn=lambda cfg, p: bool(
                 cfg.rules.metadata.enabled and cfg.rules.metadata.not_null
             ),
-            docs_url=f"{docs_base}metadata-metadata-partially-auto-fixable",
+            docs_url=f"{docs_base}metadata-metadata",
             description="Validates that the model has not_null tests or audits defined on critical columns.",
             why_it_matters="Unexpected NULL values in key columns cause silent row drops in inner joins or incorrect metric calculations.",
             how_to_fix="Add a not_null test (dbt) or audit (SQLMesh) to the model primary keys.",
@@ -1168,7 +1168,7 @@ def create_default_registry() -> CheckRegistry:
             is_enabled_fn=lambda cfg, p: bool(
                 cfg.rules.metadata.enabled and cfg.rules.metadata.unique_values
             ),
-            docs_url=f"{docs_base}metadata-metadata-partially-auto-fixable",
+            docs_url=f"{docs_base}metadata-metadata",
             description="Validates that the model has unique tests or unique_values audits defined on its primary key columns.",
             why_it_matters="Duplicate records in dimension or mart tables cause fan-out errors when joined, inflating downstream aggregations.",
             how_to_fix="Add a unique test (dbt) or unique_values audit (SQLMesh) on the primary key column(s).",
@@ -1186,7 +1186,7 @@ def create_default_registry() -> CheckRegistry:
             aliases=("nomissingaudits",),
             finding_check_id="nomissingaudits",
             is_enabled_fn=lambda cfg, p: False,
-            docs_url=f"{docs_base}metadata-metadata-partially-auto-fixable",
+            docs_url=f"{docs_base}metadata-metadata",
             description="Validates that models have general data quality audits or tests configured.",
             why_it_matters="Untested models risk deploying broken data to production dashboards without detection.",
             how_to_fix="Configure appropriate audits or tests for the model.",

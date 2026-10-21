@@ -502,7 +502,7 @@ For SQLMesh projects, these rules run dynamically inside SQLMesh (e.g., `sqlmesh
 
 ---
 
-### No Positional GROUP BY/ORDER BY (`no_positional_group_by_or_order_by`) <a id="no-positional-group-byorder-by-no_positional_group_by_or_order_by-auto-fixable"></a>
+### No Positional GROUP BY/ORDER BY (`no_positional_group_by_or_order_by`) <a id="no-positional-group-byorder-by-no_positional_group_by_or_order_by"></a>
 
 * **What it checks**:
   * Prevents using ordinal integers (e.g., `GROUP BY 1, 2` or `ORDER BY 1 DESC`) instead of explicit column name references.
@@ -668,7 +668,7 @@ For SQLMesh projects, these rules run dynamically inside SQLMesh (e.g., `sqlmesh
 
 ---
 
-### Metadata (`metadata`) <a id="metadata-metadata-partially-auto-fixable"></a>
+### Metadata (`metadata`) <a id="metadata-metadata"></a>
 
 * **What it checks**:
   * Enforces model metadata documentation and testing:

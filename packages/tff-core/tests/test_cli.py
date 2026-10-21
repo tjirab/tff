@@ -1148,7 +1148,7 @@ def test_cli_lint_github_annotations_flag(tmp_path: Path, capsys):
         assert exit_code == 0
         captured = capsys.readouterr()
         assert (
-            "::warning file=models/staging/stg_users.sql,line=1,title=WRN · Missing owner (Quality & Metadata)::* Missing model owner (https://tff.readthedocs.io/en/latest/rules_and_checks/#metadata-metadata-partially-auto-fixable)"
+            "::warning file=models/staging/stg_users.sql,line=1,title=WRN · Missing owner (Quality & Metadata)::* Missing model owner (https://tff.readthedocs.io/en/latest/rules_and_checks/#metadata-metadata)"
             in captured.out
         )
 
@@ -1283,7 +1283,7 @@ def test_cli_lint_structured_with_github_annotations(tmp_path: Path, capsys):
         assert data["version"] == "2.1.0"
         # annotations routed to stderr to prevent corrupting stdout
         assert (
-            "::warning file=models/staging/stg_customers.sql,line=1,title=WRN · Missing owner (Quality & Metadata)::* Missing owner attribute (https://tff.readthedocs.io/en/latest/rules_and_checks/#metadata-metadata-partially-auto-fixable)"
+            "::warning file=models/staging/stg_customers.sql,line=1,title=WRN · Missing owner (Quality & Metadata)::* Missing owner attribute (https://tff.readthedocs.io/en/latest/rules_and_checks/#metadata-metadata)"
             in captured.err
         )
 
@@ -1295,7 +1295,7 @@ def test_cli_lint_structured_with_github_annotations(tmp_path: Path, capsys):
         data_json = json.loads(captured_json.out)
         assert data_json["command"] == "lint"
         assert (
-            "::warning file=models/staging/stg_customers.sql,line=1,title=WRN · Missing owner (Quality & Metadata)::* Missing owner attribute (https://tff.readthedocs.io/en/latest/rules_and_checks/#metadata-metadata-partially-auto-fixable)"
+            "::warning file=models/staging/stg_customers.sql,line=1,title=WRN · Missing owner (Quality & Metadata)::* Missing owner attribute (https://tff.readthedocs.io/en/latest/rules_and_checks/#metadata-metadata)"
             in captured_json.err
         )
 

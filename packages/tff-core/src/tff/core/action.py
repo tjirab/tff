@@ -28,15 +28,6 @@ logger = logging.getLogger(__name__)
 PR_COMMENT_MARKER = "<!-- tff-pr-comment -->"
 
 AUTOFIXABLE_CHECKS = {
-    "nopositionalgroupby",
-    "nopositionalorderby",
-    "nopositionalgroupbyororderby",
-    "banselectstar",
-    "ban_select_star",
-    "nomissingowner",
-    "nomissingdescription",
-    "martmodelnamingconvention",
-    "mart_naming",
     "filenameequalsmodelname",
     "filename_equals_modelname",
 }
@@ -51,23 +42,19 @@ REMEDIATION_SNIPPET = (
 
 def is_autofixable(finding: dict[str, Any] | LintFinding) -> bool:
     """Determine whether a lint finding can be resolved via tff lint --fix."""
-    if isinstance(finding, LintFinding):
-        chk = str(finding.check or "")
-        msg = str(finding.message or "")
-    else:
-        chk = str(finding.get("check") or "")
-        msg = str(finding.get("message") or "")
-
+    chk = str(
+        finding.check
+        if isinstance(finding, LintFinding)
+        else finding.get("check") or ""
+    )
+    rule_def = registry.get(chk)
+    if rule_def is not None and rule_def.is_fixable:
+        return True
     norm = chk.lower().replace("-", "").replace("_", "").replace(" ", "")
-    norm_autofixable = {
+    return norm in {
         c.lower().replace("-", "").replace("_", "").replace(" ", "")
         for c in AUTOFIXABLE_CHECKS
     }
-    if norm in norm_autofixable:
-        return True
-    if norm == "sqlcomplexity" and "nested subquery in final SELECT" in msg:
-        return True
-    return False
 
 
 

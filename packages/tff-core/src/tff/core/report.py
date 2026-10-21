@@ -107,7 +107,11 @@ def _format_connascence_tag(category_str: str) -> str:
 
 
 def _is_fixable_finding(f: LintFinding) -> bool:
-    return f.check in ("filenameequalsmodelname", "filename_equals_modelname")
+    rule_def = registry.get(f.check)
+    return bool(rule_def and rule_def.is_fixable) or f.check in (
+        "filenameequalsmodelname",
+        "filename_equals_modelname",
+    )
 
 
 def _append_check_tag(text: Text, check: str) -> None:
@@ -445,7 +449,7 @@ def render_lint_report(
     if has_errors:
         footer.append(f"FAIL — {len(errors)} error{'s' if len(errors) != 1 else ''} block merge.", style="bold red")
         if fixable_count > 0:
-            footer.append(" Run `tff --fix` for auto-correctable rules.", style="bold")
+            footer.append(" Run `tff lint --fix` for auto-correctable rules.", style="bold")
     elif failed:
         footer.append(f"FAIL — {len(warnings)} warning{'s' if len(warnings) != 1 else ''} block merge.", style="bold red")
     else:

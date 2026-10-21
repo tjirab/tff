@@ -17,7 +17,7 @@ from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from tff.core.adapter import PipelineAdapter
-    from tff.core.config import TffConfig
+    from tff.core.config import FitnessFunctionsConfig
     from tff.core.model import ModelRepresentation
     from tff.core.report import LintFinding
 
@@ -251,7 +251,7 @@ def apply_autofixes(
     provider: str | PipelineAdapter,
     findings: list[LintFinding],
     models: dict[str, ModelRepresentation],
-    config: TffConfig | None = None,
+    config: FitnessFunctionsConfig | None = None,
 ) -> list[str]:
     """Identify auto-fixable violations from findings and apply modifications to source files."""
     from tff.core.adapter import get_adapter, normalize_project_roots
