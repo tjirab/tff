@@ -342,9 +342,10 @@ def test_generate_sarif_report_structure(tmp_path: Path):
 
 
 def test_generate_sarif_report_empty():
-    report = generate_sarif_report([], tool_version="0.7.0")
+    report = generate_sarif_report([])
     assert report["version"] == "2.1.0"
     run = report["runs"][0]
+    assert run["tool"]["driver"]["version"] == "0.25.0"
     assert run["results"] == []
 
 

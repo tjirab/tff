@@ -37,7 +37,7 @@ logger = logging.getLogger("tff.core.cli")
 try:
     __version__ = importlib.metadata.version("tff-core")
 except Exception:
-    __version__ = "0.7.0"
+    __version__ = "0.25.0"
 
 
 def render_cli_error(error: TffError | Exception, console: Console | None = None) -> None:

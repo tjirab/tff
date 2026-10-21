@@ -14,7 +14,7 @@ help:
 	@echo "  help        Show this help message"
 
 init:
-	uv sync --extra dev
+	uv sync --all-packages --all-extras --group dev
 	git config core.hooksPath .githooks
 
 lint:

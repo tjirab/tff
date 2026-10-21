@@ -804,7 +804,7 @@ def test_cli_version_fallback():
         import tff.core.cli
 
         importlib.reload(tff.core.cli)
-        assert tff.core.cli.__version__ == "0.7.0"
+        assert tff.core.cli.__version__ == "0.25.0"
 
     # Restore original by reloading again without patch
     import importlib
