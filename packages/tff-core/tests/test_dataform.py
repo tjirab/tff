@@ -949,5 +949,54 @@ def test_dataform_runner_and_adapter_propagate_chunk_size() -> None:
         assert mock_runner_all.call_args.kwargs.get("chunk_size") == 16
 
 
+@pytest.mark.parametrize("cache_enabled", [True, False])
+def test_dataform_ast_cache_precomputation(tmp_path: Path, cache_enabled: bool) -> None:
+    from tff.core.config import FitnessFunctionsConfig
+
+    definitions_dir = tmp_path / "definitions"
+    definitions_dir.mkdir(parents=True, exist_ok=True)
+    (definitions_dir / "m_cache.sqlx").write_text(
+        "config { type: 'view', schema: 'staging' }\nSELECT 1 AS id, 'abc' AS label",
+        encoding="utf-8",
+    )
+
+    cfg = FitnessFunctionsConfig(cache_ast=cache_enabled)
+    models = load_dataform_models(tmp_path, config=cfg)
+    assert "staging.m_cache" in models
+    assert models["staging.m_cache"].expression is not None
+    assert (tmp_path / ".tff_cache").exists() is cache_enabled
+
+
+@pytest.mark.parametrize("root_count", [1, 2])
+def test_dataform_multi_project_roots(tmp_path: Path, root_count: int) -> None:
+    from tff.dataform.adapter import DataformAdapter
+
+    roots: list[Path] = []
+    for idx in range(root_count):
+        proj = tmp_path / f"proj_{idx}"
+        defs = proj / "definitions" / "staging"
+        defs.mkdir(parents=True, exist_ok=True)
+        (proj / "workflow_settings.yaml").write_text("defaultProject: p\n", encoding="utf-8")
+        dep_clause = "FROM ${ref('staging', 'stg_m0')}" if idx > 0 else ""
+        (defs / f"stg_m{idx}.sqlx").write_text(
+            f"config {{ type: 'view', schema: 'staging', description: 'd', "
+            f"bigquery: {{ labels: {{ owner: 'team' }} }}, "
+            f"assertions: {{ uniqueKey: ['id'], nonNull: ['id'] }} }}\n"
+            f"SELECT 1 AS id {dep_clause}",
+            encoding="utf-8",
+        )
+        roots.append(proj)
+
+    adapter = DataformAdapter()
+    loaded = adapter.load_models(roots)
+    assert len(loaded) == root_count
+    if root_count == 2:
+        assert "staging.stg_m0" in loaded["staging.stg_m1"].depends_on
+
+    _, checked, _ = run_all_checks(project_root=roots, config=None)
+    assert checked == root_count
+
+
+
 
 

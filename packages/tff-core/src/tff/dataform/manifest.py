@@ -9,12 +9,11 @@ import re
 import shutil
 import subprocess
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Sequence
 
 import yaml
 
 from tff.core.model import ModelRepresentation
-from tff.core.utils.jinja import clean_dataform_for_parsing
 
 if TYPE_CHECKING:
     from tff.core.config import FitnessFunctionsConfig
@@ -292,15 +291,8 @@ def _parse_compiled_graph(
         file_name = table.get("fileName", "")
         abs_path = str(project_root / file_name) if file_name else ""
 
-        # Query and AST
+        # Query
         query = table.get("query")
-        expression = None
-        if query:
-            try:
-                import sqlglot
-                expression = sqlglot.parse_one(query, read=dialect)
-            except Exception:
-                pass
 
         mapped_models[key] = ModelRepresentation(
             name=name,
@@ -316,7 +308,7 @@ def _parse_compiled_graph(
             audits=audits,
             query=query,
             materialized=materialized,
-            expression=expression,
+            expression=None,
             tags=tags,
             meta={**bq_labels},
             provider="dataform",
@@ -520,15 +512,6 @@ def _load_models_from_sources(
         for col in (assertions.get("nonNull") or []):
             audits.append(("not_null", {"columns": [str(col)]}))
 
-        # Query & AST
-        cleaned_sql = clean_dataform_for_parsing(content)
-        expression = None
-        try:
-            import sqlglot
-            expression = sqlglot.parse_one(cleaned_sql, read=dialect)
-        except Exception:
-            pass
-
         mapped_models[key] = ModelRepresentation(
             name=name,
             path=str(sqlx_path.resolve()),
@@ -543,7 +526,7 @@ def _load_models_from_sources(
             audits=audits,
             query=remaining_sql,
             materialized=materialized,
-            expression=expression,
+            expression=None,
             tags=config.get("tags") or [],
             meta=meta,
             provider="dataform",
@@ -596,13 +579,31 @@ def _load_models_from_sources(
 
 
 def load_dataform_models(
-    project_root: Path,
+    project_root: Path | Sequence[Path],
     manifest_path: Path | str | None = None,
     dialect: str | None = None,
     max_workers: int | None = None,
     config: FitnessFunctionsConfig | None = None,
 ) -> dict[str, ModelRepresentation]:
     """Load Dataform models via precompiled JSON, CLI compilation, or direct source parsing."""
+    if isinstance(project_root, (list, tuple)):
+        if len(project_root) == 1:
+            project_root = Path(project_root[0])
+        else:
+            merged: dict[str, ModelRepresentation] = {}
+            for root in project_root:
+                merged.update(
+                    load_dataform_models(
+                        Path(root),
+                        manifest_path=manifest_path,
+                        dialect=dialect,
+                        max_workers=max_workers,
+                        config=config,
+                    )
+                )
+            _resolve_dependencies_keys(merged)
+            return merged
+
     from tff.core.parallel import precompute_model_asts
 
     settings = _load_settings(project_root)

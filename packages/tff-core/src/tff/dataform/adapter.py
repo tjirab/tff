@@ -34,8 +34,9 @@ class DataformAdapter(PipelineAdapter):
         from tff.dataform.manifest import load_dataform_models
 
         roots = normalize_project_roots(project_root)
+        root_arg = roots[0] if len(roots) == 1 else roots
         return load_dataform_models(
-            project_root=roots[0],
+            project_root=root_arg,
             manifest_path=manifest_path,
             dialect=dialect,
         )
@@ -55,8 +56,9 @@ class DataformAdapter(PipelineAdapter):
         from tff.dataform.runner import run_all_checks
 
         roots = normalize_project_roots(project_root)
+        root_arg = roots[0] if len(roots) == 1 else roots
         kwargs: dict[str, Any] = {
-            "project_root": roots[0],
+            "project_root": root_arg,
             "config": config,
             "checks": checks,
             "dialect": dialect,
