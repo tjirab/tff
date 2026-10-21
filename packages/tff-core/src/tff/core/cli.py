@@ -1107,6 +1107,12 @@ def _main_impl(argv: list[str] | None = None) -> int:
         default="auto",
         help="Pipeline engine provider (default: auto-detected)",
     )
+    info_parser.add_argument(
+        "--json",
+        action="store_true",
+        default=False,
+        help="Output configuration and environment information in JSON format to stdout",
+    )
 
 
     # Stats subcommand
@@ -1199,6 +1205,16 @@ def _main_impl(argv: list[str] | None = None) -> int:
         default=None,
         help="Chunk size of models per thread worker during parallel rule execution",
     )
+    docs_parser.add_argument(
+        "--no-cache",
+        action="store_true",
+        help="Disable disk-based AST caching",
+    )
+    docs_parser.add_argument(
+        "--clear-cache",
+        action="store_true",
+        help="Clear persistent AST disk cache before execution",
+    )
 
     # Init subcommand
     init_parser = subparsers.add_parser(
@@ -1209,6 +1225,7 @@ def _main_impl(argv: list[str] | None = None) -> int:
     )
     init_parser.add_argument(
         "--project",
+        "-p",
         type=Path,
         default=Path.cwd(),
         help="Project root directory (default: current directory)",
@@ -1467,7 +1484,10 @@ def _main_impl(argv: list[str] | None = None) -> int:
         # Run info command: show diagnostics
         from rich.table import Table
         import importlib.metadata as metadata
+        import json
+        import re
 
+        as_json = getattr(args, "json", False)
         console = Console()
         provider = args.provider
         if provider == "auto":
@@ -1479,7 +1499,14 @@ def _main_impl(argv: list[str] | None = None) -> int:
                     else _detect_provider(project_roots)
                 )
             except Exception as e:
-                console.print(f"[red]Error detecting provider: {e}[/red]")
+                err = (
+                    e
+                    if isinstance(e, TffError)
+                    else _convert_to_provider_error(e, project_roots=project_roots)
+                )
+                render_cli_error(err)
+                if not as_json:
+                    console.print(f"[red]Error detecting provider: {e}[/red]")
                 return 1
         config_path = args.config
         resolved_config = (
@@ -1488,9 +1515,11 @@ def _main_impl(argv: list[str] | None = None) -> int:
             else Path(config_path)
         )
         config_exists = resolved_config.is_file()
+        config_loaded = False
         width = min(console.width if console.width else 80, 78)
-        console.print("[bold]tff Info[/bold]  [dim]·  TRANSFORMATION FITNESS FUNCTIONS[/dim]")
-        console.print("─" * width, style="dim")
+        if not as_json:
+            console.print("[bold]tff Info[/bold]  [dim]·  TRANSFORMATION FITNESS FUNCTIONS[/dim]")
+            console.print("─" * width, style="dim")
         table = Table(show_header=False, box=None, padding=(0, 2, 0, 0))
         table.add_column()
         table.add_column()
@@ -1504,6 +1533,7 @@ def _main_impl(argv: list[str] | None = None) -> int:
         if config_exists:
             try:
                 cfg = load_fitness_config(project_root, config_path)
+                config_loaded = True
                 contract_path = resolve_project_path(cfg, cfg.contract_groups_path)
                 exclusions_path = resolve_project_path(cfg, cfg.exclusions_path)
                 contract_status = (
@@ -1533,14 +1563,14 @@ def _main_impl(argv: list[str] | None = None) -> int:
                     if isinstance(e, ValidationError)
                     else e
                 )
-                console.print(f"[yellow]Failed to load config: {norm_err}[/yellow]")
                 if isinstance(norm_err, TffError):
                     render_cli_error(norm_err, debug=is_debug)
-        console.print(table)
-
-
-        console.print("\n[bold]Adapter Versions[/bold]")
-        console.print("─" * width, style="dim")
+                if not as_json:
+                    console.print(f"[yellow]Failed to load config: {norm_err}[/yellow]")
+        if not as_json:
+            console.print(table)
+            console.print("\n[bold]Adapter Versions[/bold]")
+            console.print("─" * width, style="dim")
 
         def get_version(pkg: str) -> str:
             try:
@@ -1594,14 +1624,47 @@ def _main_impl(argv: list[str] | None = None) -> int:
                 ver_table.add_row(
                     f"  [bold]{prov} integration[/bold]", "[bold blue]plugin[/bold blue]"
                 )
-        console.print(ver_table)
-
+        if not as_json:
+            console.print(ver_table)
 
         try:
             adapter = _get_adapter(provider)
-        except (ImportError, ValueError) as e:
-            console.print(f"[red]Error loading adapter: {e}[/red]")
+        except (TffError, ImportError, ValueError) as e:
+            render_cli_error(e)
+            if not as_json:
+                console.print(f"[red]Error loading adapter: {e}[/red]")
             return 1
+
+        diag_files = adapter.get_diagnostic_files(project_roots)
+        if as_json:
+            raw_ver = get_version("tff-core")
+            models_loaded = 0
+            external_sources = 0
+            try:
+                loaded_models = adapter.load_models(project_roots)
+                for m in loaded_models.values():
+                    if getattr(m, "is_external", False):
+                        external_sources += 1
+                    elif not getattr(m, "is_symbolic", False):
+                        models_loaded += 1
+            except Exception:
+                pass
+            info_payload: dict[str, Any] = {
+                "version": raw_ver if raw_ver != "not installed" else __version__,
+                "provider": provider,
+                "project_root": str(project_root),
+                "projects": [str(p) for p in project_roots],
+                "config_path": str(resolved_config),
+                "config_loaded": config_loaded,
+                "files": {
+                    label: re.sub(r"\[/?[^\]]+\]", "", val)
+                    for label, val in diag_files
+                },
+                "models_loaded": models_loaded,
+                "external_sources": external_sources,
+            }
+            print(json.dumps(info_payload, indent=2))
+            return 0
 
         prov_table = Table(show_header=False, box=None, padding=(0, 2, 0, 0))
         prov_table.add_column()
@@ -1609,7 +1672,7 @@ def _main_impl(argv: list[str] | None = None) -> int:
 
         from rich.markup import escape
 
-        for label, val in adapter.get_diagnostic_files(project_roots):
+        for label, val in diag_files:
             prov_table.add_row(f"  [bold]{escape(label)}[/bold]", val)
         if prov_table.row_count > 0:
             console.print("\n[bold]Provider Files[/bold]")
@@ -1777,6 +1840,15 @@ def _main_impl(argv: list[str] | None = None) -> int:
             docs_kwargs["workers"] = args.workers
         if getattr(args, "chunk_size", None) is not None:
             docs_kwargs["chunk_size"] = args.chunk_size
+        if getattr(args, "no_cache", False):
+            os.environ["TFF_NO_CACHE"] = "1"
+            logger.debug("AST caching disabled via --no-cache")
+        if getattr(args, "clear_cache", False):
+            from tff.core.ast_cache import clear_ast_cache
+
+            cleared = clear_ast_cache(project_root=project_root)
+            logger.debug("Cleared %d AST cache files", cleared)
+            print(f"Cleared {cleared} AST cache file(s).")
         try:
             output_file = generate_docs_dashboard(**docs_kwargs)
             print(f"Successfully generated HTML dashboard at: {output_file}")
@@ -2243,6 +2315,15 @@ def _main_impl(argv: list[str] | None = None) -> int:
             return 0
 
     return 1
+
+
+def _deprecated_provider_cli(fn: Any, args: Any) -> int:
+    """Execute a deprecated provider CLI handler with standardized TffError rendering."""
+    try:
+        return fn(args)
+    except TffError as err:
+        render_cli_error(err)
+        return 1
 
 
 def _is_debug_requested(argv: list[str] | None = None) -> bool:

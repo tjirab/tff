@@ -2201,6 +2201,147 @@ def test_cli_action_multi_project_flags(flag: str, tmp_path: Path) -> None:
         assert args.project == p1.resolve()
 
 
+@pytest.mark.parametrize("flag", ["-p", "--project"])
+def test_cli_init_project_short_and_long_flags(
+    flag: str, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    exit_code = main(["init", flag, str(tmp_path)])
+    assert exit_code == 0
+    captured = capsys.readouterr()
+    assert "Created fitness_functions.yaml" in captured.out
+    assert (tmp_path / "fitness_functions.yaml").exists()
+
+
+def test_cli_info_json_and_error_diagnostics(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    from tff.core.exceptions import TffProviderError
+
+    (tmp_path / "dbt_project.yml").touch()
+    (tmp_path / "fitness_functions.yaml").write_text(
+        "layers:\n  order: [staging, marts]\n", encoding="utf-8"
+    )
+    (tmp_path / "target").mkdir()
+    manifest_data = {
+        "metadata": {"adapter_type": "duckdb"},
+        "nodes": {
+            "model.pkg.stg_users": {
+                "resource_type": "model",
+                "name": "stg_users",
+                "original_file_path": "models/stg_users.sql",
+                "columns": {},
+                "config": {"materialized": "table"},
+                "depends_on": {"nodes": []},
+            },
+            "model.pkg.ephemeral_model": {
+                "resource_type": "model",
+                "name": "ephemeral_model",
+                "original_file_path": "models/ephemeral_model.sql",
+                "columns": {},
+                "config": {"materialized": "ephemeral"},
+                "depends_on": {"nodes": []},
+            },
+        },
+        "sources": {
+            "source.pkg.raw.users": {
+                "resource_type": "source",
+                "name": "users",
+                "original_file_path": "models/sources.yml",
+            }
+        },
+    }
+    (tmp_path / "target" / "manifest.json").write_text(
+        json.dumps(manifest_data), encoding="utf-8"
+    )
+
+    exit_code = main(["info", "-p", str(tmp_path), "--json"])
+    assert exit_code == 0
+    captured = capsys.readouterr()
+    payload = json.loads(captured.out)
+    assert payload["provider"] == "dbt"
+    assert payload["projects"] == [str(tmp_path.resolve())]
+    assert payload["config_loaded"] is True
+    assert payload["models_loaded"] == 1
+    assert payload["external_sources"] == 1
+    assert "dbt_project.yml" in payload["files"]
+
+    # Missing manifest fallback in --json mode
+    (tmp_path / "target" / "manifest.json").unlink()
+    exit_code_no_manifest = main(["info", "-p", str(tmp_path), "--json"])
+    assert exit_code_no_manifest == 0
+    payload_no_manifest = json.loads(capsys.readouterr().out)
+    assert payload_no_manifest["models_loaded"] == 0
+    assert payload_no_manifest["external_sources"] == 0
+
+    # Adapter error in non-json and json modes
+    with patch(
+        "tff.core.cli._get_adapter",
+        side_effect=TffProviderError("Adapter failed", provider="dbt"),
+    ):
+        assert main(["info", "-p", str(tmp_path), "--provider", "dbt"]) == 1
+        err_cap = capsys.readouterr()
+        assert "Error loading adapter" in err_cap.out
+        assert "FAIL Error: Adapter failed" in err_cap.err
+
+        assert main(["info", "-p", str(tmp_path), "--provider", "dbt", "--json"]) == 1
+        err_cap_json = capsys.readouterr()
+        assert err_cap_json.out == ""
+        assert "FAIL Error: Adapter failed" in err_cap_json.err
+
+    # Detection failure in --json mode keeps stdout clean
+    empty_dir = tmp_path / "empty_proj"
+    empty_dir.mkdir()
+    assert main(["info", "-p", str(empty_dir), "--json"]) == 1
+    det_cap = capsys.readouterr()
+    assert det_cap.out == ""
+    assert "FAIL Error:" in det_cap.err
+
+
+@pytest.mark.parametrize("cache_flag", ["--no-cache", "--clear-cache"])
+def test_cli_docs_cache_flags(
+    cache_flag: str, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    with (
+        patch("tff.core.cli._detect_provider", return_value="dbt"),
+        patch(
+            "tff.core.docs.generate_docs_dashboard",
+            return_value=tmp_path / "tff_report.html",
+        ) as mock_docs,
+    ):
+        exit_code = main(["docs", "-p", str(tmp_path), cache_flag])
+        assert exit_code == 0
+        mock_docs.assert_called_once()
+        captured = capsys.readouterr()
+        if cache_flag == "--clear-cache":
+            assert "Cleared" in captured.out
+
+
+@pytest.mark.parametrize(
+    "cli_module_name",
+    ["tff.dbt.cli", "tff.dataform.cli", "tff.sqlmesh.cli"],
+)
+def test_deprecated_provider_cli_tff_error(
+    tmp_path: Path, cli_module_name: str, capsys: pytest.CaptureFixture[str]
+) -> None:
+    import importlib
+    from tff.core.exceptions import TffError
+
+    cli_mod = importlib.import_module(cli_module_name)
+    with (
+        patch(f"{cli_module_name}.load_fitness_config"),
+        patch(
+            f"{cli_module_name}.run_all_checks",
+            side_effect=TffError("Provider check failed", hint="Fix model SQL"),
+        ),
+    ):
+        exit_code = cli_mod.main(["lint", "--project", str(tmp_path)])
+        assert exit_code == 1
+        captured = capsys.readouterr()
+        assert "FAIL Error: Provider check failed" in captured.err
+        assert "● Hint: Fix model SQL" in captured.err
+
+
+
 
 
 

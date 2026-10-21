@@ -74,30 +74,34 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     if args.command == "lint":
+        from tff.core.cli import _deprecated_provider_cli
         from tff.core.logs import is_debug_enabled, setup_cli_logging
 
-        setup_cli_logging(debug=is_debug_enabled(args))
-        project_root = args.project.resolve()
-        config = load_fitness_config(
-            project_root,
-            config_path=args.config,
-        )
-        checks = _parse_checks(args.checks)
+        def _run(parsed_args: argparse.Namespace) -> int:
+            setup_cli_logging(debug=is_debug_enabled(parsed_args))
+            project_root = parsed_args.project.resolve()
+            config = load_fitness_config(
+                project_root,
+                config_path=parsed_args.config,
+            )
+            checks = _parse_checks(parsed_args.checks)
 
-        findings, models_checked, executed_checks = run_all_checks(
-            project_root=project_root,
-            config=config,
-            checks=checks,
-            dialect=args.dialect,
-        )
-        passed = render_lint_report(
-            findings,
-            models_checked=models_checked,
-            executed_checks=executed_checks,
-            fail_level=args.fail_level,  # type: ignore[arg-type]
-            group_by=args.group_by,  # type: ignore[arg-type]
-        )
-        return 0 if passed else 1
+            findings, models_checked, executed_checks = run_all_checks(
+                project_root=project_root,
+                config=config,
+                checks=checks,
+                dialect=parsed_args.dialect,
+            )
+            passed = render_lint_report(
+                findings,
+                models_checked=models_checked,
+                executed_checks=executed_checks,
+                fail_level=parsed_args.fail_level,  # type: ignore[arg-type]
+                group_by=parsed_args.group_by,  # type: ignore[arg-type]
+            )
+            return 0 if passed else 1
+
+        return _deprecated_provider_cli(_run, args)
 
     return 1
 
