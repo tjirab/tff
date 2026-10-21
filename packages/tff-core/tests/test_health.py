@@ -11,6 +11,7 @@ from rich.console import Console
 from conftest import _make_finding, _make_model
 from tff.core.config import FitnessFunctionsConfig
 from tff.core.health import (
+    calculate_domain_health,
     calculate_health_scores,
     is_check_enabled,
     render_health_report,
@@ -1004,4 +1005,91 @@ def test_health_score_calibration_fixed_graph_snapshots(
         assert abs(actual_cat_score - exp_cat_score) < 0.01, (
             f"Graph scenario '{graph_scenario}' category '{cat_name}' drifted: got {actual_cat_score}, expected {exp_cat_score}"
         )
+
+
+@pytest.mark.parametrize(
+    "disk_files,use_seq_root,findings_data,expected_domains",
+    [
+        (
+            ["models/sources/m1.sql", "models/sources/m2.sql", "models/marts/finance/f1.sql"],
+            False,
+            [
+                ("banselectstar", "error", "err", "m1", "models/sources/m1.sql"),
+            ],
+            {
+                "models/sources": {"label": "sources", "score": 50.0, "models_checked": 2, "issues": 1, "errors": 1},
+                "models/marts/finance": {"label": "marts/finance", "score": 100.0, "models_checked": 1, "issues": 0, "errors": 0},
+            },
+        ),
+        (
+            ["definitions/staging/s1.sqlx", "definitions/staging/s2.sqlx"],
+            True,
+            [
+                ("banselectstar", "warning", "warn", "s1", "definitions/staging/s1.sqlx"),
+            ],
+            {
+                "definitions/staging": {"label": "staging", "score": 75.0, "models_checked": 2, "issues": 1, "errors": 0},
+            },
+        ),
+        (
+            [],
+            False,
+            [
+                ("banselectstar", "error", "err", None, None),
+            ],
+            {
+                "Project-level": {"label": "Project-level", "score": 0.0, "models_checked": 1, "issues": 1, "errors": 1},
+            },
+        ),
+    ],
+)
+def test_calculate_domain_health_parametrized(
+    tmp_path: Path,
+    disk_files: list[str],
+    use_seq_root: bool,
+    findings_data: list[tuple[str, str, str, str | None, str | None]],
+    expected_domains: dict[str, dict[str, Any]],
+) -> None:
+    """Verify calculate_domain_health as a pure data transformation across domains and roots."""
+    from tff.core.logs import get_health_json_data
+
+    for rel in disk_files:
+        file_path = tmp_path / rel
+        file_path.parent.mkdir(parents=True, exist_ok=True)
+        file_path.write_text("SELECT 1", encoding="utf-8")
+
+    config = _make_config(enabled_rules=["ban_select_star"])
+    findings = [
+        _make_finding(
+            check=item[0],
+            severity=item[1],  # type: ignore[arg-type]
+            message=item[2],
+            model=item[3],
+            path=item[4],
+        )
+        for item in findings_data
+    ]
+    root_arg: Path | list[Path] = [tmp_path] if use_seq_root else tmp_path
+    scores = calculate_health_scores(
+        findings,
+        models_checked=max(len(disk_files), 1),
+        config=config,
+        provider="dbt",
+        project_root=root_arg,
+    )
+    by_domain = calculate_domain_health(scores, config=config, project_root=root_arg)
+
+    assert set(by_domain.keys()) == set(expected_domains.keys())
+    for dom_key, exp in expected_domains.items():
+        actual = by_domain[dom_key]
+        assert actual["label"] == exp["label"]
+        assert abs(actual["score"] - exp["score"]) < 0.01
+        assert actual["models_checked"] == exp["models_checked"]
+        assert actual["issues"] == exp["issues"]
+        assert actual["errors"] == exp["errors"]
+
+    json_payload = get_health_json_data(scores, models_checked=max(len(disk_files), 1))
+    assert "by_domain" in json_payload
+    assert set(json_payload["by_domain"].keys()) == set(expected_domains.keys())
+
 

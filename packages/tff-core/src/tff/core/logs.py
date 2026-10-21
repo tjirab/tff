@@ -97,6 +97,21 @@ def get_health_json_data(
     }
     if "check_weights" in scores:
         data["check_weights"] = scores["check_weights"]
+    by_domain = scores.get("by_domain")
+    if isinstance(by_domain, dict):
+        data["by_domain"] = {
+            domain_key: {
+                "label": d["label"],
+                "score": d["score"],
+                "models_checked": d["models_checked"],
+                "issues": d["issues"],
+                "errors": d["errors"],
+                "warnings": d["warnings"],
+                "breakdown": d["breakdown"],
+                "check_scores": d["check_scores"],
+            }
+            for domain_key, d in by_domain.items()
+        }
     if duration is not None:
         data["duration_seconds"] = round(duration, 3)
     return data

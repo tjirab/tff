@@ -27,7 +27,7 @@ from __future__ import annotations
 
 from collections import defaultdict
 from pathlib import Path
-from typing import Any
+from typing import Any, Sequence
 
 from rich.console import Console
 from rich.table import Table
@@ -148,6 +148,7 @@ def calculate_health_scores(
     *,
     scope: list[str] | None = None,
     scoped_models_count: int | None = None,
+    project_root: Path | Sequence[Path] | None = None,
 ) -> dict[str, Any]:
     """Calculate health scores based on findings and enabled checks.
 
@@ -294,7 +295,7 @@ def calculate_health_scores(
         else:
             overall_score = sum(check_scores.values()) / len(enabled_checks)
 
-    return {
+    result: dict[str, Any] = {
         "overall_score": overall_score,
         "check_scores": check_scores,
         "category_scores": category_scores,
@@ -303,6 +304,10 @@ def calculate_health_scores(
         "check_weights": check_weights,
         "models_checked": models_checked,
     }
+    result["by_domain"] = calculate_domain_health(
+        result, config=config, project_root=project_root
+    )
+    return result
 
 
 DIMENSION_DISPLAY_NAMES: dict[str, str] = {
@@ -463,108 +468,13 @@ def render_health_report(
     domain_table.add_column("Issues", justify="right", width=11)
     domain_table.add_column("Breakdown", justify="left")
 
-    domain_models: dict[str, set[str]] = defaultdict(set)
-    roots_to_try = [project_root] if project_root else []
-    roots_to_try.extend([Path.cwd(), Path.cwd().parent])
-
-    for r in roots_to_try:
-        if not r or not r.exists():
-            continue
-        for base in ("models", "definitions"):
-            base_dir = r / base
-            if base_dir.is_dir():
-                for p in base_dir.rglob("*"):
-                    if p.is_file() and p.suffix in (".sql", ".sqlx"):
-                        rel = str(p.relative_to(r)).replace("\\", "/")
-                        d_key = _domain_key(rel)
-                        domain_models[d_key].add(rel)
-        if domain_models:
-            break
-
-    for check in enabled_checks:
-        for f in check_findings[check]:
-            d_key = _domain_key(f.path)
-            domain_models[d_key].add(f.path or (f.model or "project"))
-
-    if not domain_models:
-        domain_models["project"].add("project")
-
-    penalties = (
-        config.health.penalties
-        if hasattr(config, "health")
-        else HealthPenaltiesConfig()
+    domain_by_key = calculate_domain_health(
+        scores, config=config, project_root=project_root
     )
-
-    domain_data: list[dict[str, Any]] = []
-    for domain_label, model_set in domain_models.items():
-        domain_findings = [
-            f for check in enabled_checks for f in check_findings[check]
-            if _domain_key(f.path) == domain_label
-        ]
-        total_issues = len(domain_findings)
-        errors = sum(1 for f in domain_findings if f.severity == "error")
-        warnings = sum(1 for f in domain_findings if f.severity == "warning")
-
-        domain_models_checked = max(len(model_set), 1)
-
-        if not domain_findings:
-            domain_score = 100.0
-        else:
-            domain_by_check: dict[str, list[LintFinding]] = defaultdict(list)
-            for f in domain_findings:
-                domain_by_check[f.check].append(f)
-
-            local_scores = []
-            local_weights = []
-            for check in enabled_checks:
-                cf = domain_by_check.get(check, [])
-                w = check_weights.get(check, 1.0)
-                if not cf:
-                    local_scores.append(100.0)
-                    local_weights.append(w)
-                else:
-                    error_models = {f.model for f in cf if f.severity == "error" and f.model}
-                    warning_models = {f.model for f in cf if f.severity == "warning" and f.model} - error_models
-                    E = len(error_models) + sum(1 for f in cf if f.severity == "error" and not f.model)
-                    W = len(warning_models) + sum(1 for f in cf if f.severity == "warning" and not f.model)
-                    err_mult = penalties.get_check_error_penalty(check, is_project_level=False)
-                    warn_mult = penalties.get_check_warning_penalty(check, is_project_level=False)
-                    l_score = max(0.0, 100.0 * (1.0 - (err_mult * E + warn_mult * W) / domain_models_checked))
-                    local_scores.append(l_score)
-                    local_weights.append(w)
-
-            tot_w = sum(local_weights)
-            if tot_w > 0:
-                domain_score = sum(s * w for s, w in zip(local_scores, local_weights)) / tot_w
-            else:
-                domain_score = sum(local_scores) / len(local_scores)
-
-        check_counts: dict[str, int] = defaultdict(int)
-        for f in domain_findings:
-            short_lbl = SHORT_CHECK_LABELS.get(f.check, f.check.split("_")[0])
-            check_counts[short_lbl] += 1
-
-        sorted_counts = sorted(check_counts.items(), key=lambda x: x[1], reverse=True)
-        breakdown_parts = [f"{cnt} {lbl}" for lbl, cnt in sorted_counts[:4]]
-        breakdown_str = f"({', '.join(breakdown_parts)})" if breakdown_parts else ""
-
-        # Clean display label
-        clean_label = domain_label
-        for prefix in ("models/", "definitions/"):
-            if clean_label.startswith(prefix):
-                clean_label = clean_label[len(prefix):]
-
-        domain_data.append({
-            "label": clean_label,
-            "raw_label": domain_label,
-            "score": domain_score,
-            "issues": total_issues,
-            "errors": errors,
-            "warnings": warnings,
-            "breakdown": breakdown_str,
-        })
-
-    domain_data.sort(key=lambda d: (d["score"], -d["issues"]))
+    scores["by_domain"] = domain_by_key
+    domain_data = sorted(
+        domain_by_key.values(), key=lambda d: (d["score"], -d["issues"])
+    )
 
     for d in domain_data:
         d_color = "green" if d["score"] >= 90 else "yellow" if d["score"] >= 70 else "red"
@@ -578,7 +488,9 @@ def render_health_report(
     console.print("─" * width, style="dim")
 
     # 4. STATUS & ACTION
-    models_count = scores.get("models_checked") or sum(len(m) for m in domain_models.values())
+    models_count = scores.get("models_checked") or sum(
+        d["models_checked"] for d in domain_by_key.values()
+    )
     status_line = f"STATUS: {len(enabled_checks)} checks evaluated across {models_count} models."
     console.print(status_line)
 
@@ -875,6 +787,166 @@ def _domain_key(path: str | None) -> str:
 
 
 
+def _calculate_domain_check_score(
+    cf: list[LintFinding],
+    check: str,
+    domain_models_checked: int,
+    penalties: HealthPenaltiesConfig,
+) -> float:
+    """Compute the health score for a single check within a single domain."""
+    if not cf:
+        return 100.0
+    error_models = {f.model for f in cf if f.severity == "error" and f.model}
+    warning_models = (
+        {f.model for f in cf if f.severity == "warning" and f.model} - error_models
+    )
+    E = len(error_models) + sum(1 for f in cf if f.severity == "error" and not f.model)
+    W = len(warning_models) + sum(
+        1 for f in cf if f.severity == "warning" and not f.model
+    )
+    err_mult = penalties.get_check_error_penalty(check, is_project_level=False)
+    warn_mult = penalties.get_check_warning_penalty(check, is_project_level=False)
+    return max(
+        0.0, 100.0 * (1.0 - (err_mult * E + warn_mult * W) / domain_models_checked)
+    )
+
+
+def calculate_domain_health(
+    scores: dict[str, Any],
+    config: FitnessFunctionsConfig | None = None,
+    project_root: Path | Sequence[Path] | None = None,
+) -> dict[str, dict[str, Any]]:
+    """Calculate per-domain health scores, defect counts, and check breakdowns."""
+    enabled_checks = scores.get("enabled_checks", set())
+    check_findings = scores.get("check_findings", {})
+    check_weights = scores.get("check_weights", {})
+    check_scores = scores.get("check_scores", {})
+
+    domain_models: dict[str, set[str]] = defaultdict(set)
+    roots_to_try: list[Path] = []
+    if project_root is not None:
+        if isinstance(project_root, (str, Path)):
+            roots_to_try.append(Path(project_root))
+        else:
+            roots_to_try.extend(Path(p) for p in project_root)
+    else:
+        roots_to_try.extend([Path.cwd(), Path.cwd().parent])
+
+    for r in roots_to_try:
+        if not r.exists():
+            continue
+        for base in ("models", "definitions"):
+            base_dir = r / base
+            if base_dir.is_dir():
+                for p in base_dir.rglob("*"):
+                    if p.is_file() and p.suffix in (".sql", ".sqlx"):
+                        rel = str(p.relative_to(r)).replace("\\", "/")
+                        d_key = _domain_key(rel)
+                        domain_models[d_key].add(rel)
+        if domain_models:
+            break
+
+    for check in enabled_checks:
+        for f in check_findings.get(check, []):
+            d_key = _domain_key(f.path)
+            domain_models[d_key].add(f.path or (f.model or "project"))
+
+    if not domain_models:
+        domain_models["project"].add("project")
+
+    penalties = (
+        config.health.penalties
+        if config is not None and hasattr(config, "health")
+        else HealthPenaltiesConfig()
+    )
+
+    by_domain: dict[str, dict[str, Any]] = {}
+    for domain_label, model_set in domain_models.items():
+        domain_findings = [
+            f
+            for check in enabled_checks
+            for f in check_findings.get(check, [])
+            if _domain_key(f.path) == domain_label
+        ]
+        total_issues = len(domain_findings)
+        errors = sum(1 for f in domain_findings if f.severity == "error")
+        warnings = sum(1 for f in domain_findings if f.severity == "warning")
+        domain_models_checked = max(len(model_set), 1)
+
+        domain_by_check: dict[str, list[LintFinding]] = defaultdict(list)
+        for f in domain_findings:
+            domain_by_check[f.check].append(f)
+
+        domain_check_scores: dict[str, float] = {}
+        if not domain_findings or not enabled_checks:
+            domain_score = 100.0
+            for check in enabled_checks:
+                domain_check_scores[check] = 100.0
+        else:
+            local_scores: list[float] = []
+            local_weights: list[float] = []
+            for check in enabled_checks:
+                cf = domain_by_check.get(check, [])
+                w = check_weights.get(check, 1.0)
+                l_score = _calculate_domain_check_score(
+                    cf, check, domain_models_checked, penalties
+                )
+                domain_check_scores[check] = l_score
+                local_scores.append(l_score)
+                local_weights.append(w)
+
+            tot_w = sum(local_weights)
+            if tot_w > 0:
+                domain_score = (
+                    sum(s * w for s, w in zip(local_scores, local_weights)) / tot_w
+                )
+            else:
+                domain_score = sum(local_scores) / len(local_scores)
+
+        domain_path_models_count = len({f.path for f in domain_findings if f.path})
+        detailed_check_scores: dict[str, float] = {}
+        for check, cf in domain_by_check.items():
+            if domain_path_models_count > 0:
+                detailed_check_scores[check] = _calculate_domain_check_score(
+                    cf, check, domain_models_checked, penalties
+                )
+            else:
+                detailed_check_scores[check] = check_scores.get(
+                    check, domain_check_scores.get(check, 100.0)
+                )
+
+        check_counts: dict[str, int] = defaultdict(int)
+        for f in domain_findings:
+            short_lbl = SHORT_CHECK_LABELS.get(f.check, f.check.split("_")[0])
+            check_counts[short_lbl] += 1
+
+        sorted_counts = sorted(
+            check_counts.items(), key=lambda x: x[1], reverse=True
+        )
+        breakdown_parts = [f"{cnt} {lbl}" for lbl, cnt in sorted_counts[:4]]
+        breakdown_str = f"({', '.join(breakdown_parts)})" if breakdown_parts else ""
+
+        clean_label = domain_label
+        for prefix in ("models/", "definitions/"):
+            if clean_label.startswith(prefix):
+                clean_label = clean_label[len(prefix) :]
+
+        by_domain[domain_label] = {
+            "label": clean_label,
+            "raw_label": domain_label,
+            "score": domain_score,
+            "models_checked": len(model_set),
+            "issues": total_issues,
+            "errors": errors,
+            "warnings": warnings,
+            "breakdown": breakdown_str,
+            "check_scores": detailed_check_scores,
+            "check_findings": dict(domain_by_check),
+        }
+
+    return by_domain
+
+
 def _render_health_by_domain(
     scores: dict[str, Any],
     console: Console,
@@ -882,48 +954,27 @@ def _render_health_by_domain(
     verbose: bool = False,
 ) -> None:
     """Render detailed breakdown grouped by domain (path segment after models/)."""
-    penalties = (
-        config.health.penalties
-        if config and hasattr(config, "health")
-        else HealthPenaltiesConfig()
+    by_domain = scores.get("by_domain") or calculate_domain_health(
+        scores, config=config
     )
-    check_findings = scores["check_findings"]
-    enabled_checks = scores["enabled_checks"]
-    check_scores = scores["check_scores"]
+    domains_with_findings = {
+        k: v for k, v in by_domain.items() if v.get("check_findings")
+    }
 
-    # Collect all findings from enabled checks
-    all_findings: list[LintFinding] = []
-    for check in enabled_checks:
-        all_findings.extend(check_findings[check])
-
-    # Bucket by domain key
-    by_domain: dict[str, list[LintFinding]] = defaultdict(list)
-    for f in all_findings:
-        by_domain[_domain_key(f.path)].append(f)
-
-    if not by_domain:
+    if not domains_with_findings:
         console.print("[bold]Detailed Breakdown by Domain[/bold]")
         console.print("[dim]No findings in selected scope.[/dim]")
         console.print()
         return
 
-    # Determine which checks appear in each domain
     console.print("[bold]Detailed Breakdown by Domain[/bold]")
     first_domain = True
-    for domain_label in sorted(by_domain):
-        domain_findings = by_domain[domain_label]
-
-        errors_total = sum(1 for f in domain_findings if f.severity == "error")
-        warnings_total = sum(1 for f in domain_findings if f.severity == "warning")
-
-        # Per-check scores within this domain
-        domain_by_check: dict[str, list[LintFinding]] = defaultdict(list)
-        for f in domain_findings:
-            domain_by_check[f.check].append(f)
-
-        # Unique model paths seen in this domain (for denominator)
-        domain_model_paths = {f.path for f in domain_findings if f.path}
-        domain_models_checked = len(domain_model_paths)
+    for domain_label in sorted(domains_with_findings):
+        domain_info = domains_with_findings[domain_label]
+        errors_total = domain_info["errors"]
+        warnings_total = domain_info["warnings"]
+        domain_by_check = domain_info["check_findings"]
+        domain_check_scores = domain_info["check_scores"]
 
         # Summary colour for the domain header
         err_style = "bold red" if errors_total else "dim"
@@ -953,18 +1004,7 @@ def _render_health_by_domain(
             cf = domain_by_check[check]
             errors = sum(1 for f in cf if f.severity == "error")
             warnings = sum(1 for f in cf if f.severity == "warning")
-
-            # Compute a local score for this domain/check combination
-            if domain_models_checked > 0:
-                error_models = {f.model for f in cf if f.severity == "error" and f.model}
-                warning_models = {f.model for f in cf if f.severity == "warning" and f.model} - error_models
-                E = len(error_models) + sum(1 for f in cf if f.severity == "error" and not f.model)
-                W = len(warning_models) + sum(1 for f in cf if f.severity == "warning" and not f.model)
-                err_mult = penalties.get_check_error_penalty(check, is_project_level=False)
-                warn_mult = penalties.get_check_warning_penalty(check, is_project_level=False)
-                local_score = max(0.0, 100.0 * (1.0 - (err_mult * E + warn_mult * W) / domain_models_checked))
-            else:
-                local_score = check_scores.get(check, 100.0)
+            local_score = domain_check_scores.get(check, 100.0)
 
             if local_score == 100.0:
                 icon = "[green]✔[/green]"
