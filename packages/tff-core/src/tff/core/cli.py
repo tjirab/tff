@@ -12,6 +12,7 @@ import sys
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Sequence
 
+from pydantic import ValidationError
 from rich.console import Console
 from rich.markup import escape
 
@@ -22,7 +23,12 @@ from tff.core.config import (
     load_fitness_config,
     resolve_project_path,
 )
-from tff.core.exceptions import TffDependencyError, TffError, TffProviderError
+from tff.core.exceptions import (
+    TffDependencyError,
+    TffError,
+    TffProviderError,
+    normalize_validation_error,
+)
 from tff.core.logs import is_debug_enabled, setup_cli_logging
 from tff.core.registry import CheckDefinition, normalize_check_name, registry
 from tff.core.report import render_lint_report
@@ -40,7 +46,11 @@ except Exception:
     __version__ = "0.7.0"
 
 
-def render_cli_error(error: TffError | Exception, console: Console | None = None) -> None:
+def render_cli_error(
+    error: TffError | Exception,
+    console: Console | None = None,
+    debug: bool = False,
+) -> None:
     """Render a structured error diagnostic block to stderr using rich.
 
     Formats user-facing errors cleanly into three parts:
@@ -1508,8 +1518,14 @@ def _main_impl(argv: list[str] | None = None) -> int:
                     for p in cfg.plugins:
                         table.add_row("  [bold]Plugin:[/bold]", str(p))
             except Exception as e:
-
-                console.print(f"[yellow]Failed to load config: {e}[/yellow]")
+                norm_err = (
+                    normalize_validation_error(e, config_path=resolved_config)
+                    if isinstance(e, ValidationError)
+                    else e
+                )
+                console.print(f"[yellow]Failed to load config: {norm_err}[/yellow]")
+                if isinstance(norm_err, TffError):
+                    render_cli_error(norm_err, debug=is_debug)
         console.print(table)
 
 
@@ -1769,6 +1785,8 @@ def _main_impl(argv: list[str] | None = None) -> int:
             output_file = generate_docs_dashboard(**docs_kwargs)
             print(f"Successfully generated HTML dashboard at: {output_file}")
             return 0
+        except ValidationError as e:
+            raise normalize_validation_error(e, config_path=args.config) from e
         except TffError:
             raise
         except Exception as e:
@@ -1845,6 +1863,8 @@ def _main_impl(argv: list[str] | None = None) -> int:
                 config_path=args.config,
             )
             logger.debug("Loaded config: %s", config)
+        except ValidationError as e:
+            raise normalize_validation_error(e, config_path=args.config) from e
         except TffError:
             raise
         except Exception as e:
@@ -2244,8 +2264,11 @@ def main(argv: list[str] | None = None) -> int:
     try:
         try:
             return _main_impl(argv)
+        except ValidationError as exc:
+            render_cli_error(normalize_validation_error(exc), console=console, debug=debug)
+            return 1
         except TffError as err:
-            render_cli_error(err, console=console)
+            render_cli_error(err, console=console, debug=debug)
             return 1
         except KeyboardInterrupt:
             console.print("Aborted by user.")

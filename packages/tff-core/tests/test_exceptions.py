@@ -17,6 +17,7 @@ from tff.core.exceptions import (
     TffProviderError,
     handle_os_errors,
     normalize_os_error,
+    normalize_validation_error,
     translate_os_error,
 )
 from tff.core.model import ModelRepresentation, read_file_safe, read_model_sql
@@ -502,4 +503,73 @@ def test_config_validation_exceptions():
     assert isinstance(err, TffConfigError)
     assert "Invalid configuration for 'rules.metadata.grain': expected boolean" in err.message
     assert err.details == {"rule": "metadata", "field": "grain", "value": 123, "provided_type": "int"}
+
+
+@pytest.mark.parametrize(
+    "config_payload,expected_msg,expected_hint,expected_detail_subset",
+    [
+        (
+            {"workers": 0},
+            "workers must be at least 1, got 0",
+            "Set workers to an integer >= 1 in fitness_functions.yaml or CLI flag.",
+            {"field": "workers", "workers": 0, "min_workers": 1},
+        ),
+        (
+            {"rules": {"metadata": {"grain": 123}}},
+            "Invalid configuration for 'rules.metadata.grain': expected boolean",
+            "Set 'grain: true' or 'grain: false' under 'rules.metadata'.",
+            {"rule": "metadata", "field": "grain", "value": 123, "provided_type": "int"},
+        ),
+        (
+            {"unknown_top_level_key": True},
+            "Invalid configuration: 'unknown_top_level_key': Extra inputs are not permitted",
+            "Check fitness_functions.yaml against 'tff rules' or 'tff explain <rule>' for valid configuration keys and types.",
+            {"errors": 1},
+        ),
+        (
+            {"checks": {"dependency_graph": {"fan_out_warn": "not_an_int"}}},
+            "Invalid configuration: 'checks.dependency_graph.fan_out_warn': Input should be a valid integer",
+            "Check fitness_functions.yaml against 'tff rules' or 'tff explain <rule>' for valid configuration keys and types.",
+            {"errors": 1},
+        ),
+    ],
+)
+def test_normalize_validation_error_parametrized(
+    config_payload: dict,
+    expected_msg: str,
+    expected_hint: str,
+    expected_detail_subset: dict,
+) -> None:
+    from pydantic import ValidationError
+
+    with pytest.raises(ValidationError) as exc_info:
+        FitnessFunctionsConfig.model_validate(config_payload)
+
+    norm = normalize_validation_error(exc_info.value, config_path="custom_fitness.yaml")
+    assert isinstance(norm, TffConfigError)
+    assert expected_msg in norm.message
+    assert norm.hint == expected_hint
+    assert norm.path == Path("custom_fitness.yaml")
+    assert norm.details["path"] == "custom_fitness.yaml"
+    assert norm.original_error is exc_info.value
+    for k, v in expected_detail_subset.items():
+        assert norm.details[k] == v
+
+
+def test_normalize_validation_error_edge_cases() -> None:
+    # 1. Already a TffConfigError without path
+    existing = TffConfigError("Already normalized", hint="Fix it")
+    res1 = normalize_validation_error(existing, config_path="my_config.yaml")
+    assert res1 is existing
+    assert res1.path == Path("my_config.yaml")
+    assert res1.details["path"] == "my_config.yaml"
+
+    # 2. Plain Exception without .errors()
+    plain = ValueError("Raw value failure")
+    res2 = normalize_validation_error(plain)
+    assert isinstance(res2, TffConfigError)
+    assert res2.message == "Raw value failure"
+    assert res2.details == {"errors": 0}
+    assert "tff rules" in (res2.hint or "")
+
 

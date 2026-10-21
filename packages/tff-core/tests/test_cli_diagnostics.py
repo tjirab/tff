@@ -7,6 +7,7 @@ from pathlib import Path
 import sys
 from unittest.mock import MagicMock, patch
 
+import pytest
 from rich.console import Console
 
 from tff.core import render_cli_error
@@ -562,4 +563,96 @@ def test_convert_to_dependency_error_edge_cases():
     exc4 = ImportError("No package")
     res4 = _convert_to_dependency_error(exc4, provider=None)
     assert res4.hint == "Please install the missing dependency."
+
+
+@pytest.mark.parametrize(
+    "subcommand,yaml_content,expected_err_snippet,expected_hint_snippet,expected_exit",
+    [
+        (
+            "lint",
+            "workers: 0\n",
+            "✖ Error: workers must be at least 1, got 0",
+            "• Hint: Set workers to an integer >= 1 in fitness_functions.yaml or CLI flag.",
+            1,
+        ),
+        (
+            "lint",
+            "unknown_field: 42\n",
+            "✖ Error: Invalid configuration: 'unknown_field': Extra inputs are not permitted",
+            "• Hint: Check fitness_functions.yaml against 'tff rules' or 'tff explain <rule>'",
+            1,
+        ),
+        (
+            "docs",
+            "rules:\n  metadata:\n    grain: 999\n",
+            "✖ Error: Invalid configuration for 'rules.metadata.grain': expected boolean",
+            "• Hint: Set 'grain: true' or 'grain: false' under 'rules.metadata'.",
+            1,
+        ),
+        (
+            "docs",
+            "unknown_docs_key: true\n",
+            "✖ Error: Invalid configuration: 'unknown_docs_key': Extra inputs are not permitted",
+            "• Hint: Check fitness_functions.yaml against 'tff rules' or 'tff explain <rule>'",
+            1,
+        ),
+        (
+            "info",
+            "workers: 0\n",
+            "✖ Error: workers must be at least 1, got 0",
+            "• Hint: Set workers to an integer >= 1 in fitness_functions.yaml or CLI flag.",
+            0,
+        ),
+        (
+            "info",
+            "unknown_info_key: [1, 2]\n",
+            "✖ Error: Invalid configuration: 'unknown_info_key': Extra inputs are not permitted",
+            "• Hint: Check fitness_functions.yaml against 'tff rules' or 'tff explain <rule>'",
+            0,
+        ),
+    ],
+)
+def test_cli_commands_normalize_validation_error(
+    tmp_path: Path,
+    capsys,
+    subcommand: str,
+    yaml_content: str,
+    expected_err_snippet: str,
+    expected_hint_snippet: str,
+    expected_exit: int,
+):
+    """CLI commands (lint, docs, info) convert Pydantic ValidationError into structured TffConfigError."""
+    (tmp_path / "dbt_project.yml").touch()
+    (tmp_path / "target").mkdir(exist_ok=True)
+    (tmp_path / "target" / "manifest.json").write_text(
+        '{"metadata": {"adapter_type": "duckdb"}, "nodes": {}, "sources": {}}',
+        encoding="utf-8",
+    )
+    (tmp_path / "fitness_functions.yaml").write_text(yaml_content, encoding="utf-8")
+
+    exit_code = main([subcommand, "--project", str(tmp_path), "--provider", "dbt"])
+    assert exit_code == expected_exit
+
+    captured = capsys.readouterr()
+    normalized_err = " ".join(captured.err.split())
+    assert expected_err_snippet in normalized_err
+    assert expected_hint_snippet in normalized_err
+    assert "Traceback" not in captured.err
+
+
+def test_main_top_level_handles_validation_error(capsys):
+    """Direct ValidationError bubbling to main() is normalized and rendered via render_cli_error."""
+    from tff.core.config import FitnessFunctionsConfig
+
+    try:
+        FitnessFunctionsConfig(workers=0)
+    except Exception as val_err:
+        with patch("tff.core.cli._main_impl", side_effect=val_err):
+            exit_code = main(["lint"])
+            assert exit_code == 1
+
+    captured = capsys.readouterr()
+    assert "✖ Error: workers must be at least 1, got 0" in captured.err
+    assert "• Hint: Set workers to an integer >= 1" in captured.err
+
 

@@ -258,6 +258,60 @@ class TffDependencyError(TffError, ImportError):
         self.package_hint: str | None = package_hint
 
 
+def normalize_validation_error(
+    exc: Exception,
+    config_path: str | Path | None = None,
+) -> TffConfigError:
+    """Normalize a Pydantic ValidationError or configuration exception into a TffConfigError.
+
+    If any error entry in ``exc.errors()`` contains a nested ``TffConfigError`` in
+    ``ctx["error"]``, returns that ``TffConfigError`` directly (preserving its hint
+    and details, and attaching ``config_path`` if not already set). Otherwise, constructs
+    a ``TffConfigError`` summarizing the invalid field location(s) and message(s).
+    """
+    if isinstance(exc, TffConfigError):
+        if config_path is not None and exc.path is None:
+            exc.path = Path(config_path)
+            exc.details.setdefault("path", str(config_path))
+        return exc
+
+    errors_fn = getattr(exc, "errors", None)
+    raw_errors: list[dict[str, Any]] = list(errors_fn()) if callable(errors_fn) else []
+
+    for entry in raw_errors:
+        ctx = entry.get("ctx")
+        if isinstance(ctx, dict):
+            nested_err = ctx.get("error")
+            if isinstance(nested_err, TffConfigError):
+                if config_path is not None and nested_err.path is None:
+                    nested_err.path = Path(config_path)
+                    nested_err.details.setdefault("path", str(config_path))
+                if nested_err.original_error is None:
+                    nested_err.original_error = exc
+                return nested_err
+
+    summaries: list[str] = []
+    for entry in raw_errors:
+        loc = entry.get("loc") or ()
+        loc_str = ".".join(str(part) for part in loc) if loc else "<root>"
+        msg = str(entry.get("msg") or "Invalid value")
+        summaries.append(f"'{loc_str}': {msg}")
+
+    if summaries:
+        joined = "; ".join(summaries)
+        message = f"Invalid configuration: {joined}"
+    else:
+        message = str(exc) or "Invalid configuration."
+
+    return TffConfigError(
+        message,
+        hint="Check fitness_functions.yaml against 'tff rules' or 'tff explain <rule>' for valid configuration keys and types.",
+        path=config_path,
+        details={"errors": len(raw_errors)},
+        original_error=exc,
+    )
+
+
 def normalize_os_error(
     exc: Exception,
     *,
@@ -414,6 +468,7 @@ __all__ = [
     "TffGitError",
     "TffProviderError",
     "TffDependencyError",
+    "normalize_validation_error",
     "normalize_os_error",
     "translate_os_error",
     "handle_os_errors",

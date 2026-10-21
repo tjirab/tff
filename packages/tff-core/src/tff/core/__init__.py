@@ -10,6 +10,7 @@ from tff.core.exceptions import (
     TffProviderError,
     handle_os_errors,
     normalize_os_error,
+    normalize_validation_error,
     translate_os_error,
 )
 from tff.core.model import ModelRepresentation, read_file_safe, read_model_sql
@@ -27,6 +28,7 @@ __all__ = [
     "handle_os_errors",
     "mask_sensitive_args",
     "normalize_os_error",
+    "normalize_validation_error",
     "read_file_safe",
     "read_model_sql",
     "render_cli_error",
