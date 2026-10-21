@@ -88,10 +88,32 @@ checks:
     enabled: true
     severity: error
 
+  # Enforce custom layer/domain dependency exclusions and allowed exceptions
+  custom_exclusions:
+    enabled: true
+    exclusions: []
+    allowed_exceptions: []
+
+  # Enforce column parity and dimension parity contracts across model groups
+  schema_contracts:
+    enabled: true
+    column_parity_groups: []
+    dimension_parity_groups: []
+
 # Model-level SQL rules
 rules:
   # Prohibit 'SELECT *' to avoid silent breakage from upstream schema drift
   ban_select_star:
+    enabled: true
+    skip_layers: [sources]
+
+  # Require explicit column names instead of positional references in GROUP BY
+  no_positional_group_by:
+    enabled: true
+    skip_layers: [sources]
+
+  # Require explicit column names instead of positional references in ORDER BY
+  no_positional_order_by:
     enabled: true
     skip_layers: [sources]
 
@@ -132,6 +154,21 @@ rules:
     enabled: true
     layer_name: marts
     rule: prefix_with_subdirectory
+
+  # Enforce standardized column naming conventions and replacements
+  column_names:
+    enabled: true
+    replacements: {}
+
+  # Enforce expected data types for columns matching specific naming patterns
+  column_types:
+    enabled: true
+    rules: []
+
+  # Require standardized classification macros for specific columns
+  classification_macros:
+    enabled: true
+    skip_layers: [sources]
 
 # External plugins and custom rules (paths to Python files or installed packages)
 # plugins:

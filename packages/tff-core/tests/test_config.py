@@ -1146,4 +1146,24 @@ def test_validation_errors_standardized_to_tff_config_error() -> None:
     assert err.details == {"field": "chunk_size", "chunk_size": 0, "min_chunk_size": 1}
 
 
+def test_starter_config_yaml_contains_all_rules_and_checks() -> None:
+    import yaml
+    from tff.core.config import ChecksConfig, RulesConfig
+
+    raw = yaml.safe_load(STARTER_CONFIG_YAML)
+    assert isinstance(raw, dict)
+
+    validated = FitnessFunctionsConfig.model_validate(raw)
+    assert validated == FitnessFunctionsConfig()
+
+    expected_checks = set(ChecksConfig.model_fields.keys())
+    assert set(raw.get("checks", {}).keys()) == expected_checks
+
+    expected_rules = set(RulesConfig.model_fields.keys()) - {
+        "no_positional_group_by_or_order_by"
+    }
+    assert expected_rules.issubset(set(raw.get("rules", {}).keys()))
+
+
+
 
