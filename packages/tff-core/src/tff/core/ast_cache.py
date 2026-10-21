@@ -7,6 +7,7 @@ import logging
 import os
 import pickle
 import tempfile
+import threading
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -23,6 +24,7 @@ AST_CACHE_SUBDIR = "ast"
 SQLGLOT_VERSION = getattr(sqlglot, "__version__", "unknown")
 
 _MEM_CACHE: dict[str, exp.Expression] = {}
+_MEM_CACHE_LOCK = threading.Lock()
 _MAX_MEM_CACHE_SIZE = 1024
 
 
@@ -73,8 +75,10 @@ def get_cached_ast(
 ) -> exp.Expression | None:
     """Retrieve a cached AST expression from memory or disk by cache key if available."""
     # Fast L1 in-memory lookup
-    if cache_key in _MEM_CACHE:
-        return _MEM_CACHE[cache_key]
+    with _MEM_CACHE_LOCK:
+        cached = _MEM_CACHE.get(cache_key)
+        if cached is not None:
+            return cached.copy()
 
     target_dir = cache_dir or get_ast_cache_dir(project_root)
     cache_file = target_dir / cache_key[:2] / f"{cache_key[2:]}.ast"
@@ -86,9 +90,10 @@ def get_cached_ast(
         data = cache_file.read_bytes()
         expr = pickle.loads(data)
         logger.debug("AST cache hit for key %s (%s)", cache_key[:12], cache_file.name)
-        if len(_MEM_CACHE) >= _MAX_MEM_CACHE_SIZE:
-            _MEM_CACHE.pop(next(iter(_MEM_CACHE)))
-        _MEM_CACHE[cache_key] = expr
+        with _MEM_CACHE_LOCK:
+            if len(_MEM_CACHE) >= _MAX_MEM_CACHE_SIZE:
+                _MEM_CACHE.pop(next(iter(_MEM_CACHE)))
+            _MEM_CACHE[cache_key] = expr.copy()
         return expr
     except Exception as exc:
         logger.debug("Failed to load cached AST from %s: %s", cache_file, exc)
@@ -103,9 +108,10 @@ def set_cached_ast(
     project_root: Path | None = None,
 ) -> None:
     """Atomically store an AST expression into the in-memory and disk cache."""
-    if len(_MEM_CACHE) >= _MAX_MEM_CACHE_SIZE:
-        _MEM_CACHE.pop(next(iter(_MEM_CACHE)))
-    _MEM_CACHE[cache_key] = expression
+    with _MEM_CACHE_LOCK:
+        if len(_MEM_CACHE) >= _MAX_MEM_CACHE_SIZE:
+            _MEM_CACHE.pop(next(iter(_MEM_CACHE)))
+        _MEM_CACHE[cache_key] = expression.copy()
 
     target_dir = cache_dir or get_ast_cache_dir(project_root)
     subdir = target_dir / cache_key[:2]
@@ -166,7 +172,8 @@ def clear_ast_cache(
     custom_dir: Path | str | None = None,
 ) -> int:
     """Remove all cached AST files and return the number of deleted files."""
-    _MEM_CACHE.clear()
+    with _MEM_CACHE_LOCK:
+        _MEM_CACHE.clear()
     target_dir = get_ast_cache_dir(project_root, custom_dir=custom_dir)
     if not target_dir.exists():
         return 0
