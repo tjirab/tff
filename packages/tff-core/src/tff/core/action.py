@@ -165,20 +165,46 @@ def compare_findings(
     return new_findings, resolved_findings
 
 
+_SANITIZED_GIT_ENV_VARS = frozenset({
+    "GIT_DIR",
+    "GIT_WORK_TREE",
+    "GIT_INDEX_FILE",
+    "GIT_COMMON_DIR",
+    "GIT_PREFIX",
+    "GIT_OBJECT_DIRECTORY",
+})
+
+
+def _git_clean_env() -> dict[str, str]:
+    """Return a copy of os.environ with git override variables removed."""
+    return {
+        k: v
+        for k, v in os.environ.items()
+        if k not in _SANITIZED_GIT_ENV_VARS
+    }
+
+
 def get_modified_files(
     repo_root: Path,
     base_ref: str = "main",
 ) -> set[str]:
     """Get list of modified/added files compared to base_ref."""
+    clean_env = _git_clean_env()
     try:
         cmd = ["git", "diff", "--name-only", f"origin/{base_ref}...HEAD"]
-        res = subprocess.run(cmd, cwd=str(repo_root), capture_output=True, text=True)
+        res = subprocess.run(
+            cmd, cwd=str(repo_root), capture_output=True, text=True, env=clean_env
+        )
         if res.returncode != 0:
             cmd = ["git", "diff", "--name-only", f"{base_ref}...HEAD"]
-            res = subprocess.run(cmd, cwd=str(repo_root), capture_output=True, text=True)
+            res = subprocess.run(
+                cmd, cwd=str(repo_root), capture_output=True, text=True, env=clean_env
+            )
         if res.returncode != 0:
             cmd = ["git", "diff", "--name-only", "HEAD~1"]
-            res = subprocess.run(cmd, cwd=str(repo_root), capture_output=True, text=True)
+            res = subprocess.run(
+                cmd, cwd=str(repo_root), capture_output=True, text=True, env=clean_env
+            )
 
         if res.returncode == 0:
             return {
@@ -351,6 +377,7 @@ def fetch_base_scores(
     """Attempt to checkout base_ref in a temp git worktree and calculate baseline health score."""
     roots = normalize_project_roots(project_dir)
     primary_root = roots[0]
+    clean_env = _git_clean_env()
     try:
         res = subprocess.run(
             ["git", "rev-parse", "--show-toplevel"],
@@ -358,6 +385,7 @@ def fetch_base_scores(
             capture_output=True,
             text=True,
             check=True,
+            env=clean_env,
         )
         repo_root = Path(res.stdout.strip()).resolve()
     except Exception as e:
@@ -371,6 +399,7 @@ def fetch_base_scores(
             cwd=str(repo_root),
             capture_output=True,
             text=True,
+            env=clean_env,
         )
 
         target_ref = f"origin/{base_ref}"
@@ -383,12 +412,20 @@ def fetch_base_scores(
             target_ref,
         ]
         res = subprocess.run(
-            worktree_cmd, cwd=str(repo_root), capture_output=True, text=True
+            worktree_cmd,
+            cwd=str(repo_root),
+            capture_output=True,
+            text=True,
+            env=clean_env,
         )
         if res.returncode != 0:
             worktree_cmd[-1] = base_ref
             res = subprocess.run(
-                worktree_cmd, cwd=str(repo_root), capture_output=True, text=True
+                worktree_cmd,
+                cwd=str(repo_root),
+                capture_output=True,
+                text=True,
+                env=clean_env,
             )
             if res.returncode != 0:
                 logger.debug("git worktree add failed: %s", res.stderr)
@@ -430,6 +467,7 @@ def fetch_base_scores(
             cwd=str(repo_root),
             capture_output=True,
             text=True,
+            env=clean_env,
         )
         if Path(temp_dir).exists():
             shutil.rmtree(temp_dir, ignore_errors=True)
@@ -899,6 +937,7 @@ def execute_action(args: argparse.Namespace) -> int:
             capture_output=True,
             text=True,
             check=True,
+            env=_git_clean_env(),
         )
         repo_root = Path(res.stdout.strip()).resolve()
     except Exception:
@@ -971,20 +1010,6 @@ def execute_action(args: argparse.Namespace) -> int:
         current_data["warnings_count"] = sum(
             1 for f in filtered_findings if f.get("severity") == "warning"
         )
-    else:
-        diff_base = getattr(args, "base_ref", None) or os.environ.get("GITHUB_BASE_REF") or "main"
-        try:
-            res = subprocess.run(
-                ["git", "rev-parse", "--show-toplevel"],
-                cwd=str(primary_root),
-                capture_output=True,
-                text=True,
-                check=True,
-            )
-            repo_root = Path(res.stdout.strip()).resolve()
-        except Exception:
-            repo_root = primary_root
-        modified_files = get_modified_files(repo_root, base_ref=diff_base)
 
     # 3. Emit GitHub Actions annotations
     if getattr(args, "annotations", True):

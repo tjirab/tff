@@ -18,6 +18,7 @@ from tff.core.action import (
     PR_COMMENT_MARKER,
     REMEDIATION_SNIPPET,
     _format_finding_row,
+    _git_clean_env,
     compare_findings,
     detect_pr_context,
     evaluate_pass_fail,
@@ -1696,3 +1697,77 @@ def test_autofixable_constants() -> None:
     assert "filenameequalsmodelname" in AUTOFIXABLE_CHECKS
     assert "filename_equals_modelname" in AUTOFIXABLE_CHECKS
     assert "tff lint --fix --staged" in REMEDIATION_SNIPPET
+
+
+@pytest.mark.parametrize(
+    "git_env_var",
+    [
+        "GIT_DIR",
+        "GIT_WORK_TREE",
+        "GIT_INDEX_FILE",
+        "GIT_COMMON_DIR",
+        "GIT_PREFIX",
+        "GIT_OBJECT_DIRECTORY",
+    ],
+)
+def test_git_clean_env_sanitizes_variables(git_env_var: str, tmp_path: Path) -> None:
+    with patch.dict(
+        os.environ,
+        {git_env_var: "/leaked/git/path", "KEEP_VAR": "preserved"},
+    ):
+        cleaned = _git_clean_env()
+        assert git_env_var not in cleaned
+        assert cleaned.get("KEEP_VAR") == "preserved"
+
+        with patch("subprocess.run") as mock_run:
+            mock_run.return_value = MagicMock(returncode=0, stdout="models/a.sql\n")
+            get_modified_files(tmp_path, base_ref="main")
+            called_env = mock_run.call_args.kwargs.get("env")
+            assert called_env is not None
+            assert git_env_var not in called_env
+
+
+@pytest.mark.parametrize("only_changed", [False, True])
+def test_execute_action_invokes_get_modified_files_once_and_sanitizes_git_env(
+    only_changed: bool,
+) -> None:
+    args = argparse.Namespace(
+        project=_MINIMAL_DBT,
+        provider="auto",
+        config="fitness_functions.yaml",
+        checks="layer_integrity",
+        fail_under=0.0,
+        fail_level="error",
+        only_changed=only_changed,
+        comment_pr="false",
+        github_token=None,
+        base_ref="main",
+        diff_against_base=False,
+        annotations=False,
+        pr_number=None,
+        repo=None,
+        dialect=None,
+        manifest=None,
+        json=True,
+    )
+    leaked_env = {
+        "GIT_DIR": "/fake/.git",
+        "GIT_WORK_TREE": "/fake/wt",
+        "GIT_INDEX_FILE": "/fake/index",
+        "GIT_COMMON_DIR": "/fake/common",
+    }
+    with patch.dict(os.environ, leaked_env), patch("subprocess.run") as mock_subproc, patch(
+        "tff.core.action.get_modified_files", return_value={"README.md"}
+    ) as mock_get_modified:
+        mock_subproc.return_value = MagicMock(
+            returncode=0, stdout=str(_REPO_ROOT) + "\n"
+        )
+        code = execute_action(args)
+        assert code == 0
+        mock_get_modified.assert_called_once()
+        mock_subproc.assert_called_once()
+        called_env = mock_subproc.call_args.kwargs.get("env")
+        assert called_env is not None
+        for var in leaked_env:
+            assert var not in called_env
+
