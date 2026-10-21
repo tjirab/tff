@@ -375,4 +375,15 @@ def test_readme_branding_asset_references() -> None:
     assert '<img src="docs/assets/tff.svg" alt="tff logo" width="160">' in readme
 
 
+def test_dashboard_template_resource_loading() -> None:
+    from tff.core.docs import HTML_TEMPLATE, _HTML_TEMPLATE, _load_dashboard_template
+
+    loaded = _load_dashboard_template()
+    assert loaded == HTML_TEMPLATE
+    assert _HTML_TEMPLATE == HTML_TEMPLATE
+    assert "<!-- INSERT_TFF_DATA_HERE -->" in loaded
+    assert "tff Health & Documentation Dashboard" in loaded
+
+
+
 

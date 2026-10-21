@@ -1036,7 +1036,12 @@ def test_registry_get_by_category() -> None:
 
 
 def test_all_builtin_checks_have_rich_metadata() -> None:
-    fresh_reg = create_default_registry()
+    from tff.core.catalog import get_builtin_checks, register_builtin_checks
+
+    fresh_reg = CheckRegistry()
+    register_builtin_checks(fresh_reg)
+    cfg = FitnessFunctionsConfig()
+    assert len(get_builtin_checks()) == len(fresh_reg.all_checks())
     for check in fresh_reg.all_checks():
         assert check.description, f"{check.id} is missing description"
         assert check.what_it_checks, f"{check.id} what_it_checks property failed"
@@ -1044,6 +1049,9 @@ def test_all_builtin_checks_have_rich_metadata() -> None:
         assert check.how_to_fix, f"{check.id} is missing how_to_fix"
         assert check.configuration_example, f"{check.id} is missing configuration_example"
         assert len(check.providers) > 0, f"{check.id} has no providers"
+        assert isinstance(check.is_enabled(cfg, provider="dbt"), bool)
+        assert isinstance(check.is_enabled(cfg, provider="sqlmesh"), bool)
+
 
 
 @pytest.mark.parametrize(
