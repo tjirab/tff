@@ -70,23 +70,6 @@ class DBTAdapter(PipelineAdapter):
             kwargs["chunk_size"] = chunk_size
         return run_all_checks(**kwargs)
 
-    def apply_metadata_fix(
-        self,
-        project_root: Path,
-        abs_path: Path,
-        model_name: str,
-        missing_owner: bool,
-        missing_description: bool,
-    ) -> str | None:
-        from tff.core.autofix import fix_dbt_metadata
-
-        return fix_dbt_metadata(
-            abs_path=abs_path,
-            model_name=model_name,
-            missing_owner=missing_owner,
-            missing_description=missing_description,
-        )
-
     def get_diagnostic_files(
         self, project_root: Path | Sequence[Path]
     ) -> list[tuple[str, str]]:

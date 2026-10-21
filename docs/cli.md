@@ -61,7 +61,7 @@ tff check [options]
 | `--group-by` | `model`, `connascence` | `model` | How to group violations in the console report. |
 | `--dialect DIALECT` | String | (auto-inferred) | SQL dialect of models (e.g. `duckdb`, `snowflake`, `bigquery`). |
 | `--manifest PATH` | File Path | (auto-discovered) | Path to precompiled manifest (dbt `manifest.json` or Dataform `compilation_result.json`). |
-| `--fix` | Flag | `false` | Automatically fix simple violations (e.g. rewrite positional `GROUP BY`/`ORDER BY`, lift nested subqueries in final `SELECT` to CTEs, and scaffold missing metadata). |
+| `--fix` | Flag | `false` | Automatically fix safe violations (synchronizes SQLMesh and Dataform model name declarations with source file stems). |
 | `--format` | `text`, `json`, `sarif`, `github` | `text` | Output format to stdout. |
 | `--json` | Flag | `false` | Shorthand for `--format json`. |
 | `--github-annotations` | Flag | (auto if CI) | Emit GitHub Actions workflow commands (`::error` / `::warning`) to stderr. |
@@ -170,7 +170,7 @@ tff action [options]
 
 | Option | Type / Choices | Default | Description |
 | :--- | :--- | :--- | :--- |
-| `--project PATH` | Directory Path | `.` | Project root directory. |
+| `--project PATH`, `-p PATH` | Directory Path | `.` | Project root directory (can be specified multiple times for multi-repo projects). |
 | `--provider` | `auto`, `dbt`, `sqlmesh`, `dataform` | `auto` | Pipeline engine provider. |
 | `--fail-under SCORE` | Float (`0.0` - `100.0`) | `0.0` | Minimum overall health score required to pass. |
 | `--fail-level` | `error`, `warning` | `error` | Failure severity level triggering exit code `1`. |
@@ -195,6 +195,9 @@ tff action --base-ref main --fail-under 80
 
 # Only gate modified files in the current branch
 tff action --base-ref main --only-changed --fail-under 85
+
+# Multi-project workspace execution
+tff action -p packages/proj1 -p packages/proj2 --base-ref main
 ```
 
 ---

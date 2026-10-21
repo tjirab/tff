@@ -55,6 +55,18 @@ def test_get_relative_path_inside_cwd():
     assert _get_relative_path(cwd_file) == "some_dir/model.sql"
 
 
+def test_get_relative_path_multiple_project_roots(tmp_path: Path):
+    r1 = tmp_path / "proj1"
+    r2 = tmp_path / "proj2"
+    r1.mkdir()
+    r2.mkdir()
+    f1 = r1 / "models" / "m1.sql"
+    f2 = r2 / "models" / "m2.sql"
+    assert _get_relative_path(f1, project_root=[r1, r2]) == "models/m1.sql"
+    assert _get_relative_path(f2, project_root=[r1, r2]) == "models/m2.sql"
+
+
+
 def test_format_github_annotation_error_and_warning():
     f_err = LintFinding(
         check="duplicate_ctes",

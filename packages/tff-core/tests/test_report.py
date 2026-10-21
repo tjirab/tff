@@ -10,6 +10,7 @@ from tff.core.report import (
     _format_file_reference,
     _is_fixable_finding,
     _summary_check_names,
+    DisjointSet,
     group_findings_by_model,
     normalize_model_name,
     render_lint_report,
@@ -467,16 +468,43 @@ def test_render_lint_report_with_duration() -> None:
 
 
 @pytest.mark.parametrize(
-    "kwargs,expected_plain",
+    "kwargs,expected_plain,expected_link_substr,has_link",
     [
-        ({"path": "models/core/dim_users.sql"}, "models/core/dim_users.sql"),
-        ({"path": "models/core/dim_users.sql", "line": 42}, "models/core/dim_users.sql:42"),
+        ({"path": "models/core/dim_users.sql"}, "models/core/dim_users.sql", "/models/core/dim_users.sql", True),
+        ({"path": "models/core/dim_users.sql", "line": 42}, "models/core/dim_users.sql:42", "/models/core/dim_users.sql", True),
+        ({"path": "models/sub dir/dim users.sql"}, "models/sub dir/dim users.sql", "/models/sub%20dir/dim%20users.sql", True),
+        ({"path": "models/core/dim_users.sql", "display_text": "custom:123"}, "custom:123", "/models/core/dim_users.sql", True),
+        ({"path": ""}, "", None, False),
     ],
 )
-def test_format_file_reference(kwargs: dict[str, Any], expected_plain: str) -> None:
+def test_format_file_reference(
+    kwargs: dict[str, Any],
+    expected_plain: str,
+    expected_link_substr: str | None,
+    has_link: bool,
+) -> None:
     ref = _format_file_reference(**kwargs)
     assert ref.plain == expected_plain
-    assert "link file://" in str(ref.style)
+    if has_link:
+        assert ref.style is not None
+        assert str(ref.style.link).startswith("file://")
+        assert expected_link_substr is not None and expected_link_substr in str(ref.style.link)
+    else:
+        assert ref.style is None
+
+
+def test_format_file_reference_windows_path(monkeypatch: pytest.MonkeyPatch) -> None:
+    from pathlib import PureWindowsPath
+
+    mock_resolved = PureWindowsPath(r"C:\Users\Jane Doe\project\models\model.sql")
+    monkeypatch.setattr(
+        "tff.core.report.Path.resolve",
+        lambda self: mock_resolved,
+    )
+    ref = _format_file_reference(r"models\model.sql")
+    assert ref.plain == r"models\model.sql"
+    assert ref.style is not None
+    assert ref.style.link == "file:///C:/Users/Jane%20Doe/project/models/model.sql"
 
 
 @pytest.mark.parametrize(
@@ -620,6 +648,83 @@ def test_group_findings_by_model_same_stem_different_folders_remain_isolated() -
     assert {g["name"] for g in groups} == {"staging.users", "marts.users"}
 
 
+@pytest.mark.parametrize(
+    ("operations", "expected_roots", "expected_connected"),
+    [
+        (
+            [("union", "a", "b"), ("union", "b", "c")],
+            {"a": "a", "b": "a", "c": "a"},
+            [("a", "c", True), ("a", "d", False)],
+        ),
+        (
+            [("union", "a", "b"), ("union", "c", "d"), ("union", "b", "d")],
+            {"a": "a", "b": "a", "c": "a", "d": "a"},
+            [("a", "d", True), ("b", "c", True)],
+        ),
+        (
+            [("union", "a", "a")],
+            {"a": "a"},
+            [("a", "a", True)],
+        ),
+    ],
+)
+def test_disjoint_set_operations(
+    operations: list[tuple[str, str, str]],
+    expected_roots: dict[str, str],
+    expected_connected: list[tuple[str, str, bool]],
+) -> None:
+    dsu = DisjointSet()
+    for op, x, y in operations:
+        if op == "union":
+            dsu.union(x, y)
+    for elem, root in expected_roots.items():
+        assert dsu.find(elem) == dsu.find(root)
+    for x, y, connected in expected_connected:
+        assert (dsu.find(x) == dsu.find(y)) is connected
+
+
+@pytest.mark.parametrize(
+    ("findings_data", "expected_groups_count", "expected_names"),
+    [
+        (
+            [
+                {"model": "staging.users", "path": None},
+                {"model": "marts.users", "path": None},
+            ],
+            2,
+            {"staging.users", "marts.users"},
+        ),
+        (
+            [
+                {"model": "", "path": ""},
+                {"model": None, "path": None},
+            ],
+            0,
+            set(),
+        ),
+        (
+            [
+                {"model": "staging.users", "path": None},
+                {"model": None, "path": "models/staging/users.sql"},
+            ],
+            1,
+            {"staging.users"},
+        ),
+    ],
+)
+def test_group_findings_by_model_permutations(
+    findings_data: list[dict[str, Any]],
+    expected_groups_count: int,
+    expected_names: set[str],
+) -> None:
+    findings = [_make_finding(**data) for data in findings_data]
+    groups, repo = group_findings_by_model(findings)
+    assert len(groups) == expected_groups_count
+    assert {g["name"] for g in groups} == expected_names
+    if not expected_groups_count:
+        assert len(repo) == len(findings_data)
+
+
 def test_render_lint_report_model_grouping_e2e() -> None:
     """End-to-end integration test verifying Rich console output with model header."""
     from rich.console import Console
@@ -649,9 +754,9 @@ def test_render_lint_report_tree_branches_and_footer() -> None:
     console = Console(record=True, width=120)
     findings = [
         _make_finding(
-            check="banselectstar",
+            check="filenameequalsmodelname",
             severity="error",
-            message="SELECT * is prohibited.",
+            message="Model name does not match file stem.",
             model="dim_users",
             path="models/core/dim_users.sql",
             line=42,
@@ -685,7 +790,7 @@ def test_render_lint_report_tree_branches_and_footer() -> None:
     assert "models/core/dim_users.sql" in output
     assert "42:1" in output
     assert "50:1" in output
-    assert "banselectstar" in output
+    assert "filenameequalsmodelname" in output
     assert "name" in output
     assert "position" in output
     assert "FAIL — 1 error block merge. Run `tff --fix` for auto-correctable rules." in output
@@ -712,16 +817,16 @@ def test_format_connascence_tag_helper(category: str, expected_tag: str) -> None
 @pytest.mark.parametrize(
     "check,message,expected_fixable",
     [
-        ("nopositionalgroupbyororderby", "pos", True),
-        ("nomissingdescription", "desc", True),
-        ("martmodelnamingconvention", "mart", True),
-        ("mart_naming", "mart", True),
+        ("nopositionalgroupbyororderby", "pos", False),
+        ("nomissingdescription", "desc", False),
+        ("martmodelnamingconvention", "mart", False),
+        ("mart_naming", "mart", False),
         ("filenameequalsmodelname", "name", True),
         ("filename_equals_modelname", "name", True),
-        ("sqlcomplexity", "nested subquery in final SELECT", True),
+        ("sqlcomplexity", "nested subquery in final SELECT", False),
         ("sqlcomplexity", "too many CTEs", False),
-        ("banselectstar", "select *", True),
-        ("ban_select_star", "select *", True),
+        ("banselectstar", "select *", False),
+        ("ban_select_star", "select *", False),
         ("jointypeparity", "type mismatch", False),
     ],
 )

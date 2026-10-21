@@ -183,14 +183,42 @@ class ModelTypeResolver:
         return self._lookup.get(parts[-1], {}).get(clean_col)
 
 
+_STRING_FUNCTIONS = (
+    exp.Lower,
+    exp.Upper,
+    exp.Trim,
+    exp.Concat,
+    exp.ConcatWs,
+    exp.Substring,
+    exp.DPipe,
+    exp.ToChar,
+)
+
+_TEMPORAL_TIMESTAMP_FUNCTIONS = (
+    exp.DateTrunc,
+    exp.TimestampTrunc,
+    exp.DatetimeTrunc,
+    exp.Timestamp,
+    exp.TsOrDsToTimestamp,
+    exp.Datetime,
+    exp.CurrentTimestamp,
+)
+
+_TEMPORAL_DATE_FUNCTIONS = (
+    exp.Date,
+    exp.TsOrDsToDate,
+    exp.CurrentDate,
+)
+
+
 def resolve_expression_type(
-    expr: exp.Expression,
+    expr: exp.Expression | None,
     scope: Scope,
     resolver: ModelTypeResolver,
     depth: int = 0,
 ) -> str | None:
     """Infer or look up the data type of an expression in a given AST Scope."""
-    if depth > 10:
+    if expr is None or depth > 10:
         return None
 
     if isinstance(expr, exp.Cast):
@@ -204,6 +232,54 @@ def resolve_expression_type(
 
     if isinstance(expr, exp.Paren):
         return resolve_expression_type(expr.this, scope, resolver, depth + 1)
+
+    if isinstance(expr, _STRING_FUNCTIONS):
+        return "text"
+
+    if isinstance(expr, _TEMPORAL_DATE_FUNCTIONS):
+        return "date"
+
+    if isinstance(expr, _TEMPORAL_TIMESTAMP_FUNCTIONS):
+        return "timestamp"
+
+    if isinstance(expr, exp.Coalesce):
+        args = [expr.this] if expr.this is not None else []
+        args.extend(expr.expressions)
+        for arg in args:
+            arg_type = resolve_expression_type(arg, scope, resolver, depth + 1)
+            if arg_type is not None:
+                return arg_type
+        return None
+
+    if isinstance(expr, exp.If):
+        true_expr = expr.args.get("true")
+        if true_expr is not None:
+            res = resolve_expression_type(true_expr, scope, resolver, depth + 1)
+            if res is not None:
+                return res
+        false_expr = expr.args.get("false")
+        if false_expr is not None:
+            res = resolve_expression_type(false_expr, scope, resolver, depth + 1)
+            if res is not None:
+                return res
+        return None
+
+    if isinstance(expr, exp.Case):
+        for if_node in expr.args.get("ifs") or []:
+            true_expr = if_node.args.get("true") if hasattr(if_node, "args") else None
+            if true_expr is not None:
+                res = resolve_expression_type(true_expr, scope, resolver, depth + 1)
+                if res is not None:
+                    return res
+        default_expr = expr.args.get("default")
+        if default_expr is not None:
+            return resolve_expression_type(default_expr, scope, resolver, depth + 1)
+        return None
+
+    if isinstance(expr, (exp.Nullif, exp.Abs)):
+        if expr.this is not None:
+            return resolve_expression_type(expr.this, scope, resolver, depth + 1)
+        return None
 
     if isinstance(expr, exp.Column):
         col_name = expr.name.lower()

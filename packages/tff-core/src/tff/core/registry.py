@@ -666,10 +666,10 @@ def create_default_registry() -> CheckRegistry:
             docs_url=f"{docs_base}ban-select-ban_select_star",
             description="Disallows wildcard SELECT * statements in model queries. Requires explicit column naming to reduce model coupling. Aggregate expressions (e.g. COUNT(*)) are permitted.",
             why_it_matters="Using wildcard SELECT * creates implicit coupling (Connascence of Name) between models. Upstream schema changes or column additions propagate unexpectedly downstream, breaking contracts, invalidating views, or altering model schemas.",
-            how_to_fix="Explicitly list the required columns in the SELECT clause instead of using *, or run 'tff lint --fix' to expand known upstream columns automatically.",
+            how_to_fix="Explicitly list the required columns in the SELECT clause instead of using *.",
             configuration_example="rules:\n  ban_select_star:\n    enabled: true\n    skip_layers: [sources]",
             providers=("dbt", "sqlmesh", "dataform"),
-            is_fixable=True,
+            is_fixable=False,
         )
     )
     reg.register(
@@ -729,7 +729,7 @@ def create_default_registry() -> CheckRegistry:
             how_to_fix="Prefix the model file name with the name of its enclosing subdirectory (e.g. rename ad_performance.sql to marketing_ad_performance.sql).",
             configuration_example="rules:\n  mart_naming:\n    enabled: true\n    layer_name: marts\n    rule: prefix_with_subdirectory",
             providers=("dbt", "sqlmesh", "dataform"),
-            is_fixable=True,
+            is_fixable=False,
         )
     )
     reg.register(
@@ -855,10 +855,10 @@ def create_default_registry() -> CheckRegistry:
             docs_url=f"{docs_base}no-positional-group-by-no_positional_group_by-auto-fixable",
             description="Prevents using ordinal integers (e.g. GROUP BY 1, 2) instead of explicit column name references.",
             why_it_matters="Positional grouping introduces Connascence of Position (CoP). Modifying the SELECT list order unintentionally alters grouping semantics without syntax errors.",
-            how_to_fix="Replace positional integers with explicit column names or aliases, or run 'tff lint --fix' to rewrite them automatically.",
+            how_to_fix="Replace positional integers with explicit column names or aliases.",
             configuration_example="rules:\n  no_positional_group_by:\n    enabled: true\n    skip_layers: [sources]",
             providers=("dbt", "sqlmesh", "dataform"),
-            is_fixable=True,
+            is_fixable=False,
         )
     )
     reg.register(
@@ -879,10 +879,10 @@ def create_default_registry() -> CheckRegistry:
             docs_url=f"{docs_base}no-positional-order-by-no_positional_order_by-auto-fixable",
             description="Prevents using ordinal integers (e.g. ORDER BY 1 DESC) instead of explicit column name references.",
             why_it_matters="Positional sorting introduces Connascence of Position (CoP). Modifying the SELECT list order unintentionally alters ordering semantics without syntax errors.",
-            how_to_fix="Replace positional integers with explicit column names or aliases, or run 'tff lint --fix' to rewrite them automatically.",
+            how_to_fix="Replace positional integers with explicit column names or aliases.",
             configuration_example="rules:\n  no_positional_order_by:\n    enabled: true\n    skip_layers: [sources]",
             providers=("dbt", "sqlmesh", "dataform"),
-            is_fixable=True,
+            is_fixable=False,
         )
     )
     reg.register(
@@ -899,10 +899,10 @@ def create_default_registry() -> CheckRegistry:
             docs_url=f"{docs_base}no-positional-group-byorder-by-no_positional_group_by_or_order_by-auto-fixable",
             description="Prevents using ordinal integers (e.g. GROUP BY 1, 2 or ORDER BY 1 DESC) instead of explicit column name references.",
             why_it_matters="Positional grouping introduces Connascence of Position (CoP). Modifying the SELECT list order unintentionally alters grouping and sorting semantics without syntax errors.",
-            how_to_fix="Replace positional integers with explicit column names or aliases, or run 'tff lint --fix' to rewrite them automatically.",
+            how_to_fix="Replace positional integers with explicit column names or aliases.",
             configuration_example="rules:\n  no_positional_group_by_or_order_by:\n    enabled: true\n    skip_layers: [sources]",
             providers=("dbt", "sqlmesh", "dataform"),
-            is_fixable=True,
+            is_fixable=False,
         )
     )
 
@@ -1083,10 +1083,10 @@ def create_default_registry() -> CheckRegistry:
             docs_url=f"{docs_base}metadata-metadata-partially-auto-fixable",
             description="Validates that every model has an assigned owner in its configuration or metadata.",
             why_it_matters="Unowned models lead to data pipeline abandonment, untracked bugs, and unclear escalation paths during data quality incidents.",
-            how_to_fix="Assign an owner to the model in schema.yml, model config, or run 'tff lint --fix' to scaffold owner metadata.",
+            how_to_fix="Assign an owner to the model in schema.yml or model config.",
             configuration_example="rules:\n  metadata:\n    enabled: true\n    owner: true",
             providers=("dbt", "sqlmesh", "dataform"),
-            is_fixable=True,
+            is_fixable=False,
         )
     )
     reg.register(
@@ -1105,10 +1105,10 @@ def create_default_registry() -> CheckRegistry:
             docs_url=f"{docs_base}metadata-metadata-partially-auto-fixable",
             description="Validates that every model has a non-empty description documented in its metadata.",
             why_it_matters="Undocumented models create knowledge silos, slow down team onboarding, and make data discovery difficult.",
-            how_to_fix="Add a clear description explaining the model's purpose and business context, or run 'tff lint --fix' to scaffold placeholder descriptions.",
+            how_to_fix="Add a clear description explaining the model's purpose and business context.",
             configuration_example="rules:\n  metadata:\n    enabled: true\n    description: true",
             providers=("dbt", "sqlmesh", "dataform"),
-            is_fixable=True,
+            is_fixable=False,
         )
     )
     reg.register(
@@ -1209,10 +1209,10 @@ def create_default_registry() -> CheckRegistry:
             docs_url=f"{docs_base}sql-complexity-sql_complexity",
             description="Evaluates SQL maintainability metrics: CTE count, JOIN count, line count, decision points (CASE/IF), and nested subqueries in the final SELECT.",
             why_it_matters="Excessively complex SQL queries are difficult to test, review, and maintain, and frequently hide logical bugs and performance regressions.",
-            how_to_fix="1. Refactor large queries by splitting them into smaller modular staging or intermediate models.\n2. Run 'tff lint --fix' to lift nested subqueries in final SELECT statements to CTEs.",
+            how_to_fix="Refactor large queries by splitting them into smaller modular staging or intermediate models, and extract inline subqueries into CTEs.",
             configuration_example="rules:\n  sql_complexity:\n    enabled: true\n    thresholds:\n      decision_points: [15, 25]\n      cte_count: [8, 12]\n      join_count: [8, 12]\n      line_count: [250, 400]",
             providers=("dbt", "sqlmesh", "dataform"),
-            is_fixable=True,
+            is_fixable=False,
         )
     )
 

@@ -543,30 +543,39 @@ def test_docs_generation_with_dataform(tmp_path: Path):
     assert main(["docs", "--project", str(tmp_path), "--provider", "dataform", "--manifest", str(manifest_file)]) == 0
 
 
-def test_cli_autofix_with_dataform(tmp_path: Path):
+def test_cli_autofix_filename_equals_modelname_with_dataform(tmp_path: Path):
+    (tmp_path / "workflow_settings.yaml").write_text("defaultProject: p\n", encoding="utf-8")
     definitions_dir = tmp_path / "definitions"
     definitions_dir.mkdir(parents=True, exist_ok=True)
-    sqlx = """
-    config {
-      type: 'view',
-      description: 'Positional test',
-      bigquery: { labels: { owner: 'team' } },
-      assertions: { uniqueKey: ['id'], nonNull: ['id'] }
-    }
-    SELECT id, count(*) FROM raw_orders GROUP BY 1
-    """
+    sqlx = """config {
+  type: 'view',
+  name: "mismatched_model_name",
+  description: 'Test view'
+}
+SELECT 1 AS id
+"""
     file_path = definitions_dir / "stg_orders.sqlx"
     file_path.write_text(sqlx, encoding="utf-8")
 
-    # Run lint with --fix
-    exit_code = main(["lint", "--project", str(tmp_path), "--provider", "dataform", "--fix"])
-    assert exit_code in (0, 1)
-    # The file should now have GROUP BY id
+    # Run lint with --fix scoped to filename_equals_modelname
+    exit_code = main([
+        "lint",
+        "--project",
+        str(tmp_path),
+        "--provider",
+        "dataform",
+        "--checks",
+        "filename_equals_modelname",
+        "--fix",
+    ])
+    assert exit_code == 0
+    # The name in config should now be synchronized to file stem 'stg_orders'
     fixed_content = file_path.read_text(encoding="utf-8")
-    assert "GROUP BY id" in fixed_content or "GROUP BY 1" in fixed_content
+    assert 'name: "stg_orders"' in fixed_content
+    assert "mismatched_model_name" not in fixed_content
 
 
-def test_cli_autofix_metadata_with_dataform(tmp_path: Path):
+def test_cli_autofix_does_not_mutate_positional_or_metadata(tmp_path: Path):
     (tmp_path / "workflow_settings.yaml").write_text("defaultProject: p\n", encoding="utf-8")
     definitions_dir = tmp_path / "definitions"
     definitions_dir.mkdir(parents=True, exist_ok=True)
@@ -574,55 +583,20 @@ def test_cli_autofix_metadata_with_dataform(tmp_path: Path):
   type: 'view',
   assertions: { uniqueKey: ['id'], nonNull: ['id'] }
 }
-SELECT 1 AS id
+SELECT id, count(*) FROM raw_orders GROUP BY 1
 """
     file_path = definitions_dir / "stg_orders.sqlx"
     file_path.write_text(sqlx, encoding="utf-8")
 
     # Run lint with --fix
     exit_code = main(["lint", "--project", str(tmp_path), "--provider", "dataform", "--fix"])
-    assert exit_code == 0
+    assert exit_code == 1
 
-    # Verify metadata added
-    fixed_content = file_path.read_text(encoding="utf-8")
-    assert 'description: "TODO: Add description"' in fixed_content
-    assert 'owner: "TODO: Add owner"' in fixed_content
-
-    # Re-running lint reports 0 findings
-    exit_code_after = main(["lint", "--project", str(tmp_path), "--provider", "dataform"])
-    assert exit_code_after == 0
-
-
-def test_cli_autofix_metadata_no_config_with_dataform(tmp_path: Path):
-    (tmp_path / "workflow_settings.yaml").write_text("defaultProject: p\n", encoding="utf-8")
-    (tmp_path / "fitness_functions.yaml").write_text("""
-rules:
-  metadata:
-    owner: true
-    description: true
-    grain: false
-    not_null: false
-    unique_values: false
-""", encoding="utf-8")
-    definitions_dir = tmp_path / "definitions"
-    definitions_dir.mkdir(parents=True, exist_ok=True)
-    sqlx = "SELECT 1 AS id\n"
-    file_path = definitions_dir / "stg_raw.sqlx"
-    file_path.write_text(sqlx, encoding="utf-8")
-
-    # Run lint with --fix
-    exit_code = main(["lint", "--project", str(tmp_path), "--provider", "dataform", "--fix"])
-    assert exit_code == 0
-
-    # Verify config block scaffolded
-    fixed_content = file_path.read_text(encoding="utf-8")
-    assert 'description: "TODO: Add description"' in fixed_content
-    assert 'owner: "TODO: Add owner"' in fixed_content
-    assert "SELECT 1 AS id" in fixed_content
-
-    # Re-running lint reports 0 findings
-    exit_code_after = main(["lint", "--project", str(tmp_path), "--provider", "dataform"])
-    assert exit_code_after == 0
+    # Verify query and metadata are NOT corrupted or injected with dummy TODOs
+    content = file_path.read_text(encoding="utf-8")
+    assert "GROUP BY 1" in content
+    assert "TODO: Add description" not in content
+    assert "TODO: Add owner" not in content
 
 
 def test_clean_dataform_edge_cases():

@@ -93,17 +93,17 @@ tff lint --provider dataform
 # Use a precompiled compilation result:
 tff lint --manifest compilation_result.json
 
-# Automatically fix positional GROUP BY / ORDER BY and metadata violations in .sqlx files:
+# Automatically synchronize model name declarations to file stems in .sqlx files:
 tff lint --fix
 ```
 
 When running `tff lint --fix` on Dataform projects:
-* **Metadata remediation (`nomissingowner`, `nomissingdescription`)**:
-  * Injects `description: "TODO: Add description"` inside existing `config { ... }` blocks.
-  * Injects BigQuery labels `bigquery: { labels: { owner: "TODO: Add owner" } }` inside `config { ... }` (or nests inside existing `bigquery` or `labels` structures).
-  * If no `config { ... }` block exists, scaffolds a minimal `config { ... }` header at the top of the `.sqlx` file while preserving existing SQL, Javascript, and comments.
-* **SQL normalization (`nopositionalgroupbyororderby`)**:
-  * Rewrites positional ordinal integers in `GROUP BY` and `ORDER BY` to explicit column names.
+* **Model declaration synchronization (`filename_equals_modelname`)**:
+  * Updates or injects `name: "<filename_stem>"` inside existing `config { ... }` blocks in `.sqlx` files.
+  * If no `config { ... }` block exists, scaffolds a minimal `config { ... }` block at the top of the file without disrupting existing SQL, JavaScript, or comments.
+  * Executes changes via atomic writes to prevent partial file writes.
+* **Preserving query and metadata integrity**:
+  * `tff` intentionally does not perform lossy AST query transformations or inject dummy metadata placeholders (`"TODO: Add owner"`). Rules requiring domain context remain transparently visible until authored by engineers.
 
 ### Health & Architecture Score
 ```bash

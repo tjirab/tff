@@ -12,11 +12,11 @@ import shutil
 import subprocess
 import sys
 import tempfile
-from typing import Any
+from typing import Any, Sequence
 import urllib.error
 import urllib.request
 
-from tff.core.adapter import detect_provider, get_adapter
+from tff.core.adapter import detect_provider, get_adapter, normalize_project_roots
 from tff.core.config import load_fitness_config
 from tff.core.formatters import emit_github_annotations
 from tff.core.health import _get_action_phrase, calculate_health_scores, render_health_report
@@ -26,6 +26,49 @@ from tff.core.report import CONNASCENCE_CATEGORIES, LintFinding, _format_connasc
 logger = logging.getLogger(__name__)
 
 PR_COMMENT_MARKER = "<!-- tff-pr-comment -->"
+
+AUTOFIXABLE_CHECKS = {
+    "nopositionalgroupby",
+    "nopositionalorderby",
+    "nopositionalgroupbyororderby",
+    "banselectstar",
+    "ban_select_star",
+    "nomissingowner",
+    "nomissingdescription",
+    "martmodelnamingconvention",
+    "mart_naming",
+    "filenameequalsmodelname",
+    "filename_equals_modelname",
+}
+
+REMEDIATION_SNIPPET = (
+    "```bash\n"
+    "# Remediate autofixable violations locally:\n"
+    "tff lint --fix --staged\n"
+    "```"
+)
+
+
+def is_autofixable(finding: dict[str, Any] | LintFinding) -> bool:
+    """Determine whether a lint finding can be resolved via tff lint --fix."""
+    if isinstance(finding, LintFinding):
+        chk = str(finding.check or "")
+        msg = str(finding.message or "")
+    else:
+        chk = str(finding.get("check") or "")
+        msg = str(finding.get("message") or "")
+
+    norm = chk.lower().replace("-", "").replace("_", "").replace(" ", "")
+    norm_autofixable = {
+        c.lower().replace("-", "").replace("_", "").replace(" ", "")
+        for c in AUTOFIXABLE_CHECKS
+    }
+    if norm in norm_autofixable:
+        return True
+    if norm == "sqlcomplexity" and "nested subquery in final SELECT" in msg:
+        return True
+    return False
+
 
 
 def _format_check_cell(check_name: str) -> str:
@@ -50,6 +93,29 @@ def _get_coupling_tag(check: str) -> str:
     if cat:
         return _format_connascence_tag(cat)
     return "quality"
+
+
+def _format_finding_row(f: dict[str, Any] | LintFinding) -> str:
+    """Format a single finding row for Markdown tables with status tokens and autofix badges."""
+    if isinstance(f, LintFinding):
+        sev_raw = f.severity
+        chk_raw = f.check
+        target = f.model or (str(f.path) if f.path else "-")
+        msg_raw = f.message
+    else:
+        sev_raw = f.get("severity")
+        chk_raw = f.get("check", "")
+        target = f.get("model") or f.get("path") or "-"
+        msg_raw = f.get("message", "")
+
+    sev = "`ERR`" if sev_raw == "error" else "`WRN`"
+    sig = "!" if sev_raw == "error" else "*"
+    chk = _format_check_cell(chk_raw)
+    coup = f"`{_get_coupling_tag(chk_raw)}`"
+    msg = msg_raw.replace("\n", " ").replace("|", "\\|")
+    autofix_badge = " `[Autofixable]`" if is_autofixable(f) else ""
+    return f"| {sev} | `{target}` | {chk} | {coup} | {sig} {msg}{autofix_badge} |"
+
 
 
 def parse_bool(val: Any) -> bool:
@@ -141,7 +207,7 @@ def get_modified_files(
 def is_finding_in_files(
     finding: dict[str, Any] | LintFinding,
     modified_files: set[str],
-    project_root: Path,
+    project_root: Path | Sequence[Path],
     repo_root: Path,
 ) -> bool:
     """Check whether a finding belongs to one of the modified files."""
@@ -152,33 +218,39 @@ def is_finding_in_files(
     model = finding.model if isinstance(finding, LintFinding) else finding.get("model")
 
     path_str = str(raw_path or "").replace("\\", "/")
+    roots: list[Path] = (
+        [project_root]
+        if isinstance(project_root, Path)
+        else list(project_root)
+    )
 
-    try:
-        rel_project = project_root.resolve().relative_to(repo_root.resolve())
-        rel_proj_str = str(rel_project).replace("\\", "/")
-        if rel_proj_str == ".":
+    for r in roots:
+        try:
+            rel_project = r.resolve().relative_to(repo_root.resolve())
+            rel_proj_str = str(rel_project).replace("\\", "/")
+            if rel_proj_str == ".":
+                path_rel_repo = path_str
+            else:
+                path_rel_repo = f"{rel_proj_str}/{path_str}" if path_str else ""
+        except Exception:
             path_rel_repo = path_str
-        else:
-            path_rel_repo = f"{rel_proj_str}/{path_str}" if path_str else ""
-    except Exception:
-        path_rel_repo = path_str
 
-    for mf in modified_files:
-        norm_mf = mf.replace("\\", "/")
-        if path_rel_repo and (norm_mf == path_rel_repo or norm_mf.endswith(f"/{path_str}")):
-            return True
-        if path_str and (norm_mf == path_str or norm_mf.endswith(f"/{path_str}")):
-            return True
-        if model:
-            mf_stem = Path(norm_mf).stem
-            if mf_stem == model:
+        for mf in modified_files:
+            norm_mf = mf.replace("\\", "/")
+            if path_rel_repo and (norm_mf == path_rel_repo or norm_mf.endswith(f"/{path_str}")):
                 return True
+            if path_str and (norm_mf == path_str or norm_mf.endswith(f"/{path_str}")):
+                return True
+            if model:
+                mf_stem = Path(norm_mf).stem
+                if mf_stem == model:
+                    return True
 
     return False
 
 
 def evaluate_project(
-    project_root: Path,
+    project_root: Path | Sequence[Path],
     provider: str = "auto",
     config_path: str = "fitness_functions.yaml",
     checks: list[str] | None = None,
@@ -188,20 +260,24 @@ def evaluate_project(
     chunk_size: int | None = None,
     scoped_models: set[str] | None = None,
 ) -> dict[str, Any]:
-    """Run tff health evaluation on the specified project directory."""
-    project_root = Path(project_root).resolve()
+    """Run tff health evaluation on the specified project directory (or directories)."""
+    roots = normalize_project_roots(project_root)
+    primary_root = roots[0]
+    target_root: Path | list[Path] = roots if len(roots) > 1 else primary_root
+
     if provider == "auto":
-        provider = detect_provider(project_root)
+        cfg_path = config_path if config_path != "fitness_functions.yaml" else None
+        provider = detect_provider(roots, config_path=cfg_path)
 
     adapter = get_adapter(provider)
-    config = load_fitness_config(project_root, config_path=config_path)
+    config = load_fitness_config(roots, config_path=config_path)
     if workers is not None:
         config.workers = workers
     if chunk_size is not None:
         config.chunk_size = chunk_size
 
     kwargs: dict[str, Any] = {
-        "project_root": project_root,
+        "project_root": target_root,
         "config": config,
         "checks": checks,
         "dialect": dialect,
@@ -237,7 +313,7 @@ def evaluate_project(
     errors_count = sum(1 for f in findings if f.severity == "error")
     warnings_count = sum(1 for f in findings if f.severity == "warning")
 
-    return {
+    res: dict[str, Any] = {
         "overall_score": float(scores.get("overall_score", 100.0)),
         "models_checked": models_checked,
         "category_scores": scores.get("category_scores", {}),
@@ -250,6 +326,9 @@ def evaluate_project(
         "scores": scores,
         "config": config,
     }
+    if len(roots) > 1:
+        res["project_roots"] = [str(r) for r in roots]
+    return res
 
 
 def evaluate_pass_fail(
@@ -276,24 +355,24 @@ def evaluate_pass_fail(
 
 
 def fetch_base_scores(
-    project_dir: Path,
+    project_dir: Path | Sequence[Path],
     base_ref: str,
     provider: str = "auto",
     config_path: str = "fitness_functions.yaml",
     checks: list[str] | None = None,
 ) -> dict[str, Any] | None:
     """Attempt to checkout base_ref in a temp git worktree and calculate baseline health score."""
-    project_dir = Path(project_dir).resolve()
+    roots = normalize_project_roots(project_dir)
+    primary_root = roots[0]
     try:
         res = subprocess.run(
             ["git", "rev-parse", "--show-toplevel"],
-            cwd=str(project_dir),
+            cwd=str(primary_root),
             capture_output=True,
             text=True,
             check=True,
         )
         repo_root = Path(res.stdout.strip()).resolve()
-        rel_project = project_dir.relative_to(repo_root)
     except Exception as e:
         logger.debug("Failed to find git repo root: %s", e)
         return None
@@ -328,16 +407,29 @@ def fetch_base_scores(
                 logger.debug("git worktree add failed: %s", res.stderr)
                 return None
 
-        base_project_dir = Path(temp_dir) / rel_project
-        if not base_project_dir.exists():
+        base_project_dirs: list[Path] = []
+        for r in roots:
+            try:
+                rel = r.relative_to(repo_root)
+                base_p = Path(temp_dir) / rel
+                if base_p.exists():
+                    base_project_dirs.append(base_p)
+            except ValueError:
+                pass
+
+        if not base_project_dirs:
             logger.debug(
-                "Base project path does not exist in base ref: %s",
-                base_project_dir,
+                "Base project path(s) do not exist in base ref: %s",
+                roots,
             )
             return None
 
+        target_base_root: Path | list[Path] = (
+            base_project_dirs if len(roots) > 1 else base_project_dirs[0]
+        )
+
         return evaluate_project(
-            project_root=base_project_dir,
+            project_root=target_base_root,
             provider=provider,
             config_path=config_path,
             checks=checks,
@@ -365,6 +457,7 @@ def generate_pr_comment_markdown(
     only_changed: bool = False,
     modified_files_count: int = 0,
     ignored_violations_count: int = 0,
+    modified_files: set[str] | None = None,
 ) -> str:
     """Generate the GitHub PR markdown comment summarizing health score and violations."""
     score = float(current_data.get("overall_score", 100.0))
@@ -373,28 +466,120 @@ def generate_pr_comment_markdown(
     )
     status_badge = "**PASSED**" if passed else "**FAILED**"
 
-    total_violations = len(current_data.get("findings", []))
+    all_findings = current_data.get("findings", [])
+    total_violations = len(all_findings)
     errors_count = int(current_data.get("errors_count", 0))
     warnings_count = int(current_data.get("warnings_count", 0))
 
-    score_display = f"**{score:.1f}%**"
-    diff_summary_lines: list[str] = []
+    new_violations: list[dict[str, Any]] = []
+    resolved_violations: list[dict[str, Any]] = []
+    delta_str: str | None = None
+    delta_compact_str: str = ""
 
     if base_data is not None:
         base_score = float(base_data.get("overall_score", 100.0))
         delta = score - base_score
         if abs(delta) < 0.05:
             delta_str = f"0.0% vs {base_ref}"
+            delta_compact_str = " (0.0%)"
         elif delta > 0:
             delta_str = f"+{delta:.1f}% vs {base_ref}"
+            delta_compact_str = f" (+{delta:.1f}%)"
         else:
             delta_str = f"{delta:.1f}% vs {base_ref}"
-        score_display = f"**{score:.1f}%** ({delta_str})"
+            delta_compact_str = f" ({delta:.1f}%)"
 
         new_violations, resolved_violations = compare_findings(
-            current_data.get("findings", []), base_data.get("findings", [])
+            all_findings, base_data.get("findings", [])
         )
 
+    # Classify touched vs untouched models
+    touched_files: set[str] = set()
+    touched_stems: set[str] = set()
+    if modified_files:
+        for mf in modified_files:
+            p = Path(mf)
+            touched_files.add(p.as_posix())
+            touched_stems.add(p.stem)
+    for nv in new_violations:
+        if nv.get("model"):
+            touched_stems.add(str(nv["model"]))
+        if nv.get("path"):
+            p = Path(nv["path"])
+            touched_files.add(p.as_posix())
+            touched_stems.add(p.stem)
+
+    new_fps = {get_finding_fingerprint(nv) for nv in new_violations}
+    pre_existing = [
+        f for f in all_findings if get_finding_fingerprint(f) not in new_fps
+    ]
+
+    def _is_untouched(f: dict[str, Any]) -> bool:
+        if not touched_files and not touched_stems:
+            return base_data is not None
+        m = f.get("model")
+        if m and m in touched_stems:
+            return False
+        p = f.get("path")
+        if p and Path(p).stem in touched_stems:
+            return False
+        return True
+
+    untouched_pre_existing: list[dict[str, Any]] = []
+    touched_findings: list[dict[str, Any]] = []
+
+    if base_data is not None or modified_files:
+        for f in pre_existing:
+            if _is_untouched(f):
+                untouched_pre_existing.append(f)
+        touched_findings = [
+            f for f in all_findings if f not in untouched_pre_existing
+        ]
+    else:
+        touched_findings = list(all_findings)
+
+    # 4. Compact Green Pass Card: when all checks pass and no new violations are introduced
+    if passed and not new_violations:
+        score_val = f"{score:.1f}%"
+        card_line = f"**tff Quality Gate Passed** — Health Score: {score_val}{delta_compact_str}"
+        lines = [
+            PR_COMMENT_MARKER,
+            card_line,
+        ]
+
+        if untouched_pre_existing:
+            lines.append("")
+            lines.append("<details>")
+            lines.append(
+                f"<summary>View {len(untouched_pre_existing)} pre-existing violations across untouched models</summary>\n"
+            )
+            lines.append("| STATUS | LOCATION | RULE | COUPLING | DETAILS |")
+            lines.append("| :---: | :--- | :--- | :--- | :--- |")
+            for f in untouched_pre_existing[:50]:
+                lines.append(_format_finding_row(f))
+            if len(untouched_pre_existing) > 50:
+                lines.append(
+                    f"\n*... and {len(untouched_pre_existing) - 50} more pre-existing violations truncated.*"
+                )
+            lines.append("\n</details>")
+
+            if any(is_autofixable(f) for f in untouched_pre_existing):
+                lines.append("")
+                lines.append(REMEDIATION_SNIPPET)
+
+        lines.append("")
+        lines.append("---")
+        lines.append(
+            "■ ▲ ● *Generated by [tff (Transformation Fitness Functions)](https://github.com/tjirab/tff)*"
+        )
+        return "\n".join(lines)
+
+    score_display = (
+        f"**{score:.1f}%** ({delta_str})" if delta_str else f"**{score:.1f}%**"
+    )
+
+    diff_summary_lines: list[str] = []
+    if base_data is not None and delta_str is not None:
         diff_summary_lines.append(f"### Changes vs `{base_ref}`")
         diff_summary_lines.append(f"- **Score Delta**: `{delta_str}`")
         diff_summary_lines.append(
@@ -403,31 +588,6 @@ def generate_pr_comment_markdown(
         diff_summary_lines.append(
             f"- **New Violations**: {len(new_violations)}"
         )
-
-        if new_violations:
-            diff_summary_lines.append("\n#### New Violations Introduced")
-            diff_summary_lines.append(
-                "| STATUS | LOCATION | RULE | COUPLING | DETAILS |"
-            )
-            diff_summary_lines.append("| :---: | :--- | :--- | :--- | :--- |")
-            for nv in new_violations[:10]:
-                sev = "`ERR`" if nv.get("severity") == "error" else "`WRN`"
-                sig = "!" if nv.get("severity") == "error" else "*"
-                chk = _format_check_cell(nv.get("check", ""))
-                target = nv.get("model") or nv.get("path") or "-"
-                coup = f"`{_get_coupling_tag(nv.get('check', ''))}`"
-                msg = (
-                    nv.get("message", "")
-                    .replace("\n", " ")
-                    .replace("|", "\\|")
-                )
-                diff_summary_lines.append(
-                    f"| {sev} | `{target}` | {chk} | {coup} | {sig} {msg} |"
-                )
-            if len(new_violations) > 10:
-                diff_summary_lines.append(
-                    f"*... and {len(new_violations) - 10} more new violations.*"
-                )
 
     if only_changed:
         threshold_line = (
@@ -445,11 +605,42 @@ def generate_pr_comment_markdown(
     lines = [
         PR_COMMENT_MARKER,
         "## ■ ▲ ● TFF ARCHITECTURE AUDIT\n",
+    ]
+
+    has_autofix = any(is_autofixable(f) for f in all_findings)
+
+    # 1. Diff-First Triage View: place new violations at the very top under > [!CAUTION]
+    if new_violations:
+        lines.append("> [!CAUTION]")
+        lines.append("> ### New Violations Introduced in This PR\n>")
+        lines.append("> | STATUS | LOCATION | RULE | COUPLING | DETAILS |")
+        lines.append("> | :---: | :--- | :--- | :--- | :--- |")
+        sorted_new_violations = sorted(
+            new_violations,
+            key=lambda nv: (
+                str(nv.get("model") or nv.get("path") or "").lower(),
+                0 if nv.get("severity") == "error" else 1,
+                str(nv.get("check") or "").lower(),
+            ),
+        )
+        for nv in sorted_new_violations[:25]:
+            lines.append(f"> {_format_finding_row(nv)}")
+        if len(sorted_new_violations) > 25:
+            lines.append(
+                f"> \n> *... and {len(sorted_new_violations) - 25} more new violations.*"
+            )
+        lines.append("")
+
+        if any(is_autofixable(nv) for nv in new_violations):
+            lines.append(REMEDIATION_SNIPPET)
+            lines.append("")
+
+    lines.extend([
         "| OVERALL HEALTH | STATUS | DEFECTS | ERRORS | WARNINGS |",
         "| :---: | :---: | :---: | :---: | :---: |",
         f"| {score_display} | {status_badge} | {total_violations} | {errors_count} | {warnings_count} |\n",
         threshold_line,
-    ]
+    ])
 
     if diff_summary_lines:
         lines.extend(diff_summary_lines)
@@ -472,39 +663,60 @@ def generate_pr_comment_markdown(
             lines.extend(cat_lines)
             lines.append("")
 
-    findings = current_data.get("findings", [])
-    if not findings:
+    # Violations detail (touched findings or all findings if not diff-mode)
+    detail_findings = (
+        touched_findings
+        if (base_data is not None or modified_files)
+        else all_findings
+    )
+    if not detail_findings and not untouched_pre_existing:
         lines.append("### AUDIT LEDGER")
         lines.append(
             "All architectural fitness functions and linter checks passed without any violations!\n"
         )
-    else:
-        open_tag = " open" if len(findings) <= 15 else ""
-        lines.append(f"### Violations Detail ({len(findings)})")
+    elif detail_findings:
+        open_tag = " open" if len(detail_findings) <= 15 else ""
+        lines.append(f"### Violations Detail ({len(detail_findings)})")
         lines.append(f"<details{open_tag}>")
         lines.append(
-            f"<summary><b>Click to expand {len(findings)} violation(s)</b></summary>\n"
+            f"<summary><b>Click to expand {len(detail_findings)} violation(s)</b></summary>\n"
         )
         lines.append("| STATUS | LOCATION | RULE | COUPLING | DETAILS |")
         lines.append("| :---: | :--- | :--- | :--- | :--- |")
-        for f in findings[:50]:
-            sev = "`ERR`" if f.get("severity") == "error" else "`WRN`"
-            sig = "!" if f.get("severity") == "error" else "*"
-            chk = _format_check_cell(f.get("check", ""))
-            target = f.get("model") or f.get("path") or "-"
-            coup = f"`{_get_coupling_tag(f.get('check', ''))}`"
-            msg = f.get("message", "").replace("\n", " ").replace("|", "\\|")
-            lines.append(f"| {sev} | `{target}` | {chk} | {coup} | {sig} {msg} |")
-        if len(findings) > 50:
+        for f in detail_findings[:50]:
+            lines.append(_format_finding_row(f))
+        if len(detail_findings) > 50:
             lines.append(
-                f"\n*... and {len(findings) - 50} more violations truncated.*"
+                f"\n*... and {len(detail_findings) - 50} more violations truncated.*"
             )
         lines.append("\n</details>\n")
 
+    # 2. Collapsible Baseline Debt: pre-existing violations on untouched models
+    if untouched_pre_existing:
+        lines.append("<details>")
+        lines.append(
+            f"<summary>View {len(untouched_pre_existing)} pre-existing violations across untouched models</summary>\n"
+        )
+        lines.append("| STATUS | LOCATION | RULE | COUPLING | DETAILS |")
+        lines.append("| :---: | :--- | :--- | :--- | :--- |")
+        for f in untouched_pre_existing[:50]:
+            lines.append(_format_finding_row(f))
+        if len(untouched_pre_existing) > 50:
+            lines.append(
+                f"\n*... and {len(untouched_pre_existing) - 50} more pre-existing violations truncated.*"
+            )
+        lines.append("\n</details>\n")
+
+    if has_autofix and not (
+        new_violations and any(is_autofixable(nv) for nv in new_violations)
+    ):
+        lines.append(REMEDIATION_SNIPPET)
+        lines.append("")
+
     # Action footer
-    if findings:
+    if all_findings:
         check_counts: dict[str, int] = defaultdict(int)
-        for f in findings:
+        for f in all_findings:
             check_counts[f.get("check", "")] += 1
         top_check, top_count = sorted(
             check_counts.items(), key=lambda x: x[1], reverse=True
@@ -672,7 +884,21 @@ def write_github_step_summary(content: str) -> None:
 
 def execute_action(args: argparse.Namespace) -> int:
     """Execute tff GitHub Action pipeline."""
-    project_root = Path(args.project).resolve()
+    projects_val = getattr(args, "projects", None)
+    project_val = getattr(args, "project", None)
+    if isinstance(projects_val, (list, tuple)) and projects_val:
+        project_roots = [Path(p).resolve() for p in projects_val]
+    elif isinstance(project_val, (list, tuple)) and project_val:
+        project_roots = [Path(p).resolve() for p in project_val]
+    elif isinstance(project_val, (str, Path)):
+        project_roots = [Path(project_val).resolve()]
+    else:
+        project_roots = [Path.cwd()]
+    primary_root = project_roots[0]
+    target_project_root: Path | list[Path] = (
+        project_roots if len(project_roots) > 1 else primary_root
+    )
+
     checks = None
     if getattr(args, "checks", None):
         checks = [c.strip() for c in args.checks.split(",") if c.strip()]
@@ -682,14 +908,14 @@ def execute_action(args: argparse.Namespace) -> int:
     try:
         res = subprocess.run(
             ["git", "rev-parse", "--show-toplevel"],
-            cwd=str(project_root),
+            cwd=str(primary_root),
             capture_output=True,
             text=True,
             check=True,
         )
         repo_root = Path(res.stdout.strip()).resolve()
     except Exception:
-        repo_root = project_root
+        repo_root = primary_root
 
     modified_files = get_modified_files(repo_root, base_ref=diff_base)
     modified_files_count = len(modified_files)
@@ -700,12 +926,12 @@ def execute_action(args: argparse.Namespace) -> int:
         from tff.core.adapter import get_adapter
 
         try:
-            adapter = get_adapter(args.provider if args.provider != "auto" else detect_provider(project_root))
-            loaded_models = adapter.load_models(project_root, dialect=getattr(args, "dialect", None), manifest_path=getattr(args, "manifest", None))
+            adapter = get_adapter(args.provider if args.provider != "auto" else detect_provider(target_project_root))
+            loaded_models = adapter.load_models(target_project_root, dialect=getattr(args, "dialect", None), manifest_path=getattr(args, "manifest", None))
             scoped_models = map_files_to_model_names(
                 models=loaded_models,
                 files=modified_files,
-                project_root=project_root,
+                project_root=target_project_root,
                 repo_root=repo_root,
             )
         except Exception as e:
@@ -714,7 +940,7 @@ def execute_action(args: argparse.Namespace) -> int:
     # 1. Evaluate current project
     try:
         current_data = evaluate_project(
-            project_root=project_root,
+            project_root=target_project_root,
             provider=args.provider,
             config_path=args.config,
             checks=checks,
@@ -741,12 +967,12 @@ def execute_action(args: argparse.Namespace) -> int:
         filtered_findings = [
             f
             for f in all_findings
-            if is_finding_in_files(f, modified_files, project_root, repo_root)
+            if is_finding_in_files(f, modified_files, target_project_root, repo_root)
         ]
         filtered_raw_findings = [
             f
             for f in all_raw_findings
-            if is_finding_in_files(f, modified_files, project_root, repo_root)
+            if is_finding_in_files(f, modified_files, target_project_root, repo_root)
         ]
 
         ignored_violations_count = len(all_findings) - len(filtered_findings)
@@ -763,14 +989,14 @@ def execute_action(args: argparse.Namespace) -> int:
         try:
             res = subprocess.run(
                 ["git", "rev-parse", "--show-toplevel"],
-                cwd=str(project_root),
+                cwd=str(primary_root),
                 capture_output=True,
                 text=True,
                 check=True,
             )
             repo_root = Path(res.stdout.strip()).resolve()
         except Exception:
-            repo_root = project_root
+            repo_root = primary_root
         modified_files = get_modified_files(repo_root, base_ref=diff_base)
 
     # 3. Emit GitHub Actions annotations
@@ -779,7 +1005,7 @@ def execute_action(args: argparse.Namespace) -> int:
         if raw_findings:
             emit_github_annotations(
                 raw_findings,
-                project_root=project_root,
+                project_root=target_project_root,
                 stream=sys.stdout,
                 modified_files=modified_files,
             )
@@ -791,7 +1017,7 @@ def execute_action(args: argparse.Namespace) -> int:
     )
     if getattr(args, "diff_against_base", True) and base_ref:
         base_data = fetch_base_scores(
-            project_dir=project_root,
+            project_dir=target_project_root,
             base_ref=base_ref,
             provider=args.provider,
             config_path=args.config,
@@ -808,6 +1034,7 @@ def execute_action(args: argparse.Namespace) -> int:
         only_changed=only_changed,
         modified_files_count=modified_files_count,
         ignored_violations_count=ignored_violations_count,
+        modified_files=modified_files,
     )
 
     # 5. Output to terminal / console
@@ -833,6 +1060,8 @@ def execute_action(args: argparse.Namespace) -> int:
                 fail_level=args.fail_level,
             ),
         }
+        if len(project_roots) > 1:
+            out_json["project_roots"] = [str(p) for p in project_roots]
         print(json.dumps(out_json, indent=2))
     else:
         render_health_report(

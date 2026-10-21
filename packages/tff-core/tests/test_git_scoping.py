@@ -5,6 +5,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+from conftest import _make_model
 from tff.core.config import FitnessFunctionsConfig
 from tff.core.exceptions import TffGitError
 from tff.core.git import (
@@ -101,6 +102,29 @@ def test_get_changed_files_since_invalid_ref() -> None:
             get_changed_files_since(fake_root, "nonexistent-branch")
 
 
+@pytest.mark.parametrize(
+    "invalid_ref",
+    [
+        "-o",
+        "--output",
+        "-r",
+        "--diff",
+        "--staged",
+        "-",
+        "--",
+        "  --flag  ",
+    ],
+)
+def test_get_changed_files_since_leading_dash(invalid_ref: str) -> None:
+    fake_root = Path("/fake/repo")
+    with patch("subprocess.run") as mock_run:
+        with pytest.raises(TffGitError, match=r"Invalid git reference '.*': reference names cannot begin with '-'") as exc_info:
+            get_changed_files_since(fake_root, invalid_ref)
+        mock_run.assert_not_called()
+        assert exc_info.value.hint is not None
+        assert "Specify a valid branch, tag, or commit SHA" in exc_info.value.hint
+
+
 def test_map_files_to_model_names() -> None:
     models = {
         "dim_users": ModelRepresentation(
@@ -150,6 +174,21 @@ def test_map_files_to_model_names() -> None:
     # 5. Project outside repo root (triggers relative_to exception)
     matched_diff_root = map_files_to_model_names(models, {"stg_orders.sql"}, Path("/other/dir"), Path("/repo"))
     assert matched_diff_root == {"stg_orders"}
+
+    # 6. Multiple project roots
+    root1 = Path("/repo/proj1")
+    root2 = Path("/repo/proj2")
+    models_multi = {
+        "m1": _make_model(name="m1", path="models/m1.sql", dialect="duckdb"),
+        "m2": _make_model(name="m2", path="models/m2.sql", dialect="duckdb"),
+    }
+    matched_multi = map_files_to_model_names(
+        models_multi,
+        {"proj2/models/m2.sql"},
+        [root1, root2],
+        repo_root,
+    )
+    assert matched_multi == {"m2"}
 
 
 def test_check_definition_run_scoped_models() -> None:
@@ -312,6 +351,15 @@ def test_cli_lint_since_ref(tmp_path: Path) -> None:
             with patch("sys.stdout"):
                 ret = main(["check", "-p", str(tmp_path), "--since", "HEAD~1", "--checks", "ban_select_star"])
                 assert ret == 0
+
+
+def test_cli_lint_since_ref_leading_dash(tmp_path: Path) -> None:
+    (tmp_path / "dbt_project.yml").write_text("name: test_proj\nversion: '1.0.0'\n", encoding="utf-8")
+    with patch("tff.core.git.get_git_root", return_value=tmp_path):
+        with patch("subprocess.run") as mock_run:
+            ret = main(["check", "-p", str(tmp_path), "--since=-o"])
+            assert ret == 1
+            mock_run.assert_not_called()
 
 
 def test_cli_health_staged(tmp_path: Path) -> None:

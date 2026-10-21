@@ -1,11 +1,18 @@
 from __future__ import annotations
 
+import pytest
+import sqlglot
+from sqlglot import exp
+from sqlglot.optimizer.scope import Scope
+
+from conftest import _make_model
 from tff.core.checks.join_type_parity import (
     DEFAULT_EQUIVALENT_TYPES,
     ModelTypeResolver,
     are_types_equivalent,
     collect_join_type_parity_findings,
     normalize_type_string,
+    resolve_expression_type,
 )
 from tff.core.config import FitnessFunctionsConfig
 from tff.core.model import ModelRepresentation
@@ -736,5 +743,150 @@ def test_resolve_expression_type_mixed_case_alias() -> None:
     })
     col = exp.Column(this="id", table="u_alias")
     assert resolve_expression_type(col, scope, resolver) == "int"
+
+
+@pytest.mark.parametrize(
+    ("sql_expr", "expected_type"),
+    [
+        # String functions
+        ("LOWER(u.code)", "text"),
+        ("UPPER(u.code)", "text"),
+        ("TRIM(u.code)", "text"),
+        ("LTRIM(u.code)", "text"),
+        ("RTRIM(u.code)", "text"),
+        ("CONCAT(u.code, 'bar')", "text"),
+        ("CONCAT_WS('-', u.code, 'bar')", "text"),
+        ("SUBSTRING(u.code, 1, 3)", "text"),
+        ("u.code || '_suffix'", "text"),
+        ("TO_CHAR(u.id)", "text"),
+        # Temporal functions
+        ("DATE_TRUNC('day', u.created_at)", "timestamp"),
+        ("TIMESTAMP(u.created_at)", "timestamp"),
+        ("DATETIME(u.created_at)", "timestamp"),
+        ("CURRENT_TIMESTAMP", "timestamp"),
+        ("DATE(u.created_at)", "date"),
+        ("CURRENT_DATE", "date"),
+        # Transparent / wrapper functions
+        ("COALESCE(u.id, 0)", "int"),
+        ("COALESCE(unknown_col, 0)", "integer"),
+        ("COALESCE(NULL, u.code)", "varchar"),
+        ("COALESCE(NULL, NULL)", None),
+        ("IF(u.id > 0, u.id, 0)", "int"),
+        ("IF(u.id > 0, unknown_col, 0)", "integer"),
+        ("IF(u.id > 0, unknown_col, unknown_other)", None),
+        ("CASE WHEN u.id > 0 THEN u.id ELSE 0 END", "int"),
+        ("CASE WHEN u.id > 0 THEN unknown_col ELSE 0 END", "integer"),
+        ("CASE WHEN u.id > 0 THEN unknown_col ELSE unknown_other END", None),
+        ("NULLIF(u.id, 0)", "int"),
+        ("NULLIF(unknown_col, 0)", None),
+        ("ABS(u.id)", "int"),
+        ("ABS(unknown_col)", None),
+        # Nested expressions
+        ("COALESCE(LOWER(u.code), 'default')", "text"),
+        ("DATE_TRUNC('day', CAST(u.created_at AS TIMESTAMP))", "timestamp"),
+    ],
+)
+def test_resolve_expression_type_scalar_functions(
+    sql_expr: str,
+    expected_type: str | None,
+) -> None:
+    parsed_query = sqlglot.parse_one("SELECT u.id, u.code, u.created_at FROM raw.users u")
+    scope = Scope(parsed_query)
+    scope.sources["u"] = exp.Table(this=exp.to_identifier("users"), db=exp.to_identifier("raw"))
+    resolver = ModelTypeResolver({
+        "raw.users": _make_model(
+            name="raw.users",
+            path="models/staging/users.sql",
+            dialect="duckdb",
+            columns_to_types={
+                "id": "INT",
+                "code": "VARCHAR",
+                "created_at": "TIMESTAMP",
+            },
+        )
+    })
+    expr_ast = sqlglot.parse_one(sql_expr)
+    assert resolve_expression_type(expr_ast, scope, resolver) == expected_type
+
+
+def test_resolve_expression_type_none_and_edge_cases() -> None:
+    scope = Scope(sqlglot.parse_one("SELECT 1"))
+    resolver = ModelTypeResolver({})
+    assert resolve_expression_type(None, scope, resolver) is None
+
+    empty_coalesce = exp.Coalesce()
+    assert resolve_expression_type(empty_coalesce, scope, resolver) is None
+
+    empty_case = exp.Case()
+    assert resolve_expression_type(empty_case, scope, resolver) is None
+
+    nullif_empty = exp.Nullif()
+    assert resolve_expression_type(nullif_empty, scope, resolver) is None
+
+    empty_if = exp.If(this=exp.var("x"))
+    assert resolve_expression_type(empty_if, scope, resolver) is None
+
+
+@pytest.mark.parametrize(
+    ("join_on", "target_col", "target_type", "expect_violation"),
+    [
+        # LOWER(u.code) -> text
+        ("LOWER(u.code) = o.code", "code", "INT", True),
+        ("LOWER(u.code) = o.code", "code", "VARCHAR", False),
+        # COALESCE(u.id, 0) -> int
+        ("COALESCE(u.id, 0) = o.user_id", "user_id", "VARCHAR", True),
+        ("COALESCE(u.id, 0) = o.user_id", "user_id", "BIGINT", False),
+        # DATE_TRUNC('day', u.created_at) -> timestamp
+        ("DATE_TRUNC('day', u.created_at) = o.order_date", "order_date", "INT", True),
+        ("DATE_TRUNC('day', u.created_at) = o.order_date", "order_date", "DATE", False),
+        # IF(u.id > 0, u.id, 0) -> int
+        ("IF(u.id > 0, u.id, 0) = o.user_id", "user_id", "VARCHAR", True),
+        ("IF(u.id > 0, u.id, 0) = o.user_id", "user_id", "INT", False),
+    ],
+)
+def test_join_type_parity_scalar_functions_end_to_end(
+    join_on: str,
+    target_col: str,
+    target_type: str,
+    expect_violation: bool,
+) -> None:
+    config = FitnessFunctionsConfig()
+    config.checks.join_type_parity.enabled = True
+
+    model_users = _make_model(
+        name="raw.users",
+        path="models/staging/users.sql",
+        dialect="duckdb",
+        columns_to_types={
+            "id": "INT",
+            "code": "VARCHAR",
+            "created_at": "TIMESTAMP",
+        },
+    )
+    model_orders = _make_model(
+        name="raw.orders",
+        path="models/staging/orders.sql",
+        dialect="duckdb",
+        columns_to_types={target_col: target_type},
+    )
+    model_marts = _make_model(
+        name="marts.report",
+        path="models/marts/report.sql",
+        dialect="duckdb",
+        query=f"SELECT u.id FROM raw.users u JOIN raw.orders o ON {join_on}",
+    )
+
+    models = {
+        "raw.users": model_users,
+        "raw.orders": model_orders,
+        "marts.report": model_marts,
+    }
+    findings = collect_join_type_parity_findings(models, config)
+    if expect_violation:
+        assert len(findings) == 1
+        assert "mismatching data types" in findings[0].message
+    else:
+        assert len(findings) == 0
+
 
 

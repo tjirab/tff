@@ -85,7 +85,7 @@ tff health
 | **Duplicate CTE Detection** | Identifies identical transformation sub-queries across independent models (Connascence of Algorithm) to drive upstream consolidation. |
 | **Model Health Scoring** | Computes an objective repository health metric (0–100) and gates CI builds via `tff health --fail-under 80`. |
 | **CI/CD Pipeline Governance** | Official GitHub Action (`tjirab/tff@v1`) diffs PR changes against base branches, gates merges, and generates inline annotations. |
-| **Automated Remediation** | Rewrites positional ordering clauses and provisions missing metadata scaffolds via `tff lint --fix`. |
+| **Automated Remediation** | Safely synchronizes model name declarations to file stems via `tff lint --fix`. |
 | **Multi-Engine Support** | Native semantic analysis across dbt, SQLMesh, and Google Cloud Dataform projects without warehouse connection overhead. |
 
 ---
