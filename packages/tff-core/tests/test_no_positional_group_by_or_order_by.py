@@ -1,6 +1,6 @@
+from conftest import _make_model
 from pathlib import Path
 from tff.core.config import FitnessFunctionsConfig
-from tff.core.model import ModelRepresentation
 from tff.core.rules.no_positional_group_by_or_order_by import (
     NoPositionalGroupByOrOrderBy,
 )
@@ -19,7 +19,7 @@ def test_no_positional_group_by_or_order_by_violations(tmp_path: Path):
     sql_file.parent.mkdir(parents=True, exist_ok=True)
     sql_file.write_text("SELECT a, b FROM table GROUP BY 1, 2", encoding="utf-8")
 
-    model = ModelRepresentation(
+    model = _make_model(
         name="marts.my_model",
         path=str(sql_file),
         dialect="bigquery",
@@ -35,7 +35,7 @@ def test_no_positional_group_by_or_order_by_violations(tmp_path: Path):
     sql_file_order.parent.mkdir(parents=True, exist_ok=True)
     sql_file_order.write_text("SELECT a, b FROM table ORDER BY 1 DESC, b ASC", encoding="utf-8")
 
-    model_order = ModelRepresentation(
+    model_order = _make_model(
         name="core.my_model",
         path=str(sql_file_order),
         dialect="bigquery",
@@ -51,7 +51,7 @@ def test_no_positional_group_by_or_order_by_violations(tmp_path: Path):
     sql_file_sources.parent.mkdir(parents=True, exist_ok=True)
     sql_file_sources.write_text("SELECT a, b FROM table GROUP BY 1, 2 ORDER BY 1 DESC", encoding="utf-8")
 
-    model_sources = ModelRepresentation(
+    model_sources = _make_model(
         name="sources.my_model",
         path=str(sql_file_sources),
         dialect="bigquery",
@@ -65,7 +65,7 @@ def test_no_positional_group_by_or_order_by_violations(tmp_path: Path):
     sql_file_compliant.parent.mkdir(parents=True, exist_ok=True)
     sql_file_compliant.write_text("SELECT col1, col2 FROM table GROUP BY col1, col2 ORDER BY col1 DESC, col2 ASC", encoding="utf-8")
 
-    model_compliant = ModelRepresentation(
+    model_compliant = _make_model(
         name="marts.compliant_model",
         path=str(sql_file_compliant),
         dialect="bigquery",
@@ -75,7 +75,7 @@ def test_no_positional_group_by_or_order_by_violations(tmp_path: Path):
     assert violation_compliant is None
 
     # 5. Symbolic model
-    model_symbolic = ModelRepresentation(
+    model_symbolic = _make_model(
         name="marts.symbolic_model",
         path=str(sql_file_compliant),
         dialect="bigquery",
@@ -97,7 +97,7 @@ def test_no_positional_group_by_or_order_by_error_paths(tmp_path: Path):
     rule = NoPositionalGroupByOrOrderBy(config=config)
 
     # Non-existent file path
-    model_missing = ModelRepresentation(
+    model_missing = _make_model(
         name="marts.missing",
         path="non_existent_file.sql",
         dialect="bigquery",
@@ -108,7 +108,7 @@ def test_no_positional_group_by_or_order_by_error_paths(tmp_path: Path):
     # Invalid SQL syntax
     sql_file = tmp_path / "invalid.sql"
     sql_file.write_text("SELECT * FROM (invalid syntax", encoding="utf-8")
-    model_invalid = ModelRepresentation(
+    model_invalid = _make_model(
         name="marts.invalid",
         path=str(sql_file),
         dialect="bigquery",
@@ -122,7 +122,7 @@ def test_no_positional_group_by_or_order_by_individual_toggles(tmp_path: Path):
     sql_file.parent.mkdir(parents=True, exist_ok=True)
     sql_file.write_text("SELECT a, b FROM table GROUP BY 1, 2 ORDER BY 1 DESC", encoding="utf-8")
 
-    model = ModelRepresentation(
+    model = _make_model(
         name="marts.mixed",
         path=str(sql_file),
         dialect="bigquery",
@@ -168,7 +168,7 @@ def test_no_positional_group_by_rule(tmp_path: Path):
     sql_group = tmp_path / "models/marts/group.sql"
     sql_group.parent.mkdir(parents=True, exist_ok=True)
     sql_group.write_text("SELECT a, b FROM table GROUP BY 1, 2", encoding="utf-8")
-    model_group = ModelRepresentation(
+    model_group = _make_model(
         name="marts.group",
         path=str(sql_group),
         dialect="bigquery",
@@ -181,7 +181,7 @@ def test_no_positional_group_by_rule(tmp_path: Path):
     # Single violation singular suffix
     sql_single = tmp_path / "models/marts/single_group.sql"
     sql_single.write_text("SELECT a FROM table GROUP BY 1", encoding="utf-8")
-    model_single = ModelRepresentation(
+    model_single = _make_model(
         name="marts.single_group",
         path=str(sql_single),
         dialect="bigquery",
@@ -194,7 +194,7 @@ def test_no_positional_group_by_rule(tmp_path: Path):
     # ORDER BY only should NOT be flagged
     sql_order = tmp_path / "models/marts/order.sql"
     sql_order.write_text("SELECT a, b FROM table ORDER BY 1 DESC", encoding="utf-8")
-    model_order = ModelRepresentation(
+    model_order = _make_model(
         name="marts.order",
         path=str(sql_order),
         dialect="bigquery",
@@ -223,7 +223,7 @@ def test_no_positional_group_by_rule(tmp_path: Path):
     sql_sources = tmp_path / "models/sources/group.sql"
     sql_sources.parent.mkdir(parents=True, exist_ok=True)
     sql_sources.write_text("SELECT a FROM table GROUP BY 1", encoding="utf-8")
-    model_sources = ModelRepresentation(
+    model_sources = _make_model(
         name="sources.group",
         path=str(sql_sources),
         dialect="bigquery",
@@ -232,7 +232,7 @@ def test_no_positional_group_by_rule(tmp_path: Path):
     assert rule.check_model(model_sources) is None
 
     # Symbolic model
-    model_sym = ModelRepresentation(
+    model_sym = _make_model(
         name="marts.sym",
         path=str(sql_group),
         dialect="bigquery",
@@ -241,7 +241,7 @@ def test_no_positional_group_by_rule(tmp_path: Path):
     assert rule.check_model(model_sym) is None
 
     # Missing file / invalid AST
-    model_missing = ModelRepresentation(
+    model_missing = _make_model(
         name="marts.missing",
         path="non_existent.sql",
         dialect="bigquery",
@@ -260,7 +260,7 @@ def test_no_positional_order_by_rule(tmp_path: Path):
     sql_order = tmp_path / "models/marts/order.sql"
     sql_order.parent.mkdir(parents=True, exist_ok=True)
     sql_order.write_text("SELECT a, b FROM table ORDER BY 1, 2 DESC", encoding="utf-8")
-    model_order = ModelRepresentation(
+    model_order = _make_model(
         name="marts.order",
         path=str(sql_order),
         dialect="bigquery",
@@ -273,7 +273,7 @@ def test_no_positional_order_by_rule(tmp_path: Path):
     # Single violation singular suffix
     sql_single = tmp_path / "models/marts/single_order.sql"
     sql_single.write_text("SELECT a FROM table ORDER BY 1", encoding="utf-8")
-    model_single = ModelRepresentation(
+    model_single = _make_model(
         name="marts.single_order",
         path=str(sql_single),
         dialect="bigquery",
@@ -286,7 +286,7 @@ def test_no_positional_order_by_rule(tmp_path: Path):
     # GROUP BY only should NOT be flagged
     sql_group = tmp_path / "models/marts/group.sql"
     sql_group.write_text("SELECT a, b FROM table GROUP BY 1, 2", encoding="utf-8")
-    model_group = ModelRepresentation(
+    model_group = _make_model(
         name="marts.group",
         path=str(sql_group),
         dialect="bigquery",
@@ -315,7 +315,7 @@ def test_no_positional_order_by_rule(tmp_path: Path):
     sql_sources = tmp_path / "models/sources/order.sql"
     sql_sources.parent.mkdir(parents=True, exist_ok=True)
     sql_sources.write_text("SELECT a FROM table ORDER BY 1", encoding="utf-8")
-    model_sources = ModelRepresentation(
+    model_sources = _make_model(
         name="sources.order",
         path=str(sql_sources),
         dialect="bigquery",
@@ -324,7 +324,7 @@ def test_no_positional_order_by_rule(tmp_path: Path):
     assert rule.check_model(model_sources) is None
 
     # Symbolic model
-    model_sym = ModelRepresentation(
+    model_sym = _make_model(
         name="marts.sym",
         path=str(sql_order),
         dialect="bigquery",
@@ -333,7 +333,7 @@ def test_no_positional_order_by_rule(tmp_path: Path):
     assert rule.check_model(model_sym) is None
 
     # Missing file / invalid AST
-    model_missing = ModelRepresentation(
+    model_missing = _make_model(
         name="marts.missing",
         path="non_existent.sql",
         dialect="bigquery",

@@ -1,3 +1,4 @@
+from conftest import _make_finding, _make_model
 import json
 import os
 import sys
@@ -371,12 +372,33 @@ def test_invalid_command_error_hint(capsys):
     assert "For help, try 'tff --help'" in captured.err
 
 
-def test_missing_command_defaults_to_help(capsys):
-    # Test tff (no command) defaults to showing help and exiting 0
-    assert main([]) == 0
+@pytest.mark.parametrize(
+    "argv,expected_out_snippets,expected_err_snippets,expected_exit",
+    [
+        ([], ["Run Transformation Fitness Function (tff) checks", "tff"], [], 0),
+        (["help", "info"], ["Show configuration and environment information", "--provider"], [], 0),
+        (["explain", "CoA"], ["duplicate_ctes (Connascence of Algorithm (CoA))"], [], 0),
+        (["explain", "CoV"], ["connascence_of_value (Connascence of Value (CoV))"], [], 0),
+        (["explain", "duplicate_cte"], ["duplicate_ctes (Connascence of Algorithm (CoA))"], [], 0),
+        (["explain", "duplcate_ctes"], [], ["Unknown check or category 'duplcate_ctes'", "Did you mean 'duplicate_ctes'?"], 1),
+        (["explain", "xyzzy"], [], ["Unknown check or category 'xyzzy'"], 1),
+    ],
+)
+def test_cli_direct_return_commands(
+    argv: list[str],
+    expected_out_snippets: list[str],
+    expected_err_snippets: list[str],
+    expected_exit: int,
+    capsys,
+):
+    assert main(argv) == expected_exit
     captured = capsys.readouterr()
-    assert "Run Transformation Fitness Function (tff) checks" in captured.out
-    assert "tff" in captured.out
+    for snippet in expected_out_snippets:
+        assert snippet in captured.out
+    for snippet in expected_err_snippets:
+        assert snippet in captured.err
+    if argv == ["explain", "xyzzy"]:
+        assert "Did you mean" not in captured.err
 
 
 @pytest.mark.parametrize("flag", ["--version", "-v"])
@@ -403,13 +425,6 @@ def test_subcommand_invalid_argument_error_hint(capsys):
     captured = capsys.readouterr()
     assert "unrecognized arguments: --invalid-option" in captured.err
     assert "For help, try 'tff lint --help'" in captured.err
-
-
-def test_help_info_subcommand(capsys):
-    assert main(["help", "info"]) == 0
-    captured = capsys.readouterr()
-    assert "Show configuration and environment information" in captured.out
-    assert "--provider" in captured.out
 
 
 def test_info_command_dbt(tmp_path: Path, capsys):
@@ -819,7 +834,6 @@ def test_cli_version_fallback():
 
 
 def test_cli_main_lint_with_fix(tmp_path: Path):
-    from conftest import _make_finding, _make_model
     # Create workflow_settings.yaml to auto-detect provider as Dataform
     (tmp_path / "workflow_settings.yaml").touch()
 
@@ -875,7 +889,6 @@ def test_cli_main_lint_with_fix(tmp_path: Path):
 
 
 def test_cli_main_lint_with_fix_sqlmesh(tmp_path: Path):
-    from conftest import _make_finding, _make_model
     
     # Create config.py to auto-detect provider as SQLMesh
     (tmp_path / "config.py").write_text(
@@ -931,7 +944,6 @@ def test_cli_main_lint_with_fix_sqlmesh(tmp_path: Path):
 
 
 def test_cli_main_lint_with_fix_load_models_exception(tmp_path: Path):
-    from conftest import _make_finding
     (tmp_path / "dbt_project.yml").touch()
     
     mock_adapter = MagicMock()
@@ -962,7 +974,6 @@ def test_cli_main_lint_with_fix_load_models_exception(tmp_path: Path):
 
 
 def test_cli_main_lint_with_fix_rerun_exception(tmp_path: Path):
-    from conftest import _make_finding, _make_model
     (tmp_path / "config.py").write_text("from sqlmesh.core.config import Config\nconfig = Config()")
     
     sql_file = tmp_path / "models/my_model.sql"
@@ -1078,9 +1089,8 @@ def test_cli_config_notice(
 
 def test_cli_lint_format_sarif(tmp_path: Path, capsys):
     (tmp_path / "dbt_project.yml").touch()
-    from tff.core.report import LintFinding
 
-    finding = LintFinding(
+    finding = _make_finding(
         check="banselectstar",
         severity="error",
         message="SELECT * not allowed",
@@ -1129,9 +1139,8 @@ def test_cli_lint_format_text(tmp_path: Path):
 
 def test_cli_lint_github_annotations_flag(tmp_path: Path, capsys):
     (tmp_path / "dbt_project.yml").touch()
-    from tff.core.report import LintFinding
 
-    finding = LintFinding(
+    finding = _make_finding(
         check="nomissingowner",
         severity="warning",
         message="Missing model owner",
@@ -1156,9 +1165,8 @@ def test_cli_lint_github_annotations_flag(tmp_path: Path, capsys):
 def test_cli_lint_github_actions_env(tmp_path: Path, capsys, monkeypatch):
     monkeypatch.setenv("GITHUB_ACTIONS", "true")
     (tmp_path / "dbt_project.yml").touch()
-    from tff.core.report import LintFinding
 
-    finding = LintFinding(
+    finding = _make_finding(
         check="banselectstar",
         severity="error",
         message="SELECT * forbidden",
@@ -1180,9 +1188,8 @@ def test_cli_lint_github_actions_env(tmp_path: Path, capsys, monkeypatch):
 def test_cli_lint_github_actions_env_sarif_no_annotations(tmp_path: Path, capsys, monkeypatch):
     monkeypatch.setenv("GITHUB_ACTIONS", "true")
     (tmp_path / "dbt_project.yml").touch()
-    from tff.core.report import LintFinding
 
-    finding = LintFinding(
+    finding = _make_finding(
         check="banselectstar",
         severity="error",
         message="SELECT * forbidden",
@@ -1221,9 +1228,8 @@ def test_cli_lint_junit_xml(tmp_path: Path):
 
 def test_cli_lint_format_github_with_findings(tmp_path: Path, capsys):
     (tmp_path / "dbt_project.yml").touch()
-    from tff.core.report import LintFinding
 
-    finding = LintFinding(
+    finding = _make_finding(
         check="banselectstar",
         severity="error",
         message="SELECT * not permitted in marts",
@@ -1260,9 +1266,8 @@ def test_cli_lint_format_github_empty(tmp_path: Path, capsys):
 
 def test_cli_lint_structured_with_github_annotations(tmp_path: Path, capsys):
     (tmp_path / "dbt_project.yml").touch()
-    from tff.core.report import LintFinding
 
-    finding = LintFinding(
+    finding = _make_finding(
         check="nomissingowner",
         severity="warning",
         message="Missing owner attribute",
@@ -1473,19 +1478,19 @@ def test_cli_debug_flag_health(mock_render_health, mock_load_config, mock_get_ad
     assert logging.getLogger().level == logging.DEBUG
 
 
-def test_cli_debug_only():
+@pytest.mark.parametrize(
+    "argv,use_env",
+    [
+        (["--debug"], False),
+        (["help"], True),
+    ],
+)
+def test_cli_debug_logging_modes(argv: list[str], use_env: bool, monkeypatch):
     import logging
 
-    exit_code = main(["--debug"])
-    assert exit_code == 0
-    assert logging.getLogger().level == logging.DEBUG
-
-
-def test_cli_debug_env_var(monkeypatch):
-    import logging
-
-    monkeypatch.setenv("TFF_DEBUG", "1")
-    exit_code = main(["help"])
+    if use_env:
+        monkeypatch.setenv("TFF_DEBUG", "1")
+    exit_code = main(argv)
     assert exit_code == 0
     assert logging.getLogger().level == logging.DEBUG
 
@@ -1873,17 +1878,15 @@ def test_cli_lint_interactive_spinner(tmp_path: Path):
 
 def test_cli_lint_autofix_interactive_spinner(tmp_path: Path):
     (tmp_path / "dbt_project.yml").touch()
-    from tff.core.model import ModelRepresentation
-    from tff.core.report import LintFinding
 
-    finding = LintFinding(
+    finding = _make_finding(
         check="filenameequalsmodelname",
         severity="error",
         message="Filename does not match model name",
         model="user_model",
         path="models/marts/user_model.sql",
     )
-    model = ModelRepresentation(
+    model = _make_model(
         name="user_model",
         path=str(tmp_path / "models/marts/user_model.sql"),
         dialect="duckdb",
@@ -1985,20 +1988,6 @@ def test_cli_explain_fixable_check(capsys):
     assert "no_positional_order_by" in captured_ord.out
 
 
-@pytest.mark.parametrize(
-    "query,expected_phrase",
-    [
-        ("CoA", "duplicate_ctes (Connascence of Algorithm (CoA))"),
-        ("CoV", "connascence_of_value (Connascence of Value (CoV))"),
-        ("duplicate_cte", "duplicate_ctes (Connascence of Algorithm (CoA))"),
-    ],
-)
-def test_cli_explain_single_match_queries(query: str, expected_phrase: str, capsys):
-    assert main(["explain", query]) == 0
-    captured = capsys.readouterr()
-    assert expected_phrase in captured.out
-
-
 def test_cli_explain_partial_substring_multi(capsys):
     # Partial substring 'select_star' matches ban_select_star and invalid_select_star_expansion
     assert main(["explain", "select_star"]) == 0
@@ -2079,14 +2068,6 @@ def test_cli_explain_json_substring_multi(capsys):
     assert len(data["checks"]) == 2
 
 
-def test_cli_explain_typo_suggestion(capsys):
-    # Typo duplcate_ctes should suggest duplicate_ctes
-    assert main(["explain", "duplcate_ctes"]) == 1
-    captured = capsys.readouterr()
-    assert "Unknown check or category 'duplcate_ctes'" in captured.err
-    assert "Did you mean 'duplicate_ctes'?" in captured.err
-
-
 def test_cli_explain_typo_json(capsys):
     import json
 
@@ -2095,13 +2076,6 @@ def test_cli_explain_typo_json(capsys):
     data = json.loads(captured.out)
     assert "Unknown check or category 'duplcate_ctes'" in data["error"]
     assert data["suggestion"] == "duplicate_ctes"
-
-
-def test_cli_explain_unknown_unrelated(capsys):
-    assert main(["explain", "xyzzy"]) == 1
-    captured = capsys.readouterr()
-    assert "Unknown check or category 'xyzzy'" in captured.err
-    assert "Did you mean" not in captured.err
 
 
 def test_explain_single_check_direct_call():

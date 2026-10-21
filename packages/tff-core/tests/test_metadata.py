@@ -1,5 +1,5 @@
+from conftest import _make_model
 from tff.core.config import FitnessFunctionsConfig
-from tff.core.model import ModelRepresentation
 from tff.core.rules.metadata import (
     NoMissingOwner,
     NoMissingDescription,
@@ -16,7 +16,7 @@ def test_no_missing_not_null_rule():
     rule = NoMissingNotNull(config=config)
 
     # Model with no audits
-    model = ModelRepresentation(
+    model = _make_model(
         name="test_model",
         path="models/marts/test_model.sql",
         dialect="bigquery",
@@ -27,7 +27,7 @@ def test_no_missing_not_null_rule():
     assert rule.check_model(model) is not None
 
     # Model with not_null audit
-    model_with_audit = ModelRepresentation(
+    model_with_audit = _make_model(
         name="test_model",
         path="models/marts/test_model.sql",
         dialect="bigquery",
@@ -49,7 +49,7 @@ def test_no_missing_unique_values_rule():
     rule = NoMissingUniqueValues(config=config)
 
     # Model with no audits
-    model = ModelRepresentation(
+    model = _make_model(
         name="test_model",
         path="models/marts/test_model.sql",
         dialect="bigquery",
@@ -60,7 +60,7 @@ def test_no_missing_unique_values_rule():
     assert rule.check_model(model) is not None
 
     # Model with unique_values audit
-    model_with_audit = ModelRepresentation(
+    model_with_audit = _make_model(
         name="test_model",
         path="models/marts/test_model.sql",
         dialect="bigquery",
@@ -82,7 +82,7 @@ def test_no_missing_owner_rule():
     rule = NoMissingOwner(config=config)
 
     # Model with no owner
-    model = ModelRepresentation(
+    model = _make_model(
         name="test_model",
         path="models/marts/test_model.sql",
         dialect="bigquery",
@@ -92,7 +92,7 @@ def test_no_missing_owner_rule():
     assert rule.check_model(model) is not None
 
     # Model with owner
-    model_with_owner = ModelRepresentation(
+    model_with_owner = _make_model(
         name="test_model",
         path="models/marts/test_model.sql",
         dialect="bigquery",
@@ -114,7 +114,7 @@ def test_no_missing_description_rule():
     rule = NoMissingDescription(config=config)
 
     # Model with no description
-    model = ModelRepresentation(
+    model = _make_model(
         name="test_model",
         path="models/marts/test_model.sql",
         dialect="bigquery",
@@ -124,7 +124,7 @@ def test_no_missing_description_rule():
     assert rule.check_model(model) is not None
 
     # Model with description
-    model_with_desc = ModelRepresentation(
+    model_with_desc = _make_model(
         name="test_model",
         path="models/marts/test_model.sql",
         dialect="bigquery",
@@ -146,7 +146,7 @@ def test_no_missing_grain_rule():
     rule = NoMissingGrain(config=config)
 
     # Model with no grain
-    model = ModelRepresentation(
+    model = _make_model(
         name="test_model",
         path="models/marts/test_model.sql",
         dialect="bigquery",
@@ -157,7 +157,7 @@ def test_no_missing_grain_rule():
     assert rule.check_model(model) is not None
 
     # Model with grain
-    model_with_grain = ModelRepresentation(
+    model_with_grain = _make_model(
         name="test_model",
         path="models/marts/test_model.sql",
         dialect="bigquery",
@@ -189,7 +189,7 @@ def test_rules_skip_symbolic_and_external_models():
     ]
 
     # Symbolic model
-    symbolic_model = ModelRepresentation(
+    symbolic_model = _make_model(
         name="test_model",
         path="models/marts/test_model.sql",
         dialect="bigquery",
@@ -201,7 +201,7 @@ def test_rules_skip_symbolic_and_external_models():
         assert rule.check_model(symbolic_model) is None
 
     # External model
-    external_model = ModelRepresentation(
+    external_model = _make_model(
         name="test_model",
         path="models/marts/test_model.sql",
         dialect="bigquery",

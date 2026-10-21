@@ -1,3 +1,4 @@
+from conftest import _make_finding, _make_model
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -22,15 +23,14 @@ def test_generate_docs_dashboard_dbt(
     mock_get_adapter.return_value = mock_adapter
 
     # Setup mock models
-    from tff.core.model import ModelRepresentation
-    mock_model_1 = ModelRepresentation(
+    mock_model_1 = _make_model(
         name="model_1",
         path=str(tmp_path / "models/model_1.sql"),
         dialect="duckdb",
         materialized="table",
         depends_on=set()
     )
-    mock_model_2 = ModelRepresentation(
+    mock_model_2 = _make_model(
         name="model_2",
         path=str(tmp_path / "models/model_2.sql"),
         dialect="duckdb",
@@ -87,7 +87,6 @@ def test_generate_docs_dashboard_sqlmesh(
 ):
     # Setup mock adapter for SQLMesh
     mock_adapter = MagicMock()
-    from conftest import _make_finding
     mock_findings = [
         _make_finding(check="ban_select_star", severity="warning", model="model_1", path=None, message="banned select *"),
         _make_finding(check="layer_integrity", severity="error", model="model_2", path="models/model_2.sql", message="layer violation"),
@@ -97,15 +96,14 @@ def test_generate_docs_dashboard_sqlmesh(
     mock_get_adapter.return_value = mock_adapter
 
     # Setup mock models mapping
-    from tff.core.model import ModelRepresentation
-    mock_model_1 = ModelRepresentation(
+    mock_model_1 = _make_model(
         name="model_1",
         path=str(tmp_path / "models/model_1.sql"),
         dialect="duckdb",
         materialized="table",
         depends_on=set()
     )
-    mock_model_2 = ModelRepresentation(
+    mock_model_2 = _make_model(
         name="model_2",
         path=str(tmp_path / "models/model_2.sql"),
         dialect="duckdb",

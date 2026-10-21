@@ -1,6 +1,7 @@
 """Unit tests verifying per-model error isolation and contextual diagnostics (Issue #248)."""
 
 from __future__ import annotations
+from conftest import _make_model
 
 import io
 from pathlib import Path
@@ -53,7 +54,7 @@ class BrokenInitRule(Rule):
 
 def test_create_rule_execution_error_finding_formatting():
     """Verify attributes and fallback message of _create_rule_execution_error_finding."""
-    model = ModelRepresentation(name="my_model", path="models/my_model.sql", dialect="duckdb")
+    model = _make_model(name="my_model", path="models/my_model.sql", dialect="duckdb")
     exc = ValueError("Regex recursion error")
 
     finding = _create_rule_execution_error_finding(model, "test_rule", exc)
@@ -72,9 +73,9 @@ def test_create_rule_execution_error_finding_formatting():
 def test_run_parallel_model_rule_isolates_single_model_crash_sequential():
     """A single failing model does not prevent other models from being checked in sequential mode."""
     models = [
-        ModelRepresentation(name="model_ok", path="models/ok.sql", dialect="duckdb"),
-        ModelRepresentation(name="model_broken", path="models/broken.sql", dialect="duckdb"),
-        ModelRepresentation(name="model_violating", path="models/violating.sql", dialect="duckdb"),
+        _make_model(name="model_ok", path="models/ok.sql", dialect="duckdb"),
+        _make_model(name="model_broken", path="models/broken.sql", dialect="duckdb"),
+        _make_model(name="model_violating", path="models/violating.sql", dialect="duckdb"),
     ]
 
     findings = run_parallel_model_rule(
@@ -105,11 +106,11 @@ def test_run_parallel_model_rule_isolates_single_model_crash_parallel():
     """A single failing model does not prevent other models from being checked in parallel threadpool."""
     # Create > 20 models to trigger parallel ThreadPoolExecutor path
     models = [
-        ModelRepresentation(name=f"model_{i}", path=f"models/{i}.sql", dialect="duckdb")
+        _make_model(name=f"model_{i}", path=f"models/{i}.sql", dialect="duckdb")
         for i in range(25)
     ]
-    models.append(ModelRepresentation(name="model_broken", path="models/broken.sql", dialect="duckdb"))
-    models.append(ModelRepresentation(name="model_violating", path="models/violating.sql", dialect="duckdb"))
+    models.append(_make_model(name="model_broken", path="models/broken.sql", dialect="duckdb"))
+    models.append(_make_model(name="model_violating", path="models/violating.sql", dialect="duckdb"))
 
     findings = run_parallel_model_rule(
         FlakyRule,
@@ -133,8 +134,8 @@ def test_run_parallel_model_rule_isolates_single_model_crash_parallel():
 def test_run_parallel_model_rule_instantiation_failure():
     """When a rule cannot be instantiated, all eligible models receive execution error findings."""
     models = [
-        ModelRepresentation(name="m1", path="models/m1.sql", dialect="duckdb"),
-        ModelRepresentation(name="m2", path="models/m2.sql", dialect="duckdb"),
+        _make_model(name="m1", path="models/m1.sql", dialect="duckdb"),
+        _make_model(name="m2", path="models/m2.sql", dialect="duckdb"),
     ]
 
     findings = run_parallel_model_rule(
@@ -182,7 +183,7 @@ def test_check_registry_run_checks_isolates_failing_check_sequential():
     )
 
     config = FitnessFunctionsConfig()
-    models = {"m1": ModelRepresentation(name="m1", path="models/m1.sql", dialect="duckdb")}
+    models = {"m1": _make_model(name="m1", path="models/m1.sql", dialect="duckdb")}
 
     findings, executed = reg.run_checks(
         models=models,
@@ -228,7 +229,7 @@ def test_check_registry_run_checks_isolates_failing_check_parallel():
     )
 
     config = FitnessFunctionsConfig()
-    models = {"m1": ModelRepresentation(name="m1", path="models/m1.sql", dialect="duckdb")}
+    models = {"m1": _make_model(name="m1", path="models/m1.sql", dialect="duckdb")}
 
     findings, executed = reg.run_checks(
         models=models,
@@ -245,8 +246,8 @@ def test_check_registry_run_checks_isolates_failing_check_parallel():
 def test_custom_exclusions_isolates_model_error():
     """Unexpected exception in CustomExclusionsChecker produces diagnostic finding and continues."""
     models = {
-        "m_ok": ModelRepresentation(name="m_ok", path="models/ok.sql", dialect="duckdb"),
-        "m_fail": ModelRepresentation(name="m_fail", path="models/fail.sql", dialect="duckdb"),
+        "m_ok": _make_model(name="m_ok", path="models/ok.sql", dialect="duckdb"),
+        "m_fail": _make_model(name="m_fail", path="models/fail.sql", dialect="duckdb"),
     }
     config = FitnessFunctionsConfig()
 
@@ -273,7 +274,7 @@ def test_custom_exclusions_isolates_model_error():
 
 def test_precompute_model_asts_handles_read_sql_error(tmp_path: Path):
     """If reading a model SQL file raises an OSError, precompute_model_asts does not crash."""
-    m_bad = ModelRepresentation(name="bad_model", path=str(tmp_path / "nonexistent.sql"), dialect="duckdb")
+    m_bad = _make_model(name="bad_model", path=str(tmp_path / "nonexistent.sql"), dialect="duckdb")
     models = {"bad_model": m_bad}
 
     with patch("tff.core.parallel.read_model_sql", side_effect=OSError("File corrupted")):
@@ -292,7 +293,7 @@ def test_report_includes_rule_execution_error_in_summary_and_labels():
 
     # Render report to string console
     finding = _create_rule_execution_error_finding(
-        ModelRepresentation(name="orders", path="models/orders.sql", dialect="duckdb"),
+        _make_model(name="orders", path="models/orders.sql", dialect="duckdb"),
         "ban_select_star",
         RuntimeError("Invalid AST token"),
     )

@@ -1,4 +1,5 @@
 """Unit tests for tff.core.ast_cache persistent disk-based caching."""
+from conftest import _make_model
 
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
@@ -295,11 +296,10 @@ def test_parse_sql_with_cache_respects_no_cache_env(tmp_path: Path, monkeypatch:
 
 
 def test_model_representation_ast_respects_no_cache_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
-    from tff.core.model import ModelRepresentation
 
     monkeypatch.chdir(tmp_path)
     monkeypatch.setenv("TFF_NO_CACHE", "1")
-    m = ModelRepresentation(name="test", path="test.sql", dialect="duckdb", query="SELECT 42")
+    m = _make_model(name="test", path="test.sql", dialect="duckdb", query="SELECT 42")
     ast = m.ast
     assert ast is not None
     assert not (tmp_path / ".tff_cache").exists()

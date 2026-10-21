@@ -1,6 +1,9 @@
 """Tests for SQL complexity analysis."""
-
 from pathlib import Path
+
+import pytest
+
+from conftest import _make_model
 from tff.core.rules.sql_complexity import (
     analyze_sql,
     format_violations,
@@ -48,39 +51,45 @@ def test_format_violations_nested_subquery() -> None:
     assert any("WARN: nested subquery" in m for m in messages)
 
 
-def test_split_complexity_message_single_warn() -> None:
-    msg = "WARN: cte_count=9 (warn>8, fail>12)"
-    res = split_complexity_message(msg)
-    assert res == [("WARN: cte_count=9 (warn>8, fail>12)", "warning")]
-
-
-def test_split_complexity_message_single_fail() -> None:
-    msg = "FAIL: cte_count=13 (warn>8, fail>12)"
-    res = split_complexity_message(msg)
-    assert res == [("FAIL: cte_count=13 (warn>8, fail>12)", "error")]
-
-
-def test_split_complexity_message_multiple_mixed() -> None:
-    msg = (
-        "WARN: cte_count=9 (warn>8, fail>12); "
-        "FAIL: join_count=15 (warn>10, fail>14); "
-        "WARN: nested subquery in final SELECT — prefer CTEs per style guide"
-    )
-    res = split_complexity_message(msg)
-    assert res == [
-        ("WARN: cte_count=9 (warn>8, fail>12)", "warning"),
-        ("FAIL: join_count=15 (warn>10, fail>14)", "error"),
-        ("WARN: nested subquery in final SELECT — prefer CTEs per style guide", "warning"),
-    ]
-
-
-def test_split_complexity_message_severity_override() -> None:
-    msg = "WARN: cte_count=9 (warn>8, fail>12); FAIL: join_count=15 (warn>10, fail>14)"
-    res = split_complexity_message(msg, base_severity="warning")
-    assert res == [
-        ("WARN: cte_count=9 (warn>8, fail>12)", "warning"),
-        ("FAIL: join_count=15 (warn>10, fail>14)", "warning"),
-    ]
+@pytest.mark.parametrize(
+    "msg,base_severity,expected",
+    [
+        (
+            "WARN: cte_count=9 (warn>8, fail>12)",
+            "error",
+            [("WARN: cte_count=9 (warn>8, fail>12)", "warning")],
+        ),
+        (
+            "FAIL: cte_count=13 (warn>8, fail>12)",
+            "error",
+            [("FAIL: cte_count=13 (warn>8, fail>12)", "error")],
+        ),
+        (
+            "WARN: cte_count=9 (warn>8, fail>12); "
+            "FAIL: join_count=15 (warn>10, fail>14); "
+            "WARN: nested subquery in final SELECT — prefer CTEs per style guide",
+            "error",
+            [
+                ("WARN: cte_count=9 (warn>8, fail>12)", "warning"),
+                ("FAIL: join_count=15 (warn>10, fail>14)", "error"),
+                ("WARN: nested subquery in final SELECT — prefer CTEs per style guide", "warning"),
+            ],
+        ),
+        (
+            "WARN: cte_count=9 (warn>8, fail>12); FAIL: join_count=15 (warn>10, fail>14)",
+            "warning",
+            [
+                ("WARN: cte_count=9 (warn>8, fail>12)", "warning"),
+                ("FAIL: join_count=15 (warn>10, fail>14)", "warning"),
+            ],
+        ),
+    ],
+)
+def test_split_complexity_message_variants(
+    msg: str, base_severity: str, expected: list[tuple[str, str]]
+) -> None:
+    res = split_complexity_message(msg, base_severity=base_severity)  # type: ignore[arg-type]
+    assert res == expected
 
 
 def test_split_complexity_message_with_model_prefix() -> None:
@@ -162,7 +171,6 @@ def test_sql_complexity_rejects_warn_only() -> None:
 
 def test_sql_complexity_parallel_model_rule_severities() -> None:
     from tff.core.config import FitnessFunctionsConfig
-    from tff.core.model import ModelRepresentation
     from tff.core.parallel import run_parallel_model_rule
     from tff.core.rules.sql_complexity import SqlComplexity
 
@@ -174,7 +182,7 @@ def test_sql_complexity_parallel_model_rule_severities() -> None:
     cases = " ".join(f"CASE WHEN id = {i} THEN {i} ELSE 0 END +" for i in range(26))
     sql = f"WITH {ctes} SELECT {cases} 0 FROM cte_0"
 
-    model = ModelRepresentation(
+    model = _make_model(
         name="core.complex_model",
         path="models/core/complex_model.sql",
         dialect="duckdb",
@@ -209,7 +217,7 @@ def test_sql_complexity_parallel_model_rule_severities() -> None:
 
     # Multithreaded execution
     models = [
-        ModelRepresentation(
+        _make_model(
             name=f"core.complex_model_{i}",
             path=f"models/core/complex_model_{i}.sql",
             dialect="duckdb",
@@ -229,7 +237,6 @@ def test_sql_complexity_parallel_model_rule_severities() -> None:
 
 def test_sql_complexity_rule_missing_or_non_sql_file() -> None:
     from tff.core.rules.sql_complexity import SqlComplexity
-    from tff.core.model import ModelRepresentation
     from tff.core.config import FitnessFunctionsConfig
 
     config = FitnessFunctionsConfig()
@@ -238,7 +245,7 @@ def test_sql_complexity_rule_missing_or_non_sql_file() -> None:
     rule = SqlComplexity(config=config)
 
     # Case 1: non-existent file
-    model1 = ModelRepresentation(
+    model1 = _make_model(
         name="core.model1",
         path="models/core/non_existent_file.sql",
         dialect="bigquery",
@@ -247,7 +254,7 @@ def test_sql_complexity_rule_missing_or_non_sql_file() -> None:
     assert rule.check_model(model1) is None
 
     # Case 2: non-sql file extension (e.g. .txt)
-    model2 = ModelRepresentation(
+    model2 = _make_model(
         name="core.model2",
         path="models/core/file.txt",
         dialect="bigquery",
@@ -270,7 +277,6 @@ def test_analyze_sql_invalid_sql() -> None:
 
 def test_sql_complexity_rule_read_exception(tmp_path: Path) -> None:
     from tff.core.rules.sql_complexity import SqlComplexity
-    from tff.core.model import ModelRepresentation
     from tff.core.config import FitnessFunctionsConfig
 
     config = FitnessFunctionsConfig()
@@ -282,7 +288,7 @@ def test_sql_complexity_rule_read_exception(tmp_path: Path) -> None:
     invalid_dir = tmp_path / "invalid_model.sql"
     invalid_dir.mkdir()
 
-    model = ModelRepresentation(
+    model = _make_model(
         name="core.invalid_model",
         path=str(invalid_dir),
         dialect="bigquery",

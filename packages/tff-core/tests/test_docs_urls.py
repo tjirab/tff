@@ -1,6 +1,7 @@
 """Tests for systematic documentation URL resolution across registry, formatters, action, and docs."""
 
 from __future__ import annotations
+from conftest import _make_finding
 
 from pathlib import Path
 from unittest.mock import MagicMock, patch
@@ -10,7 +11,6 @@ from tff.core.docs import generate_docs_dashboard
 from tff.core.formatters import generate_sarif_report
 from tff.core.model import ModelRepresentation
 from tff.core.registry import CheckRegistry, registry
-from tff.core.report import LintFinding
 from tff.core.rules.base import Rule, RuleViolation
 
 
@@ -159,14 +159,14 @@ def test_action_pr_comment_includes_check_links() -> None:
 def test_sarif_help_uri_mapping() -> None:
     """Test generate_sarif_report populates helpUri with check docs_url."""
     findings = [
-        LintFinding(
+        _make_finding(
             check="connascence_of_value",
             severity="warning",
             message="CoV detected",
             model="stg_orders",
             path="models/stg_orders.sql",
         ),
-        LintFinding(
+        _make_finding(
             check="unknown_external_check",
             severity="error",
             message="Unknown check error",

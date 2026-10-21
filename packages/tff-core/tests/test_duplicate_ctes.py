@@ -1,15 +1,15 @@
+from conftest import _make_model
 from pathlib import Path
 
 from tff.core.checks.duplicate_ctes import collect_duplicate_cte_findings
 from tff.core.config import FitnessFunctionsConfig
-from tff.core.model import ModelRepresentation
 
 
 def test_duplicate_ctes_no_duplicates():
     config = FitnessFunctionsConfig()
     config.checks.duplicate_ctes.enabled = True
 
-    model1 = ModelRepresentation(
+    model1 = _make_model(
         name="model1",
         path="models/marts/model1.sql",
         dialect="postgres",
@@ -20,7 +20,7 @@ def test_duplicate_ctes_no_duplicates():
         SELECT * FROM cte1
         """,
     )
-    model2 = ModelRepresentation(
+    model2 = _make_model(
         name="model2",
         path="models/marts/model2.sql",
         dialect="postgres",
@@ -63,13 +63,13 @@ def test_duplicate_ctes_with_duplicates():
     SELECT id FROM user_cte
     """
 
-    model1 = ModelRepresentation(
+    model1 = _make_model(
         name="model1",
         path="models/marts/model1.sql",
         dialect="postgres",
         query=query1,
     )
-    model2 = ModelRepresentation(
+    model2 = _make_model(
         name="model2",
         path="models/marts/model2.sql",
         dialect="postgres",
@@ -97,13 +97,13 @@ def test_duplicate_ctes_simple_ignored():
     query1 = "WITH imported AS (SELECT * FROM ref('stg_users')) SELECT * FROM imported"
     query2 = "WITH import_alias AS (SELECT * FROM ref('stg_users')) SELECT id FROM import_alias"
 
-    model1 = ModelRepresentation(
+    model1 = _make_model(
         name="model1",
         path="models/marts/model1.sql",
         dialect="postgres",
         query=query1,
     )
-    model2 = ModelRepresentation(
+    model2 = _make_model(
         name="model2",
         path="models/marts/model2.sql",
         dialect="postgres",
@@ -127,13 +127,13 @@ def test_duplicate_ctes_layer_filtering():
     SELECT * FROM complex_cte
     """
 
-    model1 = ModelRepresentation(
+    model1 = _make_model(
         name="sources.model1",
         path="models/sources/model1.sql",
         dialect="postgres",
         query=query,
     )
-    model2 = ModelRepresentation(
+    model2 = _make_model(
         name="marts.model2",
         path="models/marts/model2.sql",
         dialect="postgres",
@@ -158,13 +158,13 @@ def test_duplicate_ctes_disabled():
     SELECT * FROM complex_cte
     """
 
-    model1 = ModelRepresentation(
+    model1 = _make_model(
         name="model1",
         path="models/marts/model1.sql",
         dialect="postgres",
         query=query,
     )
-    model2 = ModelRepresentation(
+    model2 = _make_model(
         name="model2",
         path="models/marts/model2.sql",
         dialect="postgres",
@@ -181,7 +181,7 @@ def test_duplicate_ctes_file_fallbacks(tmp_path: Path):
     config.checks.duplicate_ctes.enabled = True
 
     # 1. Nonexistent/invalid path
-    model_nonexistent = ModelRepresentation(
+    model_nonexistent = _make_model(
         name="model1",
         path="nonexistent.txt",
         dialect="postgres",
@@ -192,7 +192,7 @@ def test_duplicate_ctes_file_fallbacks(tmp_path: Path):
     # 2. Existing path with read exception
     bad_file = tmp_path / "bad.sql"
     bad_file.write_text("dummy", encoding="utf-8")
-    model_read_err = ModelRepresentation(
+    model_read_err = _make_model(
         name="model2",
         path=str(bad_file),
         dialect="postgres",
@@ -209,7 +209,7 @@ def test_duplicate_ctes_parse_exception():
     config.checks.duplicate_ctes.enabled = True
 
     # Invalid SQL syntax that sqlglot cannot parse
-    model_invalid_sql = ModelRepresentation(
+    model_invalid_sql = _make_model(
         name="model1",
         path="models/marts/model1.sql",
         dialect="postgres",
@@ -258,7 +258,7 @@ def test_duplicate_ctes_parallel_execution():
     """
 
     models = {
-        f"model_{i}": ModelRepresentation(
+        f"model_{i}": _make_model(
             name=f"model_{i}",
             path=f"models/marts/model_{i}.sql",
             dialect="duckdb",
@@ -290,7 +290,7 @@ def test_duplicate_ctes_parallel_fallback():
     """
 
     models = {
-        f"model_{i}": ModelRepresentation(
+        f"model_{i}": _make_model(
             name=f"model_{i}",
             path=f"models/marts/model_{i}.sql",
             dialect="duckdb",
@@ -317,8 +317,8 @@ def test_duplicate_ctes_empty_and_external():
 
     # Only external / symbolic models
     models = {
-        "ext": ModelRepresentation(name="ext", path="ext.sql", dialect="duckdb", is_external=True),
-        "sym": ModelRepresentation(name="sym", path="sym.sql", dialect="duckdb", is_symbolic=True),
+        "ext": _make_model(name="ext", path="ext.sql", dialect="duckdb", is_external=True),
+        "sym": _make_model(name="sym", path="sym.sql", dialect="duckdb", is_symbolic=True),
     }
     assert collect_duplicate_cte_findings(models, config) == []
 
@@ -342,19 +342,19 @@ def test_duplicate_ctes_from_file_path(tmp_path: Path):
     f1.write_text(cte_sql, encoding="utf-8")
     f2.write_text(cte_sql, encoding="utf-8")
 
-    m1 = ModelRepresentation(
+    m1 = _make_model(
         name="m1",
         path=str(f1),
         dialect="duckdb",
         query=None,
     )
-    m2 = ModelRepresentation(
+    m2 = _make_model(
         name="m2",
         path=str(f2),
         dialect="duckdb",
         query=None,
     )
-    m3_missing = ModelRepresentation(
+    m3_missing = _make_model(
         name="m3_missing",
         path="nonexistent_model_file.sql",
         dialect="duckdb",
@@ -406,14 +406,14 @@ def test_duplicate_ctes_ignored_from_dbt_macros():
     SELECT id FROM user_cte
     """
 
-    m1 = ModelRepresentation(
+    m1 = _make_model(
         name="model1",
         path="models/marts/model1.sql",
         dialect="postgres",
         query=compiled_m1,
         raw_code=raw_m1,
     )
-    m2 = ModelRepresentation(
+    m2 = _make_model(
         name="model2",
         path="models/marts/model2.sql",
         dialect="postgres",
@@ -442,14 +442,14 @@ def test_duplicate_ctes_ignored_when_macro_generates_entire_cte():
     raw_m1 = "WITH {{ generate_events_cte() }} SELECT * FROM generated_cte"
     raw_m2 = "WITH {{ generate_events_cte() }} SELECT id FROM generated_cte"
 
-    m1 = ModelRepresentation(
+    m1 = _make_model(
         name="m1",
         path="models/m1.sql",
         dialect="postgres",
         query=compiled_sql,
         raw_code=raw_m1,
     )
-    m2 = ModelRepresentation(
+    m2 = _make_model(
         name="m2",
         path="models/m2.sql",
         dialect="postgres",
@@ -491,14 +491,14 @@ def test_duplicate_ctes_ignored_from_sqlmesh_macros():
     SELECT * FROM cleaning_cte;
     """
 
-    m1 = ModelRepresentation(
+    m1 = _make_model(
         name="m1",
         path="models/m1.sql",
         dialect="postgres",
         query=compiled_sql,
         raw_code=raw_m1,
     )
-    m2 = ModelRepresentation(
+    m2 = _make_model(
         name="m2",
         path="models/m2.sql",
         dialect="postgres",
@@ -538,14 +538,14 @@ def test_duplicate_ctes_ignored_from_dataform_macros():
     SELECT * FROM user_cte
     """
 
-    m1 = ModelRepresentation(
+    m1 = _make_model(
         name="m1",
         path="definitions/m1.sqlx",
         dialect="bigquery",
         query=compiled_sql,
         raw_code=raw_m1,
     )
-    m2 = ModelRepresentation(
+    m2 = _make_model(
         name="m2",
         path="definitions/m2.sqlx",
         dialect="bigquery",
@@ -573,7 +573,7 @@ def test_duplicate_ctes_mixed_macro_and_manual_models():
     """
 
     # m1 uses macro
-    m1 = ModelRepresentation(
+    m1 = _make_model(
         name="m1",
         path="models/m1.sql",
         dialect="postgres",
@@ -581,7 +581,7 @@ def test_duplicate_ctes_mixed_macro_and_manual_models():
         raw_code="WITH cleaning_cte AS ( {{ clean_users() }} ) SELECT * FROM cleaning_cte",
     )
     # m2 also uses macro
-    m2 = ModelRepresentation(
+    m2 = _make_model(
         name="m2",
         path="models/m2.sql",
         dialect="postgres",
@@ -589,7 +589,7 @@ def test_duplicate_ctes_mixed_macro_and_manual_models():
         raw_code="WITH cleaning_cte AS ( {{ clean_users() }} ) SELECT * FROM cleaning_cte",
     )
     # m3 copy-pasted the SQL logic manually into its source file
-    m3 = ModelRepresentation(
+    m3 = _make_model(
         name="m3",
         path="models/m3.sql",
         dialect="postgres",
@@ -631,14 +631,14 @@ def test_duplicate_ctes_config_ignore_macros_disabled():
     SELECT * FROM cleaning_cte
     """
 
-    m1 = ModelRepresentation(
+    m1 = _make_model(
         name="m1",
         path="models/m1.sql",
         dialect="postgres",
         query=compiled_sql,
         raw_code="WITH cleaning_cte AS ( {{ clean_users() }} ) SELECT * FROM cleaning_cte",
     )
-    m2 = ModelRepresentation(
+    m2 = _make_model(
         name="m2",
         path="models/m2.sql",
         dialect="postgres",
@@ -667,8 +667,8 @@ def test_duplicate_ctes_from_disk_raw_macro(tmp_path: Path):
     SELECT * FROM c
     """
 
-    m1 = ModelRepresentation(name="m1", path=str(f1), dialect="duckdb", query=compiled_sql)
-    m2 = ModelRepresentation(name="m2", path=str(f2), dialect="duckdb", query=compiled_sql)
+    m1 = _make_model(name="m1", path=str(f1), dialect="duckdb", query=compiled_sql)
+    m2 = _make_model(name="m2", path=str(f2), dialect="duckdb", query=compiled_sql)
 
     findings = collect_duplicate_cte_findings({"m1": m1, "m2": m2}, config)
     assert len(findings) == 0
@@ -693,8 +693,8 @@ def test_duplicate_ctes_not_ignored_if_raw_code_has_full_complex_logic():
     SELECT * FROM c
     """
 
-    m1 = ModelRepresentation(name="m1", path="models/m1.sql", dialect="duckdb", query=compiled_sql, raw_code=raw_sql)
-    m2 = ModelRepresentation(name="m2", path="models/m2.sql", dialect="duckdb", query=compiled_sql, raw_code=raw_sql)
+    m1 = _make_model(name="m1", path="models/m1.sql", dialect="duckdb", query=compiled_sql, raw_code=raw_sql)
+    m2 = _make_model(name="m2", path="models/m2.sql", dialect="duckdb", query=compiled_sql, raw_code=raw_sql)
 
     findings = collect_duplicate_cte_findings({"m1": m1, "m2": m2}, config)
     assert len(findings) == 2

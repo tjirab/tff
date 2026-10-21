@@ -611,12 +611,11 @@ def test_clean_dataform_edge_cases():
 
 
 def test_collect_dataform_rules_findings_external_and_symbolic():
-    from tff.core.model import ModelRepresentation
     from tff.dataform.runner import collect_dataform_rules_findings
 
     models = {
-        "ext": ModelRepresentation(name="ext", path="definitions/ext.sqlx", dialect="bigquery", is_external=True),
-        "sym": ModelRepresentation(name="sym", path="definitions/sym.sqlx", dialect="bigquery", is_symbolic=True),
+        "ext": _make_model(name="ext", path="definitions/ext.sqlx", dialect="bigquery", is_external=True),
+        "sym": _make_model(name="sym", path="definitions/sym.sqlx", dialect="bigquery", is_symbolic=True),
     }
     findings = collect_dataform_rules_findings(models)
     assert len(findings) == 0

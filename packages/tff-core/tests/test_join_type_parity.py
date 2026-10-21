@@ -15,7 +15,6 @@ from tff.core.checks.join_type_parity import (
     resolve_expression_type,
 )
 from tff.core.config import FitnessFunctionsConfig
-from tff.core.model import ModelRepresentation
 from tff.core.registry import registry
 
 
@@ -44,19 +43,19 @@ def test_join_type_parity_identical_types() -> None:
     config = FitnessFunctionsConfig()
     config.checks.join_type_parity.enabled = True
 
-    model_users = ModelRepresentation(
+    model_users = _make_model(
         name="raw.users",
         path="models/staging/users.sql",
         dialect="duckdb",
         columns_to_types={"id": "INT", "name": "VARCHAR"},
     )
-    model_orders = ModelRepresentation(
+    model_orders = _make_model(
         name="raw.orders",
         path="models/staging/orders.sql",
         dialect="duckdb",
         columns_to_types={"order_id": "INT", "user_id": "INT"},
     )
-    model_marts = ModelRepresentation(
+    model_marts = _make_model(
         name="marts.user_orders",
         path="models/marts/user_orders.sql",
         dialect="duckdb",
@@ -76,19 +75,19 @@ def test_join_type_parity_mismatch() -> None:
     config = FitnessFunctionsConfig()
     config.checks.join_type_parity.enabled = True
 
-    model_users = ModelRepresentation(
+    model_users = _make_model(
         name="raw.users",
         path="models/staging/users.sql",
         dialect="duckdb",
         columns_to_types={"id": "INT", "name": "VARCHAR"},
     )
-    model_orders = ModelRepresentation(
+    model_orders = _make_model(
         name="raw.orders",
         path="models/staging/orders.sql",
         dialect="duckdb",
         columns_to_types={"order_id": "INT", "user_id": "VARCHAR"},
     )
-    model_marts = ModelRepresentation(
+    model_marts = _make_model(
         name="marts.user_orders",
         path="models/marts/user_orders.sql",
         dialect="duckdb",
@@ -117,19 +116,19 @@ def test_join_type_parity_default_equivalent_types() -> None:
     config = FitnessFunctionsConfig()
     config.checks.join_type_parity.enabled = True
 
-    model_users = ModelRepresentation(
+    model_users = _make_model(
         name="raw.users",
         path="models/staging/users.sql",
         dialect="duckdb",
         columns_to_types={"id": "TEXT"},
     )
-    model_orders = ModelRepresentation(
+    model_orders = _make_model(
         name="raw.orders",
         path="models/staging/orders.sql",
         dialect="duckdb",
         columns_to_types={"user_id": "VARCHAR"},
     )
-    model_marts = ModelRepresentation(
+    model_marts = _make_model(
         name="marts.user_orders",
         path="models/marts/user_orders.sql",
         dialect="duckdb",
@@ -154,19 +153,19 @@ def test_join_type_parity_custom_equivalent_types() -> None:
         "varchar": ["varchar"],
     }
 
-    model_users = ModelRepresentation(
+    model_users = _make_model(
         name="raw.users",
         path="models/staging/users.sql",
         dialect="duckdb",
         columns_to_types={"id": "TEXT"},
     )
-    model_orders = ModelRepresentation(
+    model_orders = _make_model(
         name="raw.orders",
         path="models/staging/orders.sql",
         dialect="duckdb",
         columns_to_types={"user_id": "VARCHAR"},
     )
-    model_marts = ModelRepresentation(
+    model_marts = _make_model(
         name="marts.user_orders",
         path="models/marts/user_orders.sql",
         dialect="duckdb",
@@ -188,19 +187,19 @@ def test_join_type_parity_explicit_cast() -> None:
     config = FitnessFunctionsConfig()
     config.checks.join_type_parity.enabled = True
 
-    model_users = ModelRepresentation(
+    model_users = _make_model(
         name="raw.users",
         path="models/staging/users.sql",
         dialect="duckdb",
         columns_to_types={"id": "INT"},
     )
-    model_orders = ModelRepresentation(
+    model_orders = _make_model(
         name="raw.orders",
         path="models/staging/orders.sql",
         dialect="duckdb",
         columns_to_types={"user_id": "VARCHAR"},
     )
-    model_marts = ModelRepresentation(
+    model_marts = _make_model(
         name="marts.user_orders",
         path="models/marts/user_orders.sql",
         dialect="duckdb",
@@ -220,19 +219,19 @@ def test_join_type_parity_parentheses_and_multiple_conditions() -> None:
     config = FitnessFunctionsConfig()
     config.checks.join_type_parity.enabled = True
 
-    model_users = ModelRepresentation(
+    model_users = _make_model(
         name="raw.users",
         path="models/staging/users.sql",
         dialect="duckdb",
         columns_to_types={"id": "INT", "tenant_id": "INT"},
     )
-    model_orders = ModelRepresentation(
+    model_orders = _make_model(
         name="raw.orders",
         path="models/staging/orders.sql",
         dialect="duckdb",
         columns_to_types={"user_id": "VARCHAR", "tenant_id": "INT"},
     )
-    model_marts = ModelRepresentation(
+    model_marts = _make_model(
         name="marts.user_orders",
         path="models/marts/user_orders.sql",
         dialect="duckdb",
@@ -253,19 +252,19 @@ def test_join_type_parity_using_clause() -> None:
     config = FitnessFunctionsConfig()
     config.checks.join_type_parity.enabled = True
 
-    model_users = ModelRepresentation(
+    model_users = _make_model(
         name="raw.users",
         path="models/staging/users.sql",
         dialect="duckdb",
         columns_to_types={"user_id": "INT"},
     )
-    model_orders = ModelRepresentation(
+    model_orders = _make_model(
         name="raw.orders",
         path="models/staging/orders.sql",
         dialect="duckdb",
         columns_to_types={"user_id": "VARCHAR"},
     )
-    model_marts = ModelRepresentation(
+    model_marts = _make_model(
         name="marts.user_orders",
         path="models/marts/user_orders.sql",
         dialect="duckdb",
@@ -288,19 +287,19 @@ def test_join_type_parity_ctes() -> None:
     config = FitnessFunctionsConfig()
     config.checks.join_type_parity.enabled = True
 
-    model_users = ModelRepresentation(
+    model_users = _make_model(
         name="raw.users",
         path="models/staging/users.sql",
         dialect="duckdb",
         columns_to_types={"id": "INT", "email": "VARCHAR"},
     )
-    model_orders = ModelRepresentation(
+    model_orders = _make_model(
         name="raw.orders",
         path="models/staging/orders.sql",
         dialect="duckdb",
         columns_to_types={"user_id": "VARCHAR", "amount": "DOUBLE"},
     )
-    model_marts = ModelRepresentation(
+    model_marts = _make_model(
         name="marts.user_orders",
         path="models/marts/user_orders.sql",
         dialect="duckdb",
@@ -330,19 +329,19 @@ def test_join_type_parity_unknown_or_missing_types_ignored() -> None:
     config = FitnessFunctionsConfig()
     config.checks.join_type_parity.enabled = True
 
-    model_users = ModelRepresentation(
+    model_users = _make_model(
         name="raw.users",
         path="models/staging/users.sql",
         dialect="duckdb",
         columns_to_types={"id": "UNKNOWN"},
     )
-    model_orders = ModelRepresentation(
+    model_orders = _make_model(
         name="raw.orders",
         path="models/staging/orders.sql",
         dialect="duckdb",
         columns_to_types={"user_id": "INT"},
     )
-    model_marts = ModelRepresentation(
+    model_marts = _make_model(
         name="marts.user_orders",
         path="models/marts/user_orders.sql",
         dialect="duckdb",
@@ -362,7 +361,7 @@ def test_join_type_parity_external_and_symbolic_skipped() -> None:
     config = FitnessFunctionsConfig()
     config.checks.join_type_parity.enabled = True
 
-    model = ModelRepresentation(
+    model = _make_model(
         name="marts.model",
         path="models/marts/model.sql",
         dialect="duckdb",
@@ -381,19 +380,19 @@ def test_join_type_parity_layer_filters() -> None:
     config.checks.join_type_parity.enabled = True
     config.checks.join_type_parity.skip_layers = ["staging"]
 
-    model_users = ModelRepresentation(
+    model_users = _make_model(
         name="raw.users",
         path="models/staging/users.sql",
         dialect="duckdb",
         columns_to_types={"id": "INT"},
     )
-    model_orders = ModelRepresentation(
+    model_orders = _make_model(
         name="raw.orders",
         path="models/staging/orders.sql",
         dialect="duckdb",
         columns_to_types={"user_id": "VARCHAR"},
     )
-    model_staging = ModelRepresentation(
+    model_staging = _make_model(
         name="staging.stg_combined",
         path="models/staging/stg_combined.sql",
         dialect="duckdb",
@@ -413,19 +412,19 @@ def test_join_type_parity_disabled() -> None:
     config = FitnessFunctionsConfig()
     config.checks.join_type_parity.enabled = False
 
-    model_users = ModelRepresentation(
+    model_users = _make_model(
         name="raw.users",
         path="models/staging/users.sql",
         dialect="duckdb",
         columns_to_types={"id": "INT"},
     )
-    model_orders = ModelRepresentation(
+    model_orders = _make_model(
         name="raw.orders",
         path="models/staging/orders.sql",
         dialect="duckdb",
         columns_to_types={"user_id": "VARCHAR"},
     )
-    model_marts = ModelRepresentation(
+    model_marts = _make_model(
         name="marts.user_orders",
         path="models/marts/user_orders.sql",
         dialect="duckdb",
@@ -450,19 +449,19 @@ def test_join_type_parity_registry_integration() -> None:
     config = FitnessFunctionsConfig()
     config.checks.join_type_parity.enabled = True
 
-    model_users = ModelRepresentation(
+    model_users = _make_model(
         name="raw.users",
         path="models/staging/users.sql",
         dialect="duckdb",
         columns_to_types={"id": "INT"},
     )
-    model_orders = ModelRepresentation(
+    model_orders = _make_model(
         name="raw.orders",
         path="models/staging/orders.sql",
         dialect="duckdb",
         columns_to_types={"user_id": "VARCHAR"},
     )
-    model_marts = ModelRepresentation(
+    model_marts = _make_model(
         name="marts.user_orders",
         path="models/marts/user_orders.sql",
         dialect="duckdb",
@@ -484,7 +483,7 @@ def test_join_type_parity_registry_integration() -> None:
 
 
 def test_model_type_resolver_by_name() -> None:
-    model = ModelRepresentation(
+    model = _make_model(
         name="db.schema.users",
         path="models/staging/users.sql",
         dialect="duckdb",
@@ -513,7 +512,7 @@ def test_are_types_equivalent_sqlglot_canonical() -> None:
 def test_model_type_resolver_catalog_db_table() -> None:
     from sqlglot import exp
 
-    model = ModelRepresentation(
+    model = _make_model(
         name="cat.db.users",
         path="models/staging/users.sql",
         dialect="duckdb",
@@ -552,7 +551,7 @@ def test_resolve_expression_type_table_name_alias_match() -> None:
     scope = Scope(parsed)
     scope.sources["u"] = exp.Table(this=exp.to_identifier("raw_users"))
     resolver = ModelTypeResolver({
-        "raw_users": ModelRepresentation(
+        "raw_users": _make_model(
             name="raw_users", path="a", dialect="duckdb", columns_to_types={"id": "INT"}
         )
     })
@@ -572,19 +571,19 @@ def test_join_type_parity_fallback_when_traverse_scope_empty(monkeypatch) -> Non
     config = FitnessFunctionsConfig()
     config.checks.join_type_parity.enabled = True
 
-    model_users = ModelRepresentation(
+    model_users = _make_model(
         name="raw.users",
         path="models/staging/users.sql",
         dialect="duckdb",
         columns_to_types={"id": "INT"},
     )
-    model_orders = ModelRepresentation(
+    model_orders = _make_model(
         name="raw.orders",
         path="models/staging/orders.sql",
         dialect="duckdb",
         columns_to_types={"user_id": "VARCHAR"},
     )
-    model_marts = ModelRepresentation(
+    model_marts = _make_model(
         name="marts.user_orders",
         path="models/marts/user_orders.sql",
         dialect="duckdb",
@@ -605,20 +604,20 @@ def test_join_type_parity_duplicate_violations_deduplicated() -> None:
     config = FitnessFunctionsConfig()
     config.checks.join_type_parity.enabled = True
 
-    model_users = ModelRepresentation(
+    model_users = _make_model(
         name="raw.users",
         path="models/staging/users.sql",
         dialect="duckdb",
         columns_to_types={"id": "INT"},
     )
-    model_orders = ModelRepresentation(
+    model_orders = _make_model(
         name="raw.orders",
         path="models/staging/orders.sql",
         dialect="duckdb",
         columns_to_types={"user_id": "VARCHAR"},
     )
     # Query repeats identical ON condition twice
-    model_marts = ModelRepresentation(
+    model_marts = _make_model(
         name="marts.user_orders",
         path="models/marts/user_orders.sql",
         dialect="duckdb",
@@ -639,19 +638,19 @@ def test_join_type_parity_using_clause_cte_and_duplicate() -> None:
     config = FitnessFunctionsConfig()
     config.checks.join_type_parity.enabled = True
 
-    model_users = ModelRepresentation(
+    model_users = _make_model(
         name="raw.users",
         path="models/staging/users.sql",
         dialect="duckdb",
         columns_to_types={"user_id": "INT"},
     )
-    model_orders = ModelRepresentation(
+    model_orders = _make_model(
         name="raw.orders",
         path="models/staging/orders.sql",
         dialect="duckdb",
         columns_to_types={"user_id": "VARCHAR"},
     )
-    model_marts = ModelRepresentation(
+    model_marts = _make_model(
         name="marts.user_orders",
         path="models/marts/user_orders.sql",
         dialect="duckdb",
@@ -681,19 +680,19 @@ def test_join_type_parity_using_clause_missing_right_type() -> None:
     config = FitnessFunctionsConfig()
     config.checks.join_type_parity.enabled = True
 
-    model_users = ModelRepresentation(
+    model_users = _make_model(
         name="raw.users",
         path="models/staging/users.sql",
         dialect="duckdb",
         columns_to_types={"user_id": "INT"},
     )
-    model_orders = ModelRepresentation(
+    model_orders = _make_model(
         name="raw.orders",
         path="models/staging/orders.sql",
         dialect="duckdb",
         columns_to_types={"other_col": "VARCHAR"},
     )
-    model_marts = ModelRepresentation(
+    model_marts = _make_model(
         name="marts.user_orders",
         path="models/marts/user_orders.sql",
         dialect="duckdb",
@@ -715,7 +714,7 @@ def test_are_types_equivalent_invalid_syntax_handled() -> None:
 
 
 def test_model_type_resolver_by_name_multi_level() -> None:
-    model = ModelRepresentation(
+    model = _make_model(
         name="schema.users",
         path="models/staging/users.sql",
         dialect="duckdb",
@@ -737,7 +736,7 @@ def test_resolve_expression_type_mixed_case_alias() -> None:
     # Put mixed-case key in scope.sources so scope.sources.get("u") fails but lower match succeeds
     scope.sources["U_ALIAS"] = exp.Table(this=exp.to_identifier("users"))
     resolver = ModelTypeResolver({
-        "users": ModelRepresentation(
+        "users": _make_model(
             name="users", path="a", dialect="duckdb", columns_to_types={"id": "INT"}
         )
     })

@@ -1,10 +1,10 @@
+from conftest import _make_finding
 import os
 import time
 from pathlib import Path
 from datetime import datetime, timedelta
 from unittest.mock import patch
 
-from tff.core.report import LintFinding
 from tff.core.logs import (
     serialize_finding,
     get_lint_json_data,
@@ -19,7 +19,7 @@ from tff.core.logs import (
 
 
 def test_serialize_finding():
-    finding = LintFinding(
+    finding = _make_finding(
         check="banselectstar",
         severity="error",
         message="Do not use SELECT * in marts.",
@@ -38,14 +38,14 @@ def test_serialize_finding():
 
 def test_get_lint_json_data():
     findings = [
-        LintFinding(
+        _make_finding(
             check="banselectstar",
             severity="error",
             message="Error 1",
             model="model_a",
             path="models/marts/model_a.sql",
         ),
-        LintFinding(
+        _make_finding(
             check="columnnames",
             severity="warning",
             message="Warning 1",
@@ -91,7 +91,7 @@ def test_get_health_json_data():
         "enabled_checks": {"banselectstar", "nomissingowner"},
         "check_findings": {
             "nomissingowner": [
-                LintFinding(
+                _make_finding(
                     check="nomissingowner",
                     severity="warning",
                     message="Missing owner.",

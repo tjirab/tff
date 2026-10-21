@@ -1,3 +1,4 @@
+from conftest import _make_model
 from pathlib import Path
 import json
 from unittest.mock import MagicMock
@@ -5,14 +6,13 @@ import sqlglot
 import sqlglot.expressions as exp
 from sqlmesh.core.model import Model as SqlMeshModel
 
-from tff.core.model import ModelRepresentation
 from tff.dbt.manifest import load_dbt_models
 from tff.sqlmesh.loader import map_sqlmesh_model
 
 
 def test_model_representation_ast_lazy_parsing() -> None:
     # 1. Test lazy parsing from query string
-    model = ModelRepresentation(
+    model = _make_model(
         name="test_model",
         path="dummy_path.sql",
         dialect="duckdb",
@@ -35,7 +35,7 @@ def test_model_representation_ast_lazy_parsing_from_file(tmp_path: Path) -> None
     sql_file = tmp_path / "model.sql"
     sql_file.write_text("SELECT a, b FROM table_name", encoding="utf-8")
     
-    model = ModelRepresentation(
+    model = _make_model(
         name="file_model",
         path=str(sql_file),
         dialect="duckdb",
@@ -51,7 +51,7 @@ def test_model_representation_ast_lazy_parsing_from_file(tmp_path: Path) -> None
 
 
 def test_model_representation_ast_lazy_parsing_file_not_found() -> None:
-    model = ModelRepresentation(
+    model = _make_model(
         name="nonexistent_file_model",
         path="nonexistent_file.sql",
         dialect="duckdb",
@@ -62,7 +62,7 @@ def test_model_representation_ast_lazy_parsing_file_not_found() -> None:
 
 def test_model_representation_ast_lazy_parsing_read_exception() -> None:
     # Use a directory path to trigger a read exception when read_text is called
-    model = ModelRepresentation(
+    model = _make_model(
         name="directory_model",
         path=".",
         dialect="duckdb",
@@ -73,7 +73,7 @@ def test_model_representation_ast_lazy_parsing_read_exception() -> None:
 
 def test_model_representation_ast_strip_model_block() -> None:
     # Test that SQLMesh MODEL block is stripped during lazy parsing
-    model = ModelRepresentation(
+    model = _make_model(
         name="mesh_model",
         path="dummy.sql",
         dialect="duckdb",
@@ -88,7 +88,7 @@ def test_model_representation_ast_strip_model_block() -> None:
 
 def test_model_representation_ast_invalid_sql() -> None:
     # Test that invalid SQL returns None and doesn't crash
-    model = ModelRepresentation(
+    model = _make_model(
         name="invalid_model",
         path="dummy.sql",
         dialect="duckdb",

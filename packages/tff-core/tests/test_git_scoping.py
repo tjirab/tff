@@ -1,4 +1,5 @@
 """Tests for git-scoping model evaluation (--staged and --since/--diff)."""
+from conftest import _make_finding
 
 from pathlib import Path
 from unittest.mock import MagicMock, patch
@@ -14,9 +15,7 @@ from tff.core.git import (
     get_staged_files,
     map_files_to_model_names,
 )
-from tff.core.model import ModelRepresentation
 from tff.core.registry import registry
-from tff.core.report import LintFinding
 from tff.core.cli import main
 
 
@@ -127,17 +126,17 @@ def test_get_changed_files_since_leading_dash(invalid_ref: str) -> None:
 
 def test_map_files_to_model_names() -> None:
     models = {
-        "dim_users": ModelRepresentation(
+        "dim_users": _make_model(
             name="dim_users",
             path="models/marts/dim_users.sql",
             dialect="duckdb",
         ),
-        "stg_orders": ModelRepresentation(
+        "stg_orders": _make_model(
             name="stg_orders",
             path="models/staging/stg_orders.sql",
             dialect="duckdb",
         ),
-        "fct_revenue": ModelRepresentation(
+        "fct_revenue": _make_model(
             name="fct_revenue",
             path="models/marts/finance/fct_revenue.sql",
             dialect="duckdb",
@@ -198,13 +197,13 @@ def test_check_definition_run_scoped_models() -> None:
 
     config = FitnessFunctionsConfig()
     models = {
-        "model_clean": ModelRepresentation(
+        "model_clean": _make_model(
             name="model_clean",
             path="clean.sql",
             dialect="duckdb",
             query="SELECT id FROM tbl",
         ),
-        "model_bad": ModelRepresentation(
+        "model_bad": _make_model(
             name="model_bad",
             path="bad.sql",
             dialect="duckdb",
@@ -230,19 +229,19 @@ def test_check_definition_run_dag_check_scoped_models() -> None:
     config.checks.layer_integrity.enabled = True
 
     models = {
-        "stg_customers": ModelRepresentation(
+        "stg_customers": _make_model(
             name="stg_customers",
             path="models/staging/stg_customers.sql",
             dialect="duckdb",
             depends_on={"dim_orders"},
         ),
-        "dim_orders": ModelRepresentation(
+        "dim_orders": _make_model(
             name="dim_orders",
             path="models/marts/dim_orders.sql",
             dialect="duckdb",
             depends_on=set(),
         ),
-        "stg_payments": ModelRepresentation(
+        "stg_payments": _make_model(
             name="stg_payments",
             path="models/staging/stg_payments.sql",
             dialect="duckdb",
@@ -401,23 +400,22 @@ def test_cli_git_scoping_not_in_repo(tmp_path: Path) -> None:
 
 def test_dataform_runner_scoped_models(tmp_path: Path) -> None:
     from tff.dataform.runner import run_all_checks
-    from tff.core.report import LintFinding
 
     cfg = FitnessFunctionsConfig()
     models = {
-        "model_a": ModelRepresentation(
+        "model_a": _make_model(
             name="model_a",
             path="definitions/model_a.sqlx",
             dialect="bigquery",
         ),
-        "model_b": ModelRepresentation(
+        "model_b": _make_model(
             name="model_b",
             path="definitions/model_b.sqlx",
             dialect="bigquery",
         ),
     }
 
-    mock_finding = LintFinding(
+    mock_finding = _make_finding(
         check="layer_integrity",
         severity="error",
         model="model_a",
@@ -440,12 +438,12 @@ def test_sqlmesh_runner_scoped_models(tmp_path: Path) -> None:
 
     cfg = FitnessFunctionsConfig()
     models = {
-        "model_a": ModelRepresentation(
+        "model_a": _make_model(
             name="model_a",
             path="models/model_a.sql",
             dialect="duckdb",
         ),
-        "model_b": ModelRepresentation(
+        "model_b": _make_model(
             name="model_b",
             path="models/model_b.sql",
             dialect="duckdb",
@@ -474,8 +472,8 @@ def test_sqlmesh_runner_scoped_models(tmp_path: Path) -> None:
     assert mock_linter.lint_model.call_args[0][0].name == "model_a"
 
     # 2. run_all_checks with checks=None and scoped_models
-    finding_a = LintFinding(check="layer_integrity", severity="error", model="model_a", message="err")
-    finding_b = LintFinding(check="layer_integrity", severity="error", model="model_b", message="err")
+    finding_a = _make_finding(check="layer_integrity", severity="error", model="model_a", message="err")
+    finding_b = _make_finding(check="layer_integrity", severity="error", model="model_b", message="err")
     with patch("tff.sqlmesh.runner.CHECK_COLLECTORS", {"layer_integrity": lambda m, c: [finding_a, finding_b]}):
         findings, count, _ = run_all_checks(
             project_root=tmp_path,

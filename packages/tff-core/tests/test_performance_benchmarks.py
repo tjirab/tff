@@ -1,6 +1,7 @@
 """Performance and throughput benchmark tests for tff core operations."""
 
 from __future__ import annotations
+from conftest import _make_model
 
 import time
 from pathlib import Path
@@ -29,7 +30,7 @@ def test_ast_cache_performance_speedup(tmp_path: Path):
     model_path.write_text(sql_content, encoding="utf-8")
 
     models = {
-        f"model_{i}": ModelRepresentation(
+        f"model_{i}": _make_model(
             name=f"model_{i}",
             path=str(model_path),
             dialect="duckdb",
@@ -69,7 +70,7 @@ def test_parallel_rule_execution_throughput(tmp_path: Path):
     model_path.write_text(sql_content, encoding="utf-8")
 
     models = {
-        f"model_{i}": ModelRepresentation(
+        f"model_{i}": _make_model(
             name=f"model_{i}",
             path=str(model_path),
             dialect="duckdb",

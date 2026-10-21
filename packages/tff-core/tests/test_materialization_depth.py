@@ -1,21 +1,21 @@
 """Unit tests for materialization depth check."""
 
 from __future__ import annotations
+from conftest import _make_model
 
 from tff.core.checks.materialization_depth import collect_materialization_depth_findings
 from tff.core.config import FitnessFunctionsConfig, ChecksConfig, MaterializationDepthCheckConfig
-from tff.core.model import ModelRepresentation
 
 
 def test_materialization_depth_no_findings():
     models = {
-        "model_a": ModelRepresentation(
+        "model_a": _make_model(
             name="model_a",
             path="models/marts/model_a.sql",
             dialect="duckdb",
             materialized="table",
         ),
-        "model_b": ModelRepresentation(
+        "model_b": _make_model(
             name="model_b",
             path="models/marts/model_b.sql",
             dialect="duckdb",
@@ -36,41 +36,41 @@ def test_materialization_depth_no_findings():
 
 def test_materialization_depth_warning_and_error():
     models = {
-        "source": ModelRepresentation(
+        "source": _make_model(
             name="source",
             path="models/sources/source.sql",
             dialect="duckdb",
             materialized="table",
         ),
-        "view_1": ModelRepresentation(
+        "view_1": _make_model(
             name="view_1",
             path="models/marts/view_1.sql",
             dialect="duckdb",
             materialized="view",
             depends_on={"source"},
         ),
-        "view_2": ModelRepresentation(
+        "view_2": _make_model(
             name="view_2",
             path="models/marts/view_2.sql",
             dialect="duckdb",
             materialized="view",
             depends_on={"view_1"},
         ),
-        "view_3": ModelRepresentation(
+        "view_3": _make_model(
             name="view_3",
             path="models/marts/view_3.sql",
             dialect="duckdb",
             materialized="view",
             depends_on={"view_2"},
         ),
-        "view_4": ModelRepresentation(
+        "view_4": _make_model(
             name="view_4",
             path="models/marts/view_4.sql",
             dialect="duckdb",
             materialized="view",
             depends_on={"view_3"},
         ),
-        "view_5": ModelRepresentation(
+        "view_5": _make_model(
             name="view_5",
             path="models/marts/view_5.sql",
             dialect="duckdb",
@@ -101,13 +101,13 @@ def test_materialization_depth_warning_and_error():
 
 def test_materialization_depth_layer_filtering():
     models = {
-        "view_1": ModelRepresentation(
+        "view_1": _make_model(
             name="view_1",
             path="models/sources/view_1.sql",
             dialect="duckdb",
             materialized="view",
         ),
-        "view_2": ModelRepresentation(
+        "view_2": _make_model(
             name="view_2",
             path="models/sources/view_2.sql",
             dialect="duckdb",
@@ -132,14 +132,14 @@ def test_materialization_depth_layer_filtering():
 
 def test_materialization_depth_cycle_protection():
     models = {
-        "view_a": ModelRepresentation(
+        "view_a": _make_model(
             name="view_a",
             path="models/marts/view_a.sql",
             dialect="duckdb",
             materialized="view",
             depends_on={"view_b"},
         ),
-        "view_b": ModelRepresentation(
+        "view_b": _make_model(
             name="view_b",
             path="models/marts/view_b.sql",
             dialect="duckdb",
@@ -164,7 +164,7 @@ def test_materialization_depth_cycle_protection():
 
 def test_materialization_depth_disabled():
     models = {
-        "view_a": ModelRepresentation(
+        "view_a": _make_model(
             name="view_a",
             path="models/marts/view_a.sql",
             dialect="duckdb",

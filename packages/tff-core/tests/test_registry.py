@@ -1,4 +1,5 @@
 """Tests for CheckRegistry, CheckDefinition, and granular rule execution."""
+from conftest import _make_finding
 
 from pathlib import Path
 from unittest.mock import MagicMock
@@ -15,7 +16,6 @@ from tff.core.registry import (
     registry,
     run_model_rule,
 )
-from tff.core.report import LintFinding
 from tff.core.rules.ban_select_star import BanSelectStar
 from tff.core.rules.base import Rule, RuleViolation
 import tff.dbt.runner as dbt_runner
@@ -140,7 +140,7 @@ def test_check_definition_run(tmp_path: Path) -> None:
     sql_file.parent.mkdir(parents=True, exist_ok=True)
     sql_file.write_text("SELECT * FROM tbl", encoding="utf-8")
 
-    model = ModelRepresentation(
+    model = _make_model(
         name="test_model",
         path=str(sql_file),
         dialect="duckdb",
@@ -172,7 +172,7 @@ def test_check_definition_run(tmp_path: Path) -> None:
         category="DAG",
         scope="dag",
         collector_fn=lambda m, c: [
-            LintFinding(check="dag_check", severity="error", message="dag violation")
+            _make_finding(check="dag_check", severity="error", message="dag violation")
         ],
     )
     findings_dag = c3.run(models, cfg)
@@ -202,11 +202,11 @@ def test_run_model_rule_variations(tmp_path: Path) -> None:
     sql_file = tmp_path / "model.sql"
     sql_file.write_text("SELECT 1", encoding="utf-8")
 
-    m_symbolic = ModelRepresentation(name="sym", path=str(sql_file), dialect="duckdb", is_symbolic=True)
-    m_external = ModelRepresentation(name="ext", path=str(sql_file), dialect="duckdb", is_external=True)
-    m_single = ModelRepresentation(name="single_msg", path=str(sql_file), dialect="duckdb")
-    m_multi = ModelRepresentation(name="multi_msg", path=str(sql_file), dialect="duckdb")
-    m_clean = ModelRepresentation(name="clean", path=str(sql_file), dialect="duckdb")
+    m_symbolic = _make_model(name="sym", path=str(sql_file), dialect="duckdb", is_symbolic=True)
+    m_external = _make_model(name="ext", path=str(sql_file), dialect="duckdb", is_external=True)
+    m_single = _make_model(name="single_msg", path=str(sql_file), dialect="duckdb")
+    m_multi = _make_model(name="multi_msg", path=str(sql_file), dialect="duckdb")
+    m_clean = _make_model(name="clean", path=str(sql_file), dialect="duckdb")
 
     models = {
         "sym": m_symbolic,
@@ -316,7 +316,7 @@ def test_check_registry_run_checks_helper(tmp_path: Path) -> None:
         label="Custom DAG",
         category="DAG",
         scope="dag",
-        collector_fn=lambda m, c: [LintFinding(check="custom_dag", severity="error", message="failed")],
+        collector_fn=lambda m, c: [_make_finding(check="custom_dag", severity="error", message="failed")],
     )
     reg.register(r1)
     reg.register(d1)
@@ -326,7 +326,7 @@ def test_check_registry_run_checks_helper(tmp_path: Path) -> None:
 
     sql_file = tmp_path / "model.sql"
     sql_file.write_text("SELECT * FROM t", encoding="utf-8")
-    model = ModelRepresentation(name="m", path=str(sql_file), dialect="duckdb")
+    model = _make_model(name="m", path=str(sql_file), dialect="duckdb")
     models = {"m": model}
 
     # checks=None
@@ -366,7 +366,7 @@ def test_dbt_runner_granular_execution(tmp_path: Path) -> None:
 
     sql_file = tmp_path / "model.sql"
     sql_file.write_text("SELECT * FROM t", encoding="utf-8")
-    model = ModelRepresentation(name="m", path=str(sql_file), dialect="duckdb")
+    model = _make_model(name="m", path=str(sql_file), dialect="duckdb")
     models = {"m": model}
 
     # Test collect_dbt_rules_findings direct call
@@ -399,7 +399,7 @@ def test_dataform_runner_granular_execution(tmp_path: Path) -> None:
 
     sql_file = tmp_path / "model.sqlx"
     sql_file.write_text("SELECT * FROM t", encoding="utf-8")
-    model = ModelRepresentation(name="m", path=str(sql_file), dialect="bigquery")
+    model = _make_model(name="m", path=str(sql_file), dialect="bigquery")
     models = {"m": model}
 
     # Test collect_dataform_rules_findings direct call
@@ -472,13 +472,13 @@ def test_sqlmesh_runner_granular_execution() -> None:
     mock_context._linters = {"default": mock_linter}
 
     mapped_models = {
-        "sqlmesh_example.src_model": ModelRepresentation(
+        "sqlmesh_example.src_model": _make_model(
             name="sqlmesh_example.src_model",
             path="models/staging/src_model.sql",
             dialect="duckdb",
             depends_on={"sqlmesh_example.violating_model"},
         ),
-        "sqlmesh_example.violating_model": ModelRepresentation(
+        "sqlmesh_example.violating_model": _make_model(
             name="sqlmesh_example.violating_model",
             path="models/marts/violating_model.sql",
             dialect="duckdb",
@@ -553,7 +553,7 @@ def test_sqlmesh_runner_fallback_without_context(tmp_path: Path) -> None:
 
     sql_file = tmp_path / "model.sql"
     sql_file.write_text("SELECT * FROM t", encoding="utf-8")
-    model = ModelRepresentation(name="m", path=str(sql_file), dialect="duckdb")
+    model = _make_model(name="m", path=str(sql_file), dialect="duckdb")
     models = {"m": model}
 
     # Pass nonexistent project root so context is None, but provide models dict
@@ -698,7 +698,7 @@ def test_check_definition_dynamic_severity(tmp_path: Path):
 
     sql_file = tmp_path / "model.sql"
     sql_file.write_text("SELECT 1", encoding="utf-8")
-    models = {"m": ModelRepresentation(name="m", path=str(sql_file), dialect="duckdb")}
+    models = {"m": _make_model(name="m", path=str(sql_file), dialect="duckdb")}
 
     # Default severity is error
     cfg = FitnessFunctionsConfig()
@@ -772,8 +772,8 @@ def test_registry_run_checks_parallel():
     reg.register_rule(Rule2, id="rule_two")
 
     models = {
-        "m1": ModelRepresentation(name="m1", path="m1.sql", dialect="duckdb"),
-        "m2": ModelRepresentation(name="m2", path="m2.sql", dialect="duckdb"),
+        "m1": _make_model(name="m1", path="m1.sql", dialect="duckdb"),
+        "m2": _make_model(name="m2", path="m2.sql", dialect="duckdb"),
     }
 
     # Sequential
@@ -799,7 +799,7 @@ def test_registry_run_checks_parallel():
 
 def test_check_definition_run_with_workers():
     cfg = FitnessFunctionsConfig()
-    models = {"m": ModelRepresentation(name="m", path="m.sql", dialect="duckdb")}
+    models = {"m": _make_model(name="m", path="m.sql", dialect="duckdb")}
 
     # Model scope
     class DummyRule(Rule):
@@ -819,7 +819,7 @@ def test_check_definition_run_with_workers():
 
     # DAG scope with max_workers in signature
     def collector_with_workers(m, c, max_workers=None):
-        return [LintFinding("dag_check", "warning", "m", "m.sql", "msg")]
+        return [_make_finding("dag_check", "warning", "m", "m.sql", "msg")]
 
     check_dag_workers = CheckDefinition(
         id="dag_workers",
@@ -833,7 +833,7 @@ def test_check_definition_run_with_workers():
 
     # DAG scope without max_workers in signature
     def collector_without_workers(m, c):
-        return [LintFinding("dag_no_workers", "warning", "m", "m.sql", "msg")]
+        return [_make_finding("dag_no_workers", "warning", "m", "m.sql", "msg")]
 
     check_dag_no_workers = CheckDefinition(
         id="dag_no_workers",
@@ -877,8 +877,8 @@ def test_run_model_rule_propagates_chunk_size() -> None:
     from unittest.mock import patch
 
     models = {
-        "m1": ModelRepresentation(name="m1", path="models/m1.sql", dialect="duckdb"),
-        "m2": ModelRepresentation(name="m2", path="models/m2.sql", dialect="duckdb"),
+        "m1": _make_model(name="m1", path="models/m1.sql", dialect="duckdb"),
+        "m2": _make_model(name="m2", path="models/m2.sql", dialect="duckdb"),
     }
 
     with patch("tff.core.parallel.run_parallel_model_rule") as mock_parallel:
@@ -914,7 +914,7 @@ def test_check_definition_run_propagates_chunk_size() -> None:
         rule_cls=BanSelectStar,
     )
     models = {
-        "m1": ModelRepresentation(name="m1", path="models/m1.sql", dialect="duckdb"),
+        "m1": _make_model(name="m1", path="models/m1.sql", dialect="duckdb"),
     }
     cfg = FitnessFunctionsConfig()
 
@@ -944,7 +944,7 @@ def test_run_model_rule_with_chunk_size_execution(tmp_path: Path) -> None:
     sql_file.write_text("SELECT 1", encoding="utf-8")
 
     models = {
-        f"m_{i}": ModelRepresentation(
+        f"m_{i}": _make_model(
             name=f"foo_{i}" if i % 2 == 0 else f"bar_{i}",
             path=str(sql_file),
             dialect="duckdb",

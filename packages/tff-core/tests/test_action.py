@@ -36,7 +36,6 @@ from tff.core.action import (
     write_github_step_summary,
 )
 from tff.core.cli import main
-from tff.core.report import LintFinding
 from conftest import _make_finding
 
 _REPO_ROOT = Path(__file__).resolve().parents[3]
@@ -112,7 +111,7 @@ def test_parse_bool() -> None:
 
 
 def test_finding_fingerprint_and_comparison() -> None:
-    finding_obj = LintFinding(
+    finding_obj = _make_finding(
         check="banselectstar",
         severity="error",
         message="SELECT * is banned",

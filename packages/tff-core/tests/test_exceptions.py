@@ -1,4 +1,5 @@
 """Tests for tff-core structured exception hierarchy and OS error translation."""
+from conftest import _make_model
 
 import errno
 from pathlib import Path
@@ -20,7 +21,7 @@ from tff.core.exceptions import (
     normalize_validation_error,
     translate_os_error,
 )
-from tff.core.model import ModelRepresentation, read_file_safe, read_model_sql
+from tff.core.model import read_file_safe, read_model_sql
 from tff.dataform.manifest import _find_manifest_file, load_dataform_models
 from tff.dbt.manifest import load_dbt_models
 
@@ -344,13 +345,13 @@ def test_read_file_safe_with_raise_on_error(tmp_path: Path):
 
 def test_read_model_sql_with_raise_on_error(tmp_path: Path):
     # Model with query attribute
-    m_query = ModelRepresentation(name="m1", path="", dialect="postgres", query="SELECT 1")
+    m_query = _make_model(name="m1", path="", dialect="postgres", query="SELECT 1")
     assert read_model_sql(m_query, raise_on_error=True) == "SELECT 1"
 
     # Model with unreadable file and no query
     d = tmp_path / "model_dir"
     d.mkdir()
-    m_dir = ModelRepresentation(name="m_dir", path=str(d), dialect="postgres")
+    m_dir = _make_model(name="m_dir", path=str(d), dialect="postgres")
     with pytest.raises(TffModelError) as exc_info:
         read_model_sql(m_dir, raise_on_error=True)
     assert exc_info.value.model_name == "m_dir"
@@ -363,7 +364,7 @@ def test_read_model_sql_with_raise_on_error(tmp_path: Path):
         m_dir.read_sql(raise_on_error=True)
 
     # prefer_file=True fallback with raise_on_error
-    m_pref = ModelRepresentation(name="m_pref", path=str(tmp_path / "missing.sql"), dialect="postgres")
+    m_pref = _make_model(name="m_pref", path=str(tmp_path / "missing.sql"), dialect="postgres")
     with pytest.raises(TffModelError):
         m_pref.get_sql(prefer_file=True, raise_on_error=True)
 

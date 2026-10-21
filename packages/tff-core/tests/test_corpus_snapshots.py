@@ -6,6 +6,7 @@ drift or accidental rule regressions.
 """
 
 from __future__ import annotations
+from conftest import _make_model
 
 from pathlib import Path
 
@@ -158,7 +159,7 @@ def test_rule_maturity_lifecycle_metadata():
             return None
 
     assert DefaultRule.maturity == "stable"
-    dummy_model = ModelRepresentation(name="test_model", path="test.sql", dialect="duckdb")
+    dummy_model = _make_model(name="test_model", path="test.sql", dialect="duckdb")
     assert DefaultRule().check_model(dummy_model) is None
 
     # Custom experimental rule

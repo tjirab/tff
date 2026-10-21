@@ -1,7 +1,7 @@
+from conftest import _make_model
 import json
 from pathlib import Path
 
-from tff.core.model import ModelRepresentation
 from tff.core.checks.custom_exclusions import CustomExclusionsChecker
 
 
@@ -13,7 +13,7 @@ def test_custom_exclusions_checker_skips_missing_models(tmp_path: Path) -> None:
         ]
     }), encoding="utf-8")
 
-    model = ModelRepresentation(
+    model = _make_model(
         name="staging.model_a",
         path="models/staging/model_a.sql",
         dialect="bigquery",
@@ -34,13 +34,13 @@ def test_custom_exclusions_checker_detects_violations(tmp_path: Path) -> None:
         ]
     }), encoding="utf-8")
 
-    model_a = ModelRepresentation(
+    model_a = _make_model(
         name="staging.model_a",
         path="models/staging/model_a.sql",
         dialect="bigquery",
         depends_on={"core.model_b"},
     )
-    model_b = ModelRepresentation(
+    model_b = _make_model(
         name="core.model_b",
         path="models/core/model_b.sql",
         dialect="bigquery",
@@ -61,7 +61,7 @@ def test_custom_exclusions_by_tags_and_meta(tmp_path: Path) -> None:
     from tff.core.config import FitnessFunctionsConfig, ChecksConfig, CustomExclusionsCheckConfig, CustomExclusionRule
     
     # Define models with non-standard paths, but with tags and meta
-    model_a = ModelRepresentation(
+    model_a = _make_model(
         name="theme_a.model_a",
         path="functional_theme/theme_a/model_a.sql", # non-standard path!
         dialect="bigquery",
@@ -69,7 +69,7 @@ def test_custom_exclusions_by_tags_and_meta(tmp_path: Path) -> None:
         tags=["pii"],
         meta={"team": "finance"},
     )
-    model_b = ModelRepresentation(
+    model_b = _make_model(
         name="theme_b.model_b",
         path="functional_theme/theme_b/model_b.sql", # non-standard path!
         dialect="bigquery",
@@ -186,13 +186,13 @@ def test_custom_exclusions_additional_coverage(tmp_path: Path) -> None:
     from tff.core.config import FitnessFunctionsConfig, ChecksConfig, CustomExclusionsCheckConfig, CustomExclusionRule, AllowedExceptionRule
     
     # 1. Test config-based allowed exceptions
-    model_a = ModelRepresentation(
+    model_a = _make_model(
         name="derived.model_a",
         path="models/derived/model_a.sql",
         dialect="bigquery",
         depends_on={"core.model_b"},
     )
-    model_b = ModelRepresentation(
+    model_b = _make_model(
         name="core.model_b",
         path="models/core/model_b.sql",
         dialect="bigquery",
@@ -233,7 +233,7 @@ def test_custom_exclusions_additional_coverage(tmp_path: Path) -> None:
     assert violations == []
 
     # 2. Test _is_excluded_dependency direct call without source_model/target_model
-    model_c = ModelRepresentation(
+    model_c = _make_model(
         name="core.model_c",
         path="models/core/model_c.sql",
         dialect="bigquery",
@@ -281,7 +281,7 @@ def test_layer_integrity_missing_dependency() -> None:
     
     config = FitnessFunctionsConfig()
     
-    model = ModelRepresentation(
+    model = _make_model(
         name="derived.model_a",
         path="models/derived/model_a.sql",
         dialect="bigquery",
@@ -315,18 +315,18 @@ def test_custom_exclusions_top_level_config(tmp_path: Path):
     )
     config._project_root = tmp_path
 
-    model_a = ModelRepresentation(
+    model_a = _make_model(
         name="staging.model_a",
         path="models/staging/model_a.sql",
         dialect="bigquery",
         depends_on={"core.model_b", "core.model_allowed"},
     )
-    model_b = ModelRepresentation(
+    model_b = _make_model(
         name="core.model_b",
         path="models/core/model_b.sql",
         dialect="bigquery",
     )
-    model_allowed = ModelRepresentation(
+    model_allowed = _make_model(
         name="core.model_allowed",
         path="models/core/model_allowed.sql",
         dialect="bigquery",

@@ -1,4 +1,3 @@
-
 from sqlglot import exp
 import pytest
 from conftest import _make_model
@@ -7,20 +6,19 @@ from tff.core.checks.connascence_of_value import (
     is_ignored_literal,
 )
 from tff.core.config import FitnessFunctionsConfig
-from tff.core.model import ModelRepresentation
 
 
 def test_cov_no_duplicates():
     config = FitnessFunctionsConfig()
     config.checks.connascence_of_value.enabled = True
 
-    model1 = ModelRepresentation(
+    model1 = _make_model(
         name="model1",
         path="models/marts/model1.sql",
         dialect="postgres",
         query="SELECT * FROM {{ ref('stg_a') }} WHERE status = 'active'",
     )
-    model2 = ModelRepresentation(
+    model2 = _make_model(
         name="model2",
         path="models/marts/model2.sql",
         dialect="postgres",
@@ -37,13 +35,13 @@ def test_cov_with_duplicates():
     config.checks.connascence_of_value.enabled = True
     config.checks.connascence_of_value.min_occurrences = 2
 
-    model1 = ModelRepresentation(
+    model1 = _make_model(
         name="model1",
         path="models/marts/model1.sql",
         dialect="postgres",
         query="SELECT * FROM {{ ref('stg_a') }} WHERE status = 'active'",
     )
-    model2 = ModelRepresentation(
+    model2 = _make_model(
         name="model2",
         path="models/marts/model2.sql",
         dialect="postgres",
@@ -77,13 +75,13 @@ def test_cov_ignored_values():
     # 'active' is now ignored
     config.checks.connascence_of_value.ignored_values = ["0", "1", "", "active"]
 
-    model1 = ModelRepresentation(
+    model1 = _make_model(
         name="model1",
         path="models/marts/model1.sql",
         dialect="postgres",
         query="SELECT * FROM {{ ref('stg_a') }} WHERE status = 'active' AND val = 0",
     )
-    model2 = ModelRepresentation(
+    model2 = _make_model(
         name="model2",
         path="models/marts/model2.sql",
         dialect="postgres",
@@ -99,13 +97,13 @@ def test_cov_negated_literals():
     config = FitnessFunctionsConfig()
     config.checks.connascence_of_value.enabled = True
 
-    model1 = ModelRepresentation(
+    model1 = _make_model(
         name="model1",
         path="models/marts/model1.sql",
         dialect="postgres",
         query="SELECT * FROM {{ ref('stg_a') }} WHERE val = -5",
     )
-    model2 = ModelRepresentation(
+    model2 = _make_model(
         name="model2",
         path="models/marts/model2.sql",
         dialect="postgres",
@@ -123,13 +121,13 @@ def test_cov_limit_offset_ignored():
     config.checks.connascence_of_value.enabled = True
 
     # 100 and 10 are duplicated in LIMIT and OFFSET
-    model1 = ModelRepresentation(
+    model1 = _make_model(
         name="model1",
         path="models/marts/model1.sql",
         dialect="postgres",
         query="SELECT * FROM {{ ref('stg_a') }} LIMIT 100 OFFSET 10",
     )
-    model2 = ModelRepresentation(
+    model2 = _make_model(
         name="model2",
         path="models/marts/model2.sql",
         dialect="postgres",
@@ -147,13 +145,13 @@ def test_cov_layer_filtering():
     config.checks.connascence_of_value.skip_layers = ["sources"]
 
     # sources/model1.sql is in 'sources' layer, marts/model2.sql is in 'marts' layer.
-    model1 = ModelRepresentation(
+    model1 = _make_model(
         name="model1",
         path="models/sources/model1.sql",
         dialect="postgres",
         query="SELECT * FROM {{ ref('stg_a') }} WHERE status = 'active'",
     )
-    model2 = ModelRepresentation(
+    model2 = _make_model(
         name="model2",
         path="models/marts/model2.sql",
         dialect="postgres",
@@ -170,13 +168,13 @@ def test_cov_disabled():
     config = FitnessFunctionsConfig()
     config.checks.connascence_of_value.enabled = False
 
-    model1 = ModelRepresentation(
+    model1 = _make_model(
         name="model1",
         path="models/marts/model1.sql",
         dialect="postgres",
         query="SELECT * FROM {{ ref('stg_a') }} WHERE status = 'active'",
     )
-    model2 = ModelRepresentation(
+    model2 = _make_model(
         name="model2",
         path="models/marts/model2.sql",
         dialect="postgres",
@@ -193,13 +191,13 @@ def test_cov_unparseable_query():
     config.checks.connascence_of_value.enabled = True
 
     # model with unparseable query (syntax error causing parsed to be None)
-    model1 = ModelRepresentation(
+    model1 = _make_model(
         name="model1",
         path="models/marts/model1.sql",
         dialect="postgres",
         query="SELECT * FROM WHERE",
     )
-    model2 = ModelRepresentation(
+    model2 = _make_model(
         name="model2",
         path="models/marts/model2.sql",
         dialect="postgres",
@@ -216,13 +214,13 @@ def test_cov_duplicate_within_single_model():
     config.checks.connascence_of_value.enabled = True
 
     # status = 'active' occurs twice in model1, but only once in model2.
-    model1 = ModelRepresentation(
+    model1 = _make_model(
         name="model1",
         path="models/marts/model1.sql",
         dialect="postgres",
         query="SELECT * FROM {{ ref('stg_a') }} WHERE status = 'active' OR status2 = 'active'",
     )
-    model2 = ModelRepresentation(
+    model2 = _make_model(
         name="model2",
         path="models/marts/model2.sql",
         dialect="postgres",
@@ -242,7 +240,7 @@ def test_cov_multiple_other_occurrences():
     # literal duplicated across 4 models (so 3 other occurrences for each)
     models = {}
     for i in range(1, 5):
-        models[f"model{i}"] = ModelRepresentation(
+        models[f"model{i}"] = _make_model(
             name=f"model{i}",
             path=f"models/marts/model{i}.sql",
             dialect="postgres",
@@ -274,13 +272,13 @@ def test_cov_structural_sql_literals_ignored():
     ]
 
     for q in queries:
-        model1 = ModelRepresentation(
+        model1 = _make_model(
             name="model1",
             path="models/marts/model1.sql",
             dialect="postgres",
             query=q,
         )
-        model2 = ModelRepresentation(
+        model2 = _make_model(
             name="model2",
             path="models/marts/model2.sql",
             dialect="postgres",
@@ -297,13 +295,13 @@ def test_cov_domain_reuse_fixtures_warn():
     config.checks.connascence_of_value.min_occurrences = 2
 
     # 1. WHERE status = 'premium'
-    model1 = ModelRepresentation(
+    model1 = _make_model(
         name="model1",
         path="models/marts/model1.sql",
         dialect="postgres",
         query="SELECT * FROM {{ ref('stg_a') }} WHERE status = 'premium'",
     )
-    model2 = ModelRepresentation(
+    model2 = _make_model(
         name="model2",
         path="models/marts/model2.sql",
         dialect="postgres",
@@ -314,13 +312,13 @@ def test_cov_domain_reuse_fixtures_warn():
     assert all("premium" in f.message for f in findings)
 
     # 2. decode(tech_id, 2, '<value>', 'default')
-    model3 = ModelRepresentation(
+    model3 = _make_model(
         name="model3",
         path="models/marts/model3.sql",
         dialect="postgres",
         query="SELECT decode(tech_id, 2, '<value>', 'default') FROM {{ ref('stg_a') }}",
     )
-    model4 = ModelRepresentation(
+    model4 = _make_model(
         name="model4",
         path="models/marts/model4.sql",
         dialect="postgres",
@@ -338,13 +336,13 @@ def test_cov_ignored_punctuation():
     config = FitnessFunctionsConfig()
     config.checks.connascence_of_value.enabled = True
 
-    model1 = ModelRepresentation(
+    model1 = _make_model(
         name="model1",
         path="models/marts/model1.sql",
         dialect="postgres",
         query="SELECT col1 || ' - ' || col2, col3 || ':' || col4 FROM {{ ref('stg_a') }}",
     )
-    model2 = ModelRepresentation(
+    model2 = _make_model(
         name="model2",
         path="models/marts/model2.sql",
         dialect="postgres",
@@ -357,13 +355,13 @@ def test_cov_ignored_punctuation():
     # If ignored_punctuation is cleared, punctuation characters trigger if duplicated
     config.checks.connascence_of_value.ignored_punctuation = []
     # Test with a standalone punctuation string not in DPipe
-    model3 = ModelRepresentation(
+    model3 = _make_model(
         name="model3",
         path="models/marts/model3.sql",
         dialect="postgres",
         query="SELECT * FROM {{ ref('stg_a') }} WHERE delim = ':'",
     )
-    model4 = ModelRepresentation(
+    model4 = _make_model(
         name="model4",
         path="models/marts/model4.sql",
         dialect="postgres",
@@ -378,13 +376,13 @@ def test_cov_negated_with_parentheses():
     config = FitnessFunctionsConfig()
     config.checks.connascence_of_value.enabled = True
 
-    model1 = ModelRepresentation(
+    model1 = _make_model(
         name="model1",
         path="models/marts/model1.sql",
         dialect="postgres",
         query="SELECT * FROM {{ ref('stg_a') }} WHERE val = -(99)",
     )
-    model2 = ModelRepresentation(
+    model2 = _make_model(
         name="model2",
         path="models/marts/model2.sql",
         dialect="postgres",
@@ -422,14 +420,14 @@ def test_cov_does_not_rewrite_email_or_regex_at_symbols():
     config.checks.connascence_of_value.enabled = True
     config.checks.connascence_of_value.min_occurrences = 2
 
-    model1 = ModelRepresentation(
+    model1 = _make_model(
         name="model1",
         path="models/marts/model1.sql",
         dialect="postgres",
         query="SELECT * FROM {{ ref('stg_a') }} WHERE regexp_like(email, '.@gmail.com')",
         provider="dbt",
     )
-    model2 = ModelRepresentation(
+    model2 = _make_model(
         name="model2",
         path="models/marts/model2.sql",
         dialect="postgres",
@@ -445,13 +443,13 @@ def test_cov_does_not_rewrite_email_or_regex_at_symbols():
         assert "Literal '.@gmail.com'" in f.message
 
     # Also test without provider specified (defaulting to provider=None)
-    model3 = ModelRepresentation(
+    model3 = _make_model(
         name="model3",
         path="models/marts/model3.sql",
         dialect="postgres",
         query="SELECT * FROM {{ ref('stg_a') }} WHERE email = 'support@company.com'",
     )
-    model4 = ModelRepresentation(
+    model4 = _make_model(
         name="model4",
         path="models/marts/model4.sql",
         dialect="postgres",
@@ -472,13 +470,13 @@ def test_cov_min_length_ignores_tiny_string_literals():
     # Clear ignored_values to verify min_length alone ignores '0', '-1', '', '3'
     config.checks.connascence_of_value.ignored_values = []
 
-    model1 = ModelRepresentation(
+    model1 = _make_model(
         name="model1",
         path="models/marts/model1.sql",
         dialect="postgres",
         query="SELECT * FROM {{ ref('stg_a') }} WHERE code = '0' AND status = '-1' AND flag = '' AND typ = '3' AND category = 'active'",
     )
-    model2 = ModelRepresentation(
+    model2 = _make_model(
         name="model2",
         path="models/marts/model2.sql",
         dialect="postgres",
@@ -505,13 +503,13 @@ def test_cov_min_length_does_not_ignore_numbers():
     config.checks.connascence_of_value.min_length = 5
     config.checks.connascence_of_value.ignored_values = []
 
-    model1 = ModelRepresentation(
+    model1 = _make_model(
         name="model1",
         path="models/marts/model1.sql",
         dialect="postgres",
         query="SELECT * FROM {{ ref('stg_a') }} WHERE id = 42 AND str_val = 'hi'",
     )
-    model2 = ModelRepresentation(
+    model2 = _make_model(
         name="model2",
         path="models/marts/model2.sql",
         dialect="postgres",
@@ -541,13 +539,13 @@ def test_cov_min_string_length_alias():
     })
     assert config.checks.connascence_of_value.min_length == 4
 
-    model1 = ModelRepresentation(
+    model1 = _make_model(
         name="model1",
         path="models/marts/model1.sql",
         dialect="postgres",
         query="SELECT * FROM {{ ref('stg_a') }} WHERE val = 'abc' AND cat = 'good'",
     )
-    model2 = ModelRepresentation(
+    model2 = _make_model(
         name="model2",
         path="models/marts/model2.sql",
         dialect="postgres",

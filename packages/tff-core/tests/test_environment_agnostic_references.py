@@ -1,6 +1,6 @@
+from conftest import _make_model
 from pathlib import Path
 from tff.core.config import FitnessFunctionsConfig
-from tff.core.model import ModelRepresentation
 from tff.core.rules.environment_agnostic_references import EnvironmentAgnosticReferences
 
 
@@ -16,7 +16,7 @@ def test_environment_agnostic_references_violations(tmp_path: Path):
     sql_file.parent.mkdir(parents=True, exist_ok=True)
     sql_file.write_text("SELECT * FROM prod_db.raw_schema.table", encoding="utf-8")
 
-    model = ModelRepresentation(
+    model = _make_model(
         name="marts.my_model",
         path=str(sql_file),
         dialect="bigquery",
@@ -30,7 +30,7 @@ def test_environment_agnostic_references_violations(tmp_path: Path):
     sql_file_dev = tmp_path / "models/marts/my_model_dev.sql"
     sql_file_dev.write_text("SELECT * FROM dev_raw.table", encoding="utf-8")
 
-    model_dev = ModelRepresentation(
+    model_dev = _make_model(
         name="marts.my_model_dev",
         path=str(sql_file_dev),
         dialect="bigquery",
@@ -46,7 +46,7 @@ def test_environment_agnostic_references_violations(tmp_path: Path):
         "SELECT * FROM prod_db.schema.a JOIN dev-db.schema.b ON a.id = b.id", encoding="utf-8"
     )
 
-    model_multi = ModelRepresentation(
+    model_multi = _make_model(
         name="marts.multi",
         path=str(sql_file_multi),
         dialect="bigquery",
@@ -62,7 +62,7 @@ def test_environment_agnostic_references_violations(tmp_path: Path):
     sql_file_compliant = tmp_path / "models/marts/compliant.sql"
     sql_file_compliant.write_text("SELECT * FROM schema.table", encoding="utf-8")
 
-    model_compliant = ModelRepresentation(
+    model_compliant = _make_model(
         name="marts.compliant",
         path=str(sql_file_compliant),
         dialect="bigquery",
@@ -74,7 +74,7 @@ def test_environment_agnostic_references_violations(tmp_path: Path):
     sql_file_single = tmp_path / "models/marts/single.sql"
     sql_file_single.write_text("SELECT * FROM table", encoding="utf-8")
 
-    model_single = ModelRepresentation(
+    model_single = _make_model(
         name="marts.single",
         path=str(sql_file_single),
         dialect="bigquery",
@@ -86,7 +86,7 @@ def test_environment_agnostic_references_violations(tmp_path: Path):
     sql_file_fp = tmp_path / "models/marts/fp.sql"
     sql_file_fp.write_text("SELECT * FROM device_data.table JOIN production.other", encoding="utf-8")
 
-    model_fp = ModelRepresentation(
+    model_fp = _make_model(
         name="marts.fp",
         path=str(sql_file_fp),
         dialect="bigquery",
@@ -109,7 +109,7 @@ def test_jinja_and_macro_handling(tmp_path: Path):
         "SELECT * FROM {{ ref('my_model') }} JOIN prod_db.schema.table", encoding="utf-8"
     )
 
-    model_jinja = ModelRepresentation(
+    model_jinja = _make_model(
         name="marts.jinja",
         path=str(sql_file_jinja),
         dialect="bigquery",
@@ -127,7 +127,7 @@ def test_jinja_and_macro_handling(tmp_path: Path):
         "SELECT * FROM @ref(my_schema.my_model) JOIN dev_db.schema.table", encoding="utf-8"
     )
 
-    model_macro = ModelRepresentation(
+    model_macro = _make_model(
         name="marts.macro",
         path=str(sql_file_macro),
         dialect="bigquery",
@@ -150,7 +150,7 @@ def test_custom_banned_environments(tmp_path: Path):
     sql_file.parent.mkdir(parents=True, exist_ok=True)
     sql_file.write_text("SELECT * FROM custom_env.table JOIN prod.table", encoding="utf-8")
 
-    model = ModelRepresentation(
+    model = _make_model(
         name="marts.custom",
         path=str(sql_file),
         dialect="bigquery",
@@ -171,7 +171,7 @@ def test_environment_agnostic_references_edge_cases(tmp_path: Path):
     config.rules.environment_agnostic_references.enabled = False
     config.rules.environment_agnostic_references.banned_environments = ["prod"]
 
-    model_disabled = ModelRepresentation(
+    model_disabled = _make_model(
         name="marts.disabled",
         path="non_existent.sql",
         dialect="bigquery",
@@ -182,7 +182,7 @@ def test_environment_agnostic_references_edge_cases(tmp_path: Path):
 
     # 2. Model is symbolic
     config.rules.environment_agnostic_references.enabled = True
-    model_symbolic = ModelRepresentation(
+    model_symbolic = _make_model(
         name="marts.symbolic",
         path="non_existent.sql",
         dialect="bigquery",
@@ -193,7 +193,7 @@ def test_environment_agnostic_references_edge_cases(tmp_path: Path):
 
     # 3. Skip layer matches
     config.rules.environment_agnostic_references.skip_layers = ["marts"]
-    model_skipped = ModelRepresentation(
+    model_skipped = _make_model(
         name="marts.skipped",
         path=str(tmp_path / "models/marts/skipped.sql"),
         dialect="bigquery",
@@ -206,7 +206,7 @@ def test_environment_agnostic_references_edge_cases(tmp_path: Path):
     config.rules.environment_agnostic_references.skip_layers = []
 
     # 4. File does not exist and query is None
-    model_no_query = ModelRepresentation(
+    model_no_query = _make_model(
         name="marts.no_query",
         path="non_existent.sql",
         dialect="bigquery",
@@ -216,7 +216,7 @@ def test_environment_agnostic_references_edge_cases(tmp_path: Path):
     assert rule.check_model(model_no_query) is None
 
     # 5. File does not exist but query fallback is set
-    model_fallback = ModelRepresentation(
+    model_fallback = _make_model(
         name="marts.fallback",
         path="non_existent.sql",
         dialect="bigquery",
@@ -228,7 +228,7 @@ def test_environment_agnostic_references_edge_cases(tmp_path: Path):
     assert "prod" in violation_fallback.violation_msg[0]
 
     # 6. Parse exception (invalid SQL syntax)
-    model_invalid = ModelRepresentation(
+    model_invalid = _make_model(
         name="marts.invalid",
         path="non_existent.sql",
         dialect="bigquery",
@@ -239,7 +239,7 @@ def test_environment_agnostic_references_edge_cases(tmp_path: Path):
 
     # 7. Empty banned environment
     config.rules.environment_agnostic_references.banned_environments = [""]
-    model_empty_env = ModelRepresentation(
+    model_empty_env = _make_model(
         name="marts.empty_env",
         path="non_existent.sql",
         dialect="bigquery",
@@ -258,7 +258,7 @@ def test_environment_agnostic_references_directory_path(tmp_path: Path):
     rule = EnvironmentAgnosticReferences(config=config)
 
     # Directory path without query
-    model_dir = ModelRepresentation(
+    model_dir = _make_model(
         name="dep_pkg.model",
         path=str(tmp_path),
         dialect="duckdb",
@@ -268,7 +268,7 @@ def test_environment_agnostic_references_directory_path(tmp_path: Path):
     assert rule.check_model(model_dir) is None
 
     # Directory path with query containing violation
-    model_dir_with_query = ModelRepresentation(
+    model_dir_with_query = _make_model(
         name="dep_pkg.model_violation",
         path=str(tmp_path),
         dialect="duckdb",
@@ -294,7 +294,7 @@ def test_environment_agnostic_references_read_text_error(tmp_path: Path):
     sql_file.parent.mkdir(parents=True, exist_ok=True)
     sql_file.write_text("SELECT * FROM prod_db.raw_schema.table", encoding="utf-8")
 
-    model = ModelRepresentation(
+    model = _make_model(
         name="marts.my_model",
         path=str(sql_file),
         dialect="bigquery",

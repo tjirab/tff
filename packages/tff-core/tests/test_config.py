@@ -746,30 +746,16 @@ invalid_option: true
     assert "workrs" in locs or "invalid_option" in locs
 
 
-def test_unrecognized_layers_config_is_disallowed(tmp_path: Path) -> None:
+@pytest.mark.parametrize(
+    "yaml_content",
+    [
+        "layers:\n  ordered: [staging, core]\n",
+        "checks:\n  layer_integrity:\n    enabled: true\n    unrecognized_option: 123\n",
+    ],
+)
+def test_unrecognized_config_options_are_disallowed(tmp_path: Path, yaml_content: str) -> None:
     yaml_path = tmp_path / "fitness_functions.yaml"
-    yaml_path.write_text(
-        """
-layers:
-  ordered: [staging, core]
-""",
-        encoding="utf-8",
-    )
-    with pytest.raises(ValidationError):
-        load_fitness_config(tmp_path)
-
-
-def test_unrecognized_check_config_is_disallowed(tmp_path: Path) -> None:
-    yaml_path = tmp_path / "fitness_functions.yaml"
-    yaml_path.write_text(
-        """
-checks:
-  layer_integrity:
-    enabled: true
-    unrecognized_option: 123
-""",
-        encoding="utf-8",
-    )
+    yaml_path.write_text(yaml_content, encoding="utf-8")
     with pytest.raises(ValidationError):
         load_fitness_config(tmp_path)
 

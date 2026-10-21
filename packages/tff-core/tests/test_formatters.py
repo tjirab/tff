@@ -1,6 +1,7 @@
 """Unit tests for CI/CD formatters (GitHub Actions annotations, SARIF v2.1.0, JUnit XML)."""
 
 from __future__ import annotations
+from conftest import _make_finding
 
 import io
 import xml.etree.ElementTree as ET
@@ -13,8 +14,6 @@ from tff.core.formatters import (
     generate_junit_xml,
     generate_sarif_report,
 )
-from tff.core.report import LintFinding
-from conftest import _make_finding
 
 
 def test_get_relative_path_project_root(tmp_path: Path):
@@ -69,7 +68,7 @@ def test_get_relative_path_multiple_project_roots(tmp_path: Path):
 
 
 def test_format_github_annotation_error_and_warning():
-    f_err = LintFinding(
+    f_err = _make_finding(
         check="duplicate_ctes",
         severity="error",
         message="Duplicate CTE found in model.",
@@ -83,7 +82,7 @@ def test_format_github_annotation_error_and_warning():
         == "::error file=models/marts/fct_orders.sql,line=42,title=ERR · Duplicate CTEs (Connascence of Algorithm)::! Duplicate CTE found in model. (https://tff.readthedocs.io/en/latest/rules_and_checks/#duplicate-ctes-duplicate_ctes)"
     )
 
-    f_warn = LintFinding(
+    f_warn = _make_finding(
         check="mart_naming",
         severity="warning",
         message="Model in marts must start with fct_ or dim_.",
@@ -99,7 +98,7 @@ def test_format_github_annotation_error_and_warning():
 
 
 def test_format_github_annotation_repo_level_no_path():
-    f_repo = LintFinding(
+    f_repo = _make_finding(
         check="layer_integrity",
         severity="error",
         message="Missing layers in config.",
@@ -112,7 +111,7 @@ def test_format_github_annotation_repo_level_no_path():
 
 
 def test_format_github_annotation_with_coordinates():
-    f = LintFinding(
+    f = _make_finding(
         check="duplicate_ctes",
         severity="error",
         message="Duplicate CTE found in model.",
@@ -131,7 +130,7 @@ def test_format_github_annotation_with_coordinates():
 
 
 def test_format_github_annotation_custom_rule_no_category():
-    f = LintFinding(
+    f = _make_finding(
         check="my_custom_check",
         severity="warning",
         message="Custom violation",
@@ -141,7 +140,7 @@ def test_format_github_annotation_custom_rule_no_category():
 
 
 def test_format_github_annotation_escaping():
-    f = LintFinding(
+    f = _make_finding(
         check="sqlcomplexity",
         severity="warning",
         message="High complexity: 100% (target < 80%)\nLine 2 details\rLine 3",
@@ -156,14 +155,14 @@ def test_format_github_annotation_escaping():
 
 def test_emit_github_annotations():
     findings = [
-        LintFinding(
+        _make_finding(
             check="c1",
             severity="error",
             message="Error 1",
             path="models/a.sql",
             line=10,
         ),
-        LintFinding(
+        _make_finding(
             check="c2",
             severity="warning",
             message="Warning 1",
@@ -250,25 +249,25 @@ def test_emit_github_annotations_prioritization_and_capping(tmp_path: Path):
     # 2. Unmodified file, error
     # 3. Modified file, warning
     # 4. Modified file, error
-    f_unmod_warn = LintFinding(
+    f_unmod_warn = _make_finding(
         check="c_unmod_warn",
         severity="warning",
         message="Unmodified warning",
         path="models/other.sql",
     )
-    f_unmod_err = LintFinding(
+    f_unmod_err = _make_finding(
         check="c_unmod_err",
         severity="error",
         message="Unmodified error",
         path="models/other.sql",
     )
-    f_mod_warn = LintFinding(
+    f_mod_warn = _make_finding(
         check="c_mod_warn",
         severity="warning",
         message="Modified warning",
         path="models/modified.sql",
     )
-    f_mod_err = LintFinding(
+    f_mod_err = _make_finding(
         check="c_mod_err",
         severity="error",
         message="Modified error",
@@ -306,15 +305,15 @@ def test_is_finding_in_modified_files_branches(tmp_path: Path):
     root.mkdir()
 
     # Empty modified files
-    f1 = LintFinding(check="c", severity="error", message="msg", path="models/a.sql")
+    f1 = _make_finding(check="c", severity="error", message="msg", path="models/a.sql")
     assert _is_finding_in_modified_files(f1, set()) is False
 
     # Finding matching via model name stem
-    f2 = LintFinding(check="c", severity="error", message="msg", model="stg_users")
+    f2 = _make_finding(check="c", severity="error", message="msg", model="stg_users")
     assert _is_finding_in_modified_files(f2, {"models/staging/stg_users.sql"}) is True
 
     # Finding matching via relative project path
-    f3 = LintFinding(
+    f3 = _make_finding(
         check="c",
         severity="error",
         message="msg",
@@ -330,7 +329,7 @@ def test_is_finding_in_modified_files_branches(tmp_path: Path):
     )
 
     # Finding not matching
-    f4 = LintFinding(check="c", severity="error", message="msg", path="models/b.sql", model="b")
+    f4 = _make_finding(check="c", severity="error", message="msg", path="models/b.sql", model="b")
     assert _is_finding_in_modified_files(f4, {"models/c.sql"}) is False
 
 
@@ -342,7 +341,7 @@ def test_generate_sarif_report_structure(tmp_path: Path):
     sql_file.touch()
 
     findings = [
-        LintFinding(
+        _make_finding(
             check="duplicate_ctes",
             severity="error",
             message="Duplicate CTE found.",
@@ -350,7 +349,7 @@ def test_generate_sarif_report_structure(tmp_path: Path):
             path=str(sql_file),
             line=15,
         ),
-        LintFinding(
+        _make_finding(
             check="custom_rule",
             severity="warning",
             message="Custom warning message.",
@@ -437,7 +436,7 @@ def test_generate_junit_xml_with_findings(tmp_path: Path):
     sql_file.touch()
 
     findings = [
-        LintFinding(
+        _make_finding(
             check="banselectstar",
             severity="error",
             message="SELECT * is prohibited.",
@@ -445,7 +444,7 @@ def test_generate_junit_xml_with_findings(tmp_path: Path):
             path=str(sql_file),
             line=5,
         ),
-        LintFinding(
+        _make_finding(
             check="layer_integrity",
             severity="warning",
             message="Cross-layer dependency warning.",

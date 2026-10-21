@@ -1,8 +1,8 @@
+from conftest import _make_model
 from pathlib import Path
 
 from tff.core.checks.dependency_graph import collect_dependency_graph_findings
 from tff.core.config import FitnessFunctionsConfig, ColumnTypeRuleEntry
-from tff.core.model import ModelRepresentation
 from tff.core.rules import (
     ClassificationMacros,
     ColumnNames,
@@ -58,7 +58,7 @@ def test_rules_respect_layer_filtering(tmp_path: Path):
     sql_file.write_text("SELECT * FROM table", encoding="utf-8")
 
     # Mock a model in the skipped "sources" layer
-    model = ModelRepresentation(
+    model = _make_model(
         name="sources.my_model",
         path=str(sql_file),
         dialect="bigquery",
@@ -97,7 +97,7 @@ def test_rules_respect_layer_filtering(tmp_path: Path):
     sql_file_marts.parent.mkdir(parents=True, exist_ok=True)
     sql_file_marts.write_text("SELECT * FROM table", encoding="utf-8")
 
-    model_marts = ModelRepresentation(
+    model_marts = _make_model(
         name="marts.my_model_diff",
         path=str(sql_file_marts),
         dialect="bigquery",
@@ -117,13 +117,13 @@ def test_dependency_graph_respects_layer_filtering():
     config.checks.dependency_graph.fan_out_warn = 1
 
     # Mock models
-    model1 = ModelRepresentation(
+    model1 = _make_model(
         name="sources.model1",
         path="models/sources/model1.sql",
         dialect="bigquery",
         depends_on={"sources.model2"},
     )
-    model2 = ModelRepresentation(
+    model2 = _make_model(
         name="sources.model2",
         path="models/sources/model2.sql",
         dialect="bigquery",
