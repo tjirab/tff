@@ -352,7 +352,10 @@ def test_render_health_report_group_by_domain_smoke() -> None:
     """Smoke test verifying domain breakdown rendering and hyperlinks."""
     from tff.core.registry import registry
 
-    config = _make_config(enabled_rules=["ban_select_star", "filename_equals_modelname"])
+    config = _make_config(
+        enabled_checks=["duplicate_ctes"],
+        enabled_rules=["ban_select_star", "filename_equals_modelname"],
+    )
 
     findings = [
         _make_finding(
@@ -366,6 +369,10 @@ def test_render_health_report_group_by_domain_smoke() -> None:
         _make_finding(
             check="filenameequalsmodelname", severity="error", message="err C",
             model="model_c", path="models/marts/marketing/model_c.sql",
+        ),
+        _make_finding(
+            check="duplicate_ctes", severity="info", message="info D",
+            model="model_a", path="models/sources/model_a.sql",
         ),
     ]
 
@@ -730,22 +737,22 @@ def test_get_health_json_data_includes_weights() -> None:
     "icon,check,label,weight_str,disabled,expected_plain,has_link,is_dim",
     [
         (
-            "[green]✔[/green]",
+            "[green]PASS[/green]",
             "banselectstar",
             "No SELECT *",
             " · weight: 2",
             False,
-            "  ✔ No SELECT * (banselectstar · weight: 2)",
+            "  PASS No SELECT * (banselectstar · weight: 2)",
             True,
             False,
         ),
         (
-            "[red]✘[/red]",
+            "[red]FAIL[/red]",
             "custom_check",
             "Custom Check",
             "",
             False,
-            "  ✘ Custom Check (custom_check)",
+            "  FAIL Custom Check (custom_check)",
             False,
             False,
         ),
@@ -803,16 +810,25 @@ def test_format_health_check_desc(
 
 def test_render_health_report_verbose_flag() -> None:
     """Verify that verbose=False collapses passing/disabled checks and verbose=True expands them."""
+    from tff.core.health import _render_health_by_connascence
+
     config = FitnessFunctionsConfig.model_validate({
+        "checks": {
+            "connascence_of_value": {"enabled": True},
+        },
         "rules": {
             "ban_select_star": {"enabled": True},
             "filename_equals_modelname": {"enabled": False},
+            "no_positional_group_by": {"enabled": True},
+            "no_positional_order_by": {"enabled": True},
             "metadata": {"enabled": True, "owner": True, "description": True},
         },
     })
     findings = [
         _make_finding(check="banselectstar", severity="error", message="err", model="m1"),
         _make_finding(check="nomissingowner", severity="warning", message="warn", model="m2"),
+        _make_finding(check="custom_err_check", severity="error", message="err", model="m1"),
+        _make_finding(check="custom_pass_check", severity="info", message="info", model="m1"),
     ]
     scores = calculate_health_scores(findings, models_checked=5, config=config, provider="dbt")
 
@@ -826,9 +842,24 @@ def test_render_health_report_verbose_flag() -> None:
     assert "DIMENSION" in output_default
     assert "DOMAIN BREAKDOWN" in output_default
 
-    # 2. Verbose (verbose=True)
+    # 2. Collapsed connascence breakdown (verbose=False)
+    console_collapsed = Console(record=True, width=120)
+    _render_health_by_connascence(
+        scores,
+        scores["enabled_checks"] | {"custom_pass_check"},
+        {**scores["check_scores"], "custom_pass_check": 100.0},
+        scores["check_findings"],
+        console_collapsed,
+        verbose=False,
+    )
+    output_collapsed = console_collapsed.export_text()
+    assert "PASS" in output_collapsed
+    assert "WARN" in output_collapsed
+
+    # 3. Verbose (verbose=True)
     console_verbose = Console(record=True, width=120)
     render_health_report(scores, config, provider="dbt", console=console_verbose, verbose=True)
+    render_health_report(scores, config, provider="dbt", console=console_verbose, verbose=True, group_by="check")
     output_verbose = console_verbose.export_text()
 
     assert "Use --verbose to expand all passing and disabled checks." not in output_verbose

@@ -687,11 +687,11 @@ def _render_health_by_connascence(
 
                     # Determine status icon and color
                     if score == 100.0:
-                        icon = "[green]✔[/green]"
+                        icon = "[green]PASS[/green]"
                         score_text = "[green]100.0%[/green]"
                         violation_text = ""
                     else:
-                        icon_char = "✘" if score < 70 else "⚠"
+                        icon_char = "FAIL" if score < 70 else "WARN"
                         color = "red" if score < 70 else "yellow"
                         icon = f"[{color}]{icon_char}[/{color}]"
                         score_text = f"[{color}]{score:.1f}%[/{color}]"
@@ -726,7 +726,7 @@ def _render_health_by_connascence(
                 score = check_scores[check]
                 cf = check_findings[check]
 
-                icon_char = "✘" if score < 70 else "⚠"
+                icon_char = "FAIL" if score < 70 else "WARN"
                 color = "red" if score < 70 else "yellow"
                 icon = f"[{color}]{icon_char}[/{color}]"
                 score_text = f"[{color}]{score:.1f}%[/{color}]"
@@ -755,16 +755,16 @@ def _render_health_by_connascence(
                     label = CHECK_LABELS.get(c, c)
                     weight = check_weights.get(c, 1.0)
                     weight_str = f" · weight: {weight:g}" if weight != 1.0 else ""
-                    check_desc = _format_health_check_desc("[green]✔[/green]", c, label, weight_str=weight_str)
+                    check_desc = _format_health_check_desc("[green]PASS[/green]", c, label, weight_str=weight_str)
                     bar = make_progress_bar(100.0, width=10)
                     score_cell = Text.from_markup(f"{bar} [green]100.0%[/green]")
                     table.add_row(check_desc, score_cell, "")
                 else:
                     collapsed_count += len(passing)
                     if not failing:
-                        desc_text = f"  [green]✔[/green] All {len(passing)} checks scored [green]100.0%[/green]"
+                        desc_text = f"  [green]PASS[/green] All {len(passing)} checks scored [green]100.0%[/green]"
                     else:
-                        desc_text = f"  [green]✔[/green] {len(passing)} check{'s' if len(passing) != 1 else ''} passing"
+                        desc_text = f"  [green]PASS[/green] {len(passing)} check{'s' if len(passing) != 1 else ''} passing"
                     bar = make_progress_bar(100.0, width=10)
                     score_cell = Text.from_markup(f"{bar} [green]100.0%[/green]")
                     table.add_row(Text.from_markup(desc_text), score_cell, "")
@@ -808,11 +808,11 @@ def _render_health_by_connascence(
             cf = check_findings[check]
 
             if score == 100.0:
-                icon = "[green]✔[/green]"
+                icon = "[green]PASS[/green]"
                 score_text = "[green]100.0%[/green]"
                 violation_text = ""
             else:
-                icon_char = "✘" if score < 70 else "⚠"
+                icon_char = "FAIL" if score < 70 else "WARN"
                 color = "red" if score < 70 else "yellow"
                 icon = f"[{color}]{icon_char}[/{color}]"
                 score_text = f"[{color}]{score:.1f}%[/{color}]"
@@ -967,11 +967,11 @@ def _render_health_by_domain(
                 local_score = check_scores.get(check, 100.0)
 
             if local_score == 100.0:
-                icon = "[green]✔[/green]"
+                icon = "[green]PASS[/green]"
                 score_text = "[green]100.0%[/green]"
                 violation_text = ""
             else:
-                icon_char = "✘" if local_score < 70 else "⚠"
+                icon_char = "FAIL" if local_score < 70 else "WARN"
                 color = "red" if local_score < 70 else "yellow"
                 icon = f"[{color}]{icon_char}[/{color}]"
                 score_text = f"[{color}]{local_score:.1f}%[/{color}]"

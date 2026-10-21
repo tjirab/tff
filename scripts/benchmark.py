@@ -24,7 +24,7 @@ def run_benchmark(max_seconds: float = 15.0) -> int:
     ]
 
     print("=" * 60)
-    print("🚀 Running tff Performance Benchmark Suite")
+    print("● Running tff Performance Benchmark Suite")
     print(f"SLA Budget Ceiling: {max_seconds:.2f}s")
     print("=" * 60)
 
@@ -35,7 +35,7 @@ def run_benchmark(max_seconds: float = 15.0) -> int:
     for proj_name in benchmark_projects:
         proj_path = examples_dir / proj_name
         if not proj_path.exists():
-            print(f"⚠️  Skipping missing project: {proj_name}")
+            print(f"WARN: Skipping missing project: {proj_name}")
             continue
 
         t0 = time.perf_counter()
@@ -52,7 +52,7 @@ def run_benchmark(max_seconds: float = 15.0) -> int:
         total_violations += len(findings)
 
         print(
-            f"  • {proj_name:<26} [{provider:<8}] "
+            f"  ● {proj_name:<26} [{provider:<8}] "
             f"models={count:<2} findings={len(findings):<2} checks={len(executed):<2} "
             f"time={elapsed:.3f}s"
         )
@@ -69,11 +69,11 @@ def run_benchmark(max_seconds: float = 15.0) -> int:
 
     if total_duration > max_seconds:
         print(
-            f"❌ Performance Regression: Total duration {total_duration:.3f}s exceeded budget {max_seconds:.2f}s!"
+            f"FAIL: Performance Regression: Total duration {total_duration:.3f}s exceeded budget {max_seconds:.2f}s!"
         )
         return 1
 
-    print(f"✅ Performance Budget Met ({total_duration:.3f}s <= {max_seconds:.2f}s)")
+    print(f"PASS: Performance Budget Met ({total_duration:.3f}s <= {max_seconds:.2f}s)")
     return 0
 
 

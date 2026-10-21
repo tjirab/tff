@@ -44,9 +44,9 @@ def render_cli_error(error: TffError | Exception, console: Console | None = None
     """Render a structured error diagnostic block to stderr using rich.
 
     Formats user-facing errors cleanly into three parts:
-      1. What happened: "✖ Error: <message>"
-      2. Context metadata: "• Model:", "• Path:", "• Rule:", etc.
-      3. Remediation hint: "• Hint: <hint>"
+      1. What happened: "FAIL Error: <message>"
+      2. Context metadata: "● Model:", "● Path:", "● Rule:", etc.
+      3. Remediation hint: "● Hint: <hint>"
 
     Args:
         error: The domain exception or error to render.
@@ -58,7 +58,7 @@ def render_cli_error(error: TffError | Exception, console: Console | None = None
     message = getattr(error, "message", None) or str(error)
     if not message:
         message = "An unknown error occurred."
-    console.print(f"[bold red]✖ Error:[/bold red] {escape(message)}")
+    console.print(f"[bold red]FAIL Error:[/bold red] {escape(message)}")
 
     details = getattr(error, "details", {})
     if not isinstance(details, dict):
@@ -122,11 +122,11 @@ def render_cli_error(error: TffError | Exception, console: Console | None = None
             bullets.append((label, v))
 
     for label, val in bullets:
-        console.print(f"  [dim]•[/dim] [bold]{label}:[/bold] {escape(str(val))}")
+        console.print(f"  [dim]●[/dim] [bold]{label}:[/bold] {escape(str(val))}")
 
     hint = getattr(error, "hint", None)
     if hint:
-        console.print(f"  [dim]•[/dim] [bold blue]Hint:[/bold blue] {escape(str(hint))}")
+        console.print(f"  [dim]●[/dim] [bold blue]Hint:[/bold blue] {escape(str(hint))}")
 
 
 
@@ -637,7 +637,7 @@ def _render_rules_table(
     for check in checks:
         sev_style = "bold red" if check.default_severity == "error" else "bold yellow"
         sev_label = "error" if check.default_severity == "error" else "warning"
-        fixable_label = "[green]✓[/green]" if check.is_fixable else "·"
+        fixable_label = "[green]PASS[/green]" if check.is_fixable else "·"
         table.add_row(
             check.id,
             check.category,
@@ -763,7 +763,7 @@ def handle_explain(
         return 1
 
     err_console = Console(stderr=True)
-    err_console.print(f"[bold red]✖ Error:[/bold red] Unknown check or category '{rule_arg}'.{suggestion}")
+    err_console.print(f"[bold red]FAIL Error:[/bold red] Unknown check or category '{rule_arg}'.{suggestion}")
     err_console.print("  [dim]Run 'tff rules' or 'tff explain --all' to list all available checks.[/dim]")
     return 1
 
@@ -1469,7 +1469,7 @@ def _main_impl(argv: list[str] | None = None) -> int:
         )
         config_exists = resolved_config.is_file()
         width = min(console.width if console.width else 80, 78)
-        console.print("[bold red]■[/bold red] [bold yellow]▲[/bold yellow] [bold blue]●[/bold blue]  [bold]tff Info[/bold]  [dim]·  TRANSFORMATION FITNESS FUNCTIONS[/dim]")
+        console.print("[bold]tff Info[/bold]  [dim]·  TRANSFORMATION FITNESS FUNCTIONS[/dim]")
         console.print("─" * width, style="dim")
         table = Table(show_header=False, box=None, padding=(0, 2, 0, 0))
         table.add_column()
@@ -2048,7 +2048,7 @@ def _main_impl(argv: list[str] | None = None) -> int:
                     if not args.json:
                         console = Console(stderr=True)
                         for log in fix_logs:
-                            console.print(f"[green]✓[/green] {log}", highlight=False)
+                            console.print(f"[green]PASS[/green] {log}", highlight=False)
                     # Re-run checks to get the final state of the files (pass models_arg=None so adapter reloads from disk)
                     try:
                         rerun_start = time.perf_counter()
@@ -2254,9 +2254,9 @@ def main(argv: list[str] | None = None) -> int:
             if debug:
                 console.print_exception()
             else:
-                console.print(f"[bold red]✖ Unexpected Error:[/bold red] {escape(str(exc))}")
-                console.print("  [dim]•[/dim] Please report this issue at: https://github.com/tjirab/tff/issues")
-                console.print("  [dim]•[/dim] [bold blue]Hint:[/bold blue] Re-run with [bold]--debug[/bold] or set [bold]TFF_DEBUG=1[/bold] to display the full traceback.")
+                console.print(f"[bold red]FAIL Unexpected Error:[/bold red] {escape(str(exc))}")
+                console.print("  [dim]●[/dim] Please report this issue at: https://github.com/tjirab/tff/issues")
+                console.print("  [dim]●[/dim] [bold blue]Hint:[/bold blue] Re-run with [bold]--debug[/bold] or set [bold]TFF_DEBUG=1[/bold] to display the full traceback.")
             return 1
     finally:
         if orig_tff_no_cache is None:
