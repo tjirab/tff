@@ -7,21 +7,19 @@ from tff.core.cli import main
 from tff.core.docs import generate_docs_dashboard
 
 
-@patch("tff.core.cli._get_runner")
-@patch("tff.dbt.manifest.load_dbt_models")
+@patch("tff.core.cli._get_adapter")
 @patch("tff.core.docs.collect_stats")
 @patch("tff.core.docs.save_log")
 def test_generate_docs_dashboard_dbt(
     mock_save_log,
     mock_collect_stats,
-    mock_load_dbt_models,
-    mock_get_runner,
+    mock_get_adapter,
     tmp_path: Path
 ):
-    # Setup mock data for dbt runner
-    mock_runner = MagicMock()
-    mock_runner.run_all_checks.return_value = ([], 2, ["rules"])
-    mock_get_runner.return_value = mock_runner
+    # Setup mock adapter for dbt
+    mock_adapter = MagicMock()
+    mock_adapter.run_checks.return_value = ([], 2, ["rules"])
+    mock_get_adapter.return_value = mock_adapter
 
     # Setup mock models
     from tff.core.model import ModelRepresentation
@@ -46,7 +44,7 @@ def test_generate_docs_dashboard_dbt(
     (tmp_path / "models/model_2.sql").touch()
     (tmp_path / "fitness_functions.yaml").touch()
 
-    mock_load_dbt_models.return_value = {
+    mock_adapter.load_models.return_value = {
         "model.my_project.model_1": mock_model_1,
         "model.my_project.model_2": mock_model_2,
     }
@@ -78,29 +76,25 @@ def test_generate_docs_dashboard_dbt(
     assert "checked by TFF rules" not in html_content
 
 
-@patch("tff.core.cli._get_runner")
-@patch("sqlmesh.core.context.Context")
-@patch("tff.sqlmesh.runner.map_sqlmesh_context_models")
+@patch("tff.core.cli._get_adapter")
 @patch("tff.core.docs.collect_stats")
 @patch("tff.core.docs.save_log")
 def test_generate_docs_dashboard_sqlmesh(
     mock_save_log,
     mock_collect_stats,
-    mock_map_sqlmesh,
-    mock_context,
-    mock_get_runner,
+    mock_get_adapter,
     tmp_path: Path
 ):
-    # Setup mock data for SQLMesh runner
-    mock_runner = MagicMock()
-    from tff.core.report import LintFinding
+    # Setup mock adapter for SQLMesh
+    mock_adapter = MagicMock()
+    from conftest import _make_finding
     mock_findings = [
-        LintFinding(check="ban_select_star", severity="warning", model="model_1", path=None, message="banned select *"),
-        LintFinding(check="layer_integrity", severity="error", model="model_2", path="models/model_2.sql", message="layer violation"),
-        LintFinding(check="custom_exclusions", severity="error", message="project wide check violation")
+        _make_finding(check="ban_select_star", severity="warning", model="model_1", path=None, message="banned select *"),
+        _make_finding(check="layer_integrity", severity="error", model="model_2", path="models/model_2.sql", message="layer violation"),
+        _make_finding(check="custom_exclusions", severity="error", message="project wide check violation")
     ]
-    mock_runner.run_all_checks.return_value = (mock_findings, 2, ["sqlmesh"])
-    mock_get_runner.return_value = mock_runner
+    mock_adapter.run_checks.return_value = (mock_findings, 2, ["sqlmesh"])
+    mock_get_adapter.return_value = mock_adapter
 
     # Setup mock models mapping
     from tff.core.model import ModelRepresentation
@@ -124,7 +118,7 @@ def test_generate_docs_dashboard_sqlmesh(
     (tmp_path / "models/model_2.sql").touch()
     (tmp_path / "fitness_functions.yaml").touch()
 
-    mock_map_sqlmesh.return_value = {
+    mock_adapter.load_models.return_value = {
         "model_1": mock_model_1,
         "model_2": mock_model_2,
     }
@@ -151,21 +145,19 @@ def test_generate_docs_dashboard_sqlmesh(
     assert "error" in html_content
 
 
-@patch("tff.core.cli._get_runner")
-@patch("tff.dbt.manifest.load_dbt_models")
+@patch("tff.core.cli._get_adapter")
 @patch("tff.core.docs.collect_stats")
 @patch("tff.core.docs.save_log")
 def test_generate_docs_dashboard_relative_output(
     mock_save_log,
     mock_collect_stats,
-    mock_load_dbt_models,
-    mock_get_runner,
+    mock_get_adapter,
     tmp_path: Path
 ):
-    mock_runner = MagicMock()
-    mock_runner.run_all_checks.return_value = ([], 0, [])
-    mock_get_runner.return_value = mock_runner
-    mock_load_dbt_models.return_value = {}
+    mock_adapter = MagicMock()
+    mock_adapter.run_checks.return_value = ([], 0, [])
+    mock_adapter.load_models.return_value = {}
+    mock_get_adapter.return_value = mock_adapter
     mock_collect_stats.return_value = []
     
     (tmp_path / "fitness_functions.yaml").touch()

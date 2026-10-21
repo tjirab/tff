@@ -161,26 +161,16 @@ def test_render_health_report_smoke() -> None:
 
 
 def test_cli_health_command(tmp_path, monkeypatch) -> None:
-    mock_runner = MagicMock()
-    mock_runner.run_all_checks.return_value = (
+    mock_adapter = MagicMock()
+    mock_adapter.provider_name = "dbt"
+    mock_adapter.run_checks.return_value = (
         [
             _make_finding(check="banselectstar", severity="warning", message="warning", model="model_a"),
         ],
         5,
         ["rules"],
     )
-
-    def mock_import_module(name):
-        if name == "tff.dbt.runner":
-            return mock_runner
-        raise ImportError("mock error")
-
-    monkeypatch.setattr("importlib.import_module", mock_import_module)
-
-    try:
-        mock_import_module("non_existent")
-    except ImportError:
-        pass
+    monkeypatch.setattr("tff.core.cli._get_adapter", lambda provider: mock_adapter)
 
     config_file = tmp_path / "fitness_functions.yaml"
     config_file.write_text("""
@@ -416,8 +406,9 @@ def test_calculate_health_scores_domain_variations() -> None:
 
 
 def test_cli_health_scope(tmp_path, monkeypatch) -> None:
-    mock_runner = MagicMock()
-    mock_runner.run_all_checks.return_value = (
+    mock_adapter = MagicMock()
+    mock_adapter.provider_name = "dbt"
+    mock_adapter.run_checks.return_value = (
         [
             _make_finding(
                 check="banselectstar", severity="error", message="err",
@@ -431,10 +422,7 @@ def test_cli_health_scope(tmp_path, monkeypatch) -> None:
         10,
         ["rules"],
     )
-    monkeypatch.setattr(
-        "importlib.import_module",
-        lambda name: mock_runner if name == "tff.dbt.runner" else (_ for _ in ()).throw(ImportError()),
-    )
+    monkeypatch.setattr("tff.core.cli._get_adapter", lambda provider: mock_adapter)
 
     config_file = tmp_path / "fitness_functions.yaml"
     config_file.write_text(
@@ -473,8 +461,9 @@ def test_cli_health_scope(tmp_path, monkeypatch) -> None:
 
 
 def test_cli_health_group_by_domain(tmp_path, monkeypatch) -> None:
-    mock_runner = MagicMock()
-    mock_runner.run_all_checks.return_value = (
+    mock_adapter = MagicMock()
+    mock_adapter.provider_name = "dbt"
+    mock_adapter.run_checks.return_value = (
         [
             _make_finding(
                 check="banselectstar", severity="error", message="err",
@@ -484,7 +473,7 @@ def test_cli_health_group_by_domain(tmp_path, monkeypatch) -> None:
         5,
         ["banselectstar"],
     )
-    monkeypatch.setattr("importlib.import_module", lambda name: mock_runner)
+    monkeypatch.setattr("tff.core.cli._get_adapter", lambda provider: mock_adapter)
 
     config_file = tmp_path / "fitness_functions.yaml"
     config_file.write_text("rules:\n  ban_select_star:\n    enabled: true\n", encoding="utf-8")
@@ -870,9 +859,10 @@ def test_render_health_report_verbose_flag() -> None:
 
 
 def test_cli_health_verbose_flag(tmp_path, monkeypatch) -> None:
-    mock_runner = MagicMock()
-    mock_runner.run_all_checks.return_value = ([], 5, ["rules"])
-    monkeypatch.setattr("importlib.import_module", lambda name: mock_runner)
+    mock_adapter = MagicMock()
+    mock_adapter.provider_name = "dbt"
+    mock_adapter.run_checks.return_value = ([], 5, ["rules"])
+    monkeypatch.setattr("tff.core.cli._get_adapter", lambda provider: mock_adapter)
 
     config_file = tmp_path / "fitness_functions.yaml"
     config_file.write_text("rules:\n  ban_select_star:\n    enabled: true\n", encoding="utf-8")

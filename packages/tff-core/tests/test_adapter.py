@@ -9,7 +9,7 @@ from tff.core.adapter import (
     detect_provider,
     get_adapter,
 )
-from tff.core.cli import _MockRunnerAdapter, _get_adapter, main
+from tff.core.cli import _get_adapter, main
 from tff.core.config import FitnessFunctionsConfig
 from tff.dataform.adapter import DataformAdapter
 from tff.dbt.adapter import DBTAdapter
@@ -317,65 +317,6 @@ def test_dataform_adapter(tmp_path: Path):
     diag3 = adapter.get_diagnostic_files(tmp_path)
     assert diag3[0][0] == "workflow_settings.yaml"
     assert "missing" in diag3[0][1]
-
-
-def test_mock_runner_adapter_all_methods(tmp_path: Path):
-    mock_runner = MagicMock()
-    mock_runner.run_all_checks.return_value = ([], 3, ["rules"])
-
-    # dbt
-    dbt_adapter = _MockRunnerAdapter("dbt", mock_runner)
-    assert dbt_adapter.provider_name == "dbt"
-    assert dbt_adapter.is_applicable(tmp_path) is True
-    with patch("tff.dbt.manifest.load_dbt_models", return_value={"m1": MagicMock()}):
-        assert "m1" in dbt_adapter.load_models(tmp_path, dialect="duckdb")
-    cfg = FitnessFunctionsConfig()
-    assert dbt_adapter.run_checks(
-        tmp_path, cfg, dialect="duckdb", models={"m1": MagicMock()}, scoped_models={"m1"}, chunk_size=5
-    ) == ([], 3, ["rules"])
-    assert mock_runner.run_all_checks.call_args.kwargs.get("chunk_size") == 5
-    assert len(dbt_adapter.get_diagnostic_files(tmp_path)) == 2
-
-    # sqlmesh
-    sqlmesh_adapter = _MockRunnerAdapter("sqlmesh", mock_runner)
-    assert sqlmesh_adapter.provider_name == "sqlmesh"
-    with (
-        patch("sqlmesh.core.context.Context"),
-        patch(
-            "tff.sqlmesh.runner.map_sqlmesh_context_models",
-            return_value={"m2": MagicMock()},
-        ),
-    ):
-        assert "m2" in sqlmesh_adapter.load_models(tmp_path)
-    assert sqlmesh_adapter.run_checks(
-        tmp_path, cfg, models={"m2": MagicMock()}, scoped_models={"m2"}
-    ) == (
-        [],
-        3,
-        ["rules"],
-    )
-    assert len(sqlmesh_adapter.get_diagnostic_files(tmp_path)) == 2
-
-    # dataform
-    df_adapter = _MockRunnerAdapter("dataform", mock_runner)
-    assert df_adapter.provider_name == "dataform"
-    with patch(
-        "tff.dataform.manifest.load_dataform_models", return_value={"m3": MagicMock()}
-    ):
-        assert "m3" in df_adapter.load_models(tmp_path)
-    assert df_adapter.run_checks(
-        tmp_path,
-        cfg,
-        dialect="bigquery",
-        manifest_path="m.json",
-        models={"m3": MagicMock()},
-        scoped_models={"m3"},
-    ) == ([], 3, ["rules"])
-
-    # other/unknown provider
-    other_adapter = _MockRunnerAdapter("other", mock_runner)
-    assert other_adapter.load_models(tmp_path) == {}
-    assert other_adapter.get_diagnostic_files(tmp_path) == []
 
 
 def test_cli_info_adapter_error(tmp_path: Path):

@@ -9,7 +9,7 @@ import pytest
 from tff.core.cli import (
     _detect_provider,
     _explain_single_check,
-    _get_runner,
+    _get_adapter,
     _render_rules_table,
     main,
     mask_sensitive_args,
@@ -56,19 +56,19 @@ def test_detect_provider_not_found(tmp_path: Path):
 
 
 @pytest.mark.parametrize(
-    "provider,expected_module",
+    "provider,expected_module,adapter_cls",
     [
-        ("dbt", "tff.dbt.runner"),
-        ("sqlmesh", "tff.sqlmesh.runner"),
+        ("dbt", "tff.dbt.adapter", "DBTAdapter"),
+        ("sqlmesh", "tff.sqlmesh.adapter", "SQLMeshAdapter"),
     ],
 )
-def test_get_runner_success(provider: str, expected_module: str):
+def test_get_runner_success(provider: str, expected_module: str, adapter_cls: str):
     with patch("importlib.import_module") as mock_import:
         mock_module = MagicMock()
         mock_import.return_value = mock_module
-        runner = _get_runner(provider)
+        adapter = _get_adapter(provider)
         mock_import.assert_called_once_with(expected_module)
-        assert runner == mock_module
+        assert adapter == getattr(mock_module, adapter_cls).return_value
 
 
 @pytest.mark.parametrize(
@@ -81,32 +81,32 @@ def test_get_runner_success(provider: str, expected_module: str):
 def test_get_runner_import_error(provider: str, err_match: str):
     with patch(
         "importlib.import_module",
-        side_effect=ImportError(f"No module named 'tff.{provider}.runner'"),
+        side_effect=ImportError(f"No module named 'tff.{provider}.adapter'"),
     ):
         with pytest.raises(ImportError, match=err_match):
-            _get_runner(provider)
+            _get_adapter(provider)
 
 
 def test_get_runner_unknown():
     with pytest.raises(ValueError, match="Unknown provider"):
-        _get_runner("unknown_provider")
+        _get_adapter("unknown_provider")
 
 
 @patch("tff.core.cli._detect_provider")
-@patch("tff.core.cli._get_runner")
+@patch("tff.core.cli._get_adapter")
 @patch("tff.core.cli.load_fitness_config")
 @patch("tff.core.cli.render_lint_report")
 def test_main_lint_dbt(
     mock_render,
     mock_load_config,
-    mock_get_runner,
+    mock_get_adapter,
     mock_detect_provider,
     tmp_path: Path,
 ):
     mock_detect_provider.return_value = "dbt"
-    mock_runner = MagicMock()
-    mock_runner.run_all_checks.return_value = ([], 5, ["rules"])
-    mock_get_runner.return_value = mock_runner
+    mock_adapter = MagicMock()
+    mock_adapter.run_checks.return_value = ([], 5, ["rules"])
+    mock_get_adapter.return_value = mock_adapter
     mock_render.return_value = True
 
     # Run the main cli
@@ -115,12 +115,13 @@ def test_main_lint_dbt(
 
     assert exit_code == 0
     mock_detect_provider.assert_called_once()
-    mock_get_runner.assert_called_once_with("dbt")
-    mock_runner.run_all_checks.assert_called_once_with(
-        project_root=tmp_path.resolve(),
+    mock_get_adapter.assert_called_once_with("dbt")
+    mock_adapter.run_checks.assert_called_once_with(
+        project_root=[tmp_path.resolve()],
         config=mock_load_config.return_value,
         checks=None,
         dialect="duckdb",
+        manifest_path=None,
     )
     assert mock_render.call_count == 1
     call_args, call_kwargs = mock_render.call_args
@@ -132,18 +133,18 @@ def test_main_lint_dbt(
     assert call_kwargs["duration"] is not None
 
 
-@patch("tff.core.cli._get_runner")
+@patch("tff.core.cli._get_adapter")
 @patch("tff.core.cli.load_fitness_config")
 @patch("tff.core.cli.render_lint_report")
 def test_main_lint_sqlmesh_explicit_provider(
     mock_render,
     mock_load_config,
-    mock_get_runner,
+    mock_get_adapter,
     tmp_path: Path,
 ):
-    mock_runner = MagicMock()
-    mock_runner.run_all_checks.return_value = ([], 10, ["sqlmesh"])
-    mock_get_runner.return_value = mock_runner
+    mock_adapter = MagicMock()
+    mock_adapter.run_checks.return_value = ([], 10, ["sqlmesh"])
+    mock_get_adapter.return_value = mock_adapter
     mock_render.return_value = False  # Failed report
 
     # Run the main cli with explicit provider
@@ -161,11 +162,13 @@ def test_main_lint_sqlmesh_explicit_provider(
     )
 
     assert exit_code == 1  # Since mock_render returned False
-    mock_get_runner.assert_called_once_with("sqlmesh")
-    mock_runner.run_all_checks.assert_called_once_with(
-        project_root=tmp_path.resolve(),
+    mock_get_adapter.assert_called_once_with("sqlmesh")
+    mock_adapter.run_checks.assert_called_once_with(
+        project_root=[tmp_path.resolve()],
         config=mock_load_config.return_value,
         checks=["sqlmesh", "layer_integrity"],
+        dialect=None,
+        manifest_path=None,
     )
 
 
@@ -179,39 +182,39 @@ def test_main_lint_detect_failure(mock_detect_provider, tmp_path: Path):
 
 
 @patch("tff.core.cli._detect_provider")
-@patch("tff.core.cli._get_runner")
+@patch("tff.core.cli._get_adapter")
 def test_main_lint_import_error_exit(
-    mock_get_runner, mock_detect_provider, tmp_path: Path
+    mock_get_adapter, mock_detect_provider, tmp_path: Path
 ):
     mock_detect_provider.return_value = "dbt"
-    mock_get_runner.side_effect = ImportError("Not installed")
+    mock_get_adapter.side_effect = ImportError("Not installed")
 
     project_str = str(tmp_path)
     exit_code = main(["lint", "--project", project_str])
     assert exit_code == 1
 
 
-@patch("tff.core.cli._get_runner")
+@patch("tff.core.cli._get_adapter")
 @patch("tff.core.cli.load_fitness_config")
-def test_main_lint_load_config_error(mock_load_config, mock_get_runner, tmp_path: Path):
+def test_main_lint_load_config_error(mock_load_config, mock_get_adapter, tmp_path: Path):
     mock_load_config.side_effect = Exception("Config load failed")
-    mock_runner = MagicMock()
-    mock_get_runner.return_value = mock_runner
+    mock_adapter = MagicMock()
+    mock_get_adapter.return_value = mock_adapter
 
     project_str = str(tmp_path)
     exit_code = main(["lint", "--project", project_str, "--provider", "dbt"])
     assert exit_code == 1
 
 
-@patch("tff.core.cli._get_runner")
+@patch("tff.core.cli._get_adapter")
 @patch("tff.core.cli.load_fitness_config")
 @patch("tff.core.cli.render_lint_report")
 def test_main_lint_sqlmesh_dialect_warning(
-    mock_render, mock_load_config, mock_get_runner, tmp_path: Path
+    mock_render, mock_load_config, mock_get_adapter, tmp_path: Path
 ):
-    mock_runner = MagicMock()
-    mock_runner.run_all_checks.return_value = ([], 0, [])
-    mock_get_runner.return_value = mock_runner
+    mock_adapter = MagicMock()
+    mock_adapter.run_checks.return_value = ([], 0, [])
+    mock_get_adapter.return_value = mock_adapter
     mock_render.return_value = True
 
     project_str = str(tmp_path)
@@ -233,28 +236,28 @@ def test_main_lint_sqlmesh_dialect_warning(
         assert "Warning: --dialect is ignored" in written
 
 
-@patch("tff.core.cli._get_runner")
+@patch("tff.core.cli._get_adapter")
 @patch("tff.core.cli.load_fitness_config")
-def test_main_lint_run_checks_error(mock_load_config, mock_get_runner, tmp_path: Path):
-    mock_runner = MagicMock()
-    mock_runner.run_all_checks.side_effect = Exception("Check execution failed")
-    mock_get_runner.return_value = mock_runner
+def test_main_lint_run_checks_error(mock_load_config, mock_get_adapter, tmp_path: Path):
+    mock_adapter = MagicMock()
+    mock_adapter.run_checks.side_effect = Exception("Check execution failed")
+    mock_get_adapter.return_value = mock_adapter
 
     project_str = str(tmp_path)
     exit_code = main(["lint", "--project", project_str, "--provider", "dbt"])
     assert exit_code == 1
 
 
-@patch("tff.core.cli._get_runner")
+@patch("tff.core.cli._get_adapter")
 @patch("tff.core.cli.load_fitness_config")
 @patch("tff.core.cli.render_lint_report")
 def test_main_lint_group_by_connascence(
-    mock_render, mock_load_config, mock_get_runner, tmp_path: Path
+    mock_render, mock_load_config, mock_get_adapter, tmp_path: Path
 ):
     """Test that --group-by connascence is forwarded to render_lint_report."""
-    mock_runner = MagicMock()
-    mock_runner.run_all_checks.return_value = ([], 5, ["rules"])
-    mock_get_runner.return_value = mock_runner
+    mock_adapter = MagicMock()
+    mock_adapter.run_checks.return_value = ([], 5, ["rules"])
+    mock_get_adapter.return_value = mock_adapter
     mock_render.return_value = True
 
     project_str = str(tmp_path)
@@ -290,9 +293,11 @@ def test_cli_main_block(tmp_path: Path):
         patch("tff.core.config.load_fitness_config"),
         patch("tff.core.report.render_lint_report") as mock_render,
     ):
-        mock_runner = MagicMock()
-        mock_runner.run_all_checks.return_value = ([], 0, [])
-        mock_import.return_value = mock_runner
+        mock_module = MagicMock()
+        mock_adapter = MagicMock()
+        mock_adapter.run_checks.return_value = ([], 0, [])
+        mock_module.DBTAdapter.return_value = mock_adapter
+        mock_import.return_value = mock_module
         mock_render.return_value = True
 
         project_str = str(tmp_path)
@@ -305,8 +310,8 @@ def test_cli_main_block(tmp_path: Path):
         finally:
             sys.argv = orig_argv
 
-        mock_import.assert_any_call("tff.dbt.runner")
-        mock_runner.run_all_checks.assert_called_once()
+        mock_import.assert_any_call("tff.dbt.adapter")
+        mock_adapter.run_checks.assert_called_once()
 
 
 def test_main_unhandled_command():
@@ -532,21 +537,21 @@ def test_info_command_with_virtualenv(tmp_path: Path, capsys):
 
 
 @patch("tff.core.cli._detect_provider")
-@patch("tff.core.cli._get_runner")
+@patch("tff.core.cli._get_adapter")
 @patch("tff.core.cli.load_fitness_config")
 @patch("tff.core.cli.render_lint_report")
 def test_main_lint_json(
     mock_render,
     mock_load_config,
-    mock_get_runner,
+    mock_get_adapter,
     mock_detect_provider,
     tmp_path: Path,
     capsys,
 ):
     mock_detect_provider.return_value = "dbt"
-    mock_runner = MagicMock()
-    mock_runner.run_all_checks.return_value = ([], 5, ["rules"])
-    mock_get_runner.return_value = mock_runner
+    mock_adapter = MagicMock()
+    mock_adapter.run_checks.return_value = ([], 5, ["rules"])
+    mock_get_adapter.return_value = mock_adapter
 
     project_str = str(tmp_path)
     exit_code = main(["lint", "--project", project_str, "--json"])
@@ -568,20 +573,20 @@ def test_main_lint_json(
 
 
 @patch("tff.core.cli._detect_provider")
-@patch("tff.core.cli._get_runner")
+@patch("tff.core.cli._get_adapter")
 @patch("tff.core.cli.load_fitness_config")
 @patch("tff.core.cli.render_lint_report")
 def test_main_lint_no_log(
     mock_render,
     mock_load_config,
-    mock_get_runner,
+    mock_get_adapter,
     mock_detect_provider,
     tmp_path: Path,
 ):
     mock_detect_provider.return_value = "dbt"
-    mock_runner = MagicMock()
-    mock_runner.run_all_checks.return_value = ([], 5, ["rules"])
-    mock_get_runner.return_value = mock_runner
+    mock_adapter = MagicMock()
+    mock_adapter.run_checks.return_value = ([], 5, ["rules"])
+    mock_get_adapter.return_value = mock_adapter
 
     project_str = str(tmp_path)
     exit_code = main(["lint", "--project", project_str, "--no-log"])
@@ -591,22 +596,22 @@ def test_main_lint_no_log(
 
 
 @patch("tff.core.cli._detect_provider")
-@patch("tff.core.cli._get_runner")
+@patch("tff.core.cli._get_adapter")
 @patch("tff.core.cli.load_fitness_config")
 @patch("tff.core.health.render_health_report")
 def test_main_health_normal_and_json(
     mock_render_health,
     mock_load_config,
-    mock_get_runner,
+    mock_get_adapter,
     mock_detect_provider,
     tmp_path: Path,
     capsys,
 ):
     mock_detect_provider.return_value = "dbt"
-    mock_runner = MagicMock()
+    mock_adapter = MagicMock()
     # health command expects findings, models_checked, executed_checks
-    mock_runner.run_all_checks.return_value = ([], 8, ["rules"])
-    mock_get_runner.return_value = mock_runner
+    mock_adapter.run_checks.return_value = ([], 8, ["rules"])
+    mock_get_adapter.return_value = mock_adapter
 
     # 1. Run without --json
     project_str = str(tmp_path)
@@ -640,20 +645,20 @@ def test_main_health_normal_and_json(
 
 
 @patch("tff.core.cli._detect_provider")
-@patch("tff.core.cli._get_runner")
+@patch("tff.core.cli._get_adapter")
 @patch("tff.core.cli.load_fitness_config")
 @patch("tff.core.health.render_health_report")
 def test_main_health_no_log(
     mock_render_health,
     mock_load_config,
-    mock_get_runner,
+    mock_get_adapter,
     mock_detect_provider,
     tmp_path: Path,
 ):
     mock_detect_provider.return_value = "dbt"
-    mock_runner = MagicMock()
-    mock_runner.run_all_checks.return_value = ([], 8, ["rules"])
-    mock_get_runner.return_value = mock_runner
+    mock_adapter = MagicMock()
+    mock_adapter.run_checks.return_value = ([], 8, ["rules"])
+    mock_get_adapter.return_value = mock_adapter
 
     project_str = str(tmp_path)
     exit_code = main(["health", "--project", project_str, "--no-log"])
@@ -662,21 +667,21 @@ def test_main_health_no_log(
 
 
 @patch("tff.core.cli._detect_provider")
-@patch("tff.core.cli._get_runner")
+@patch("tff.core.cli._get_adapter")
 @patch("tff.core.cli.load_fitness_config")
 @patch("tff.core.health.render_health_report")
 def test_main_health_with_scope(
     mock_render_health,
     mock_load_config,
-    mock_get_runner,
+    mock_get_adapter,
     mock_detect_provider,
     tmp_path: Path,
     capsys,
 ):
     mock_detect_provider.return_value = "dbt"
-    mock_runner = MagicMock()
-    mock_runner.run_all_checks.return_value = ([], 8, ["rules"])
-    mock_get_runner.return_value = mock_runner
+    mock_adapter = MagicMock()
+    mock_adapter.run_checks.return_value = ([], 8, ["rules"])
+    mock_get_adapter.return_value = mock_adapter
 
     # Create dummy scoped files
     marts_dir = tmp_path / "models" / "marts"
@@ -814,8 +819,7 @@ def test_cli_version_fallback():
 
 
 def test_cli_main_lint_with_fix(tmp_path: Path):
-    from tff.core.report import LintFinding
-    from tff.core.model import ModelRepresentation
+    from conftest import _make_finding, _make_model
     # Create workflow_settings.yaml to auto-detect provider as Dataform
     (tmp_path / "workflow_settings.yaml").touch()
 
@@ -824,13 +828,14 @@ def test_cli_main_lint_with_fix(tmp_path: Path):
     sql_file.parent.mkdir(parents=True, exist_ok=True)
     sql_file.write_text('config {\n  name: "wrong_model"\n}\nSELECT 1', encoding="utf-8")
 
-    # Mock runner run_all_checks to return initial findings
-    mock_runner = MagicMock()
+    # Mock adapter run_checks to return initial findings
+    mock_adapter = MagicMock()
+    mock_adapter.provider_name = "dataform"
     # 1st call returns finding, 2nd call (re-run) returns empty findings
-    mock_runner.run_all_checks.side_effect = [
+    mock_adapter.run_checks.side_effect = [
         (
             [
-                LintFinding(
+                _make_finding(
                     check="filename_equals_modelname",
                     severity="error",
                     model="wrong_model",
@@ -847,33 +852,30 @@ def test_cli_main_lint_with_fix(tmp_path: Path):
             ["rules"]
         )
     ]
+    mock_adapter.load_models.return_value = {
+        "my_model": _make_model(
+            name="my_model",
+            path=str(sql_file),
+            dialect="bigquery"
+        )
+    }
 
-    with patch("tff.core.cli._get_runner", return_value=mock_runner), \
+    with patch("tff.core.cli._get_adapter", return_value=mock_adapter), \
          patch("tff.core.cli.load_fitness_config") as mock_load_config, \
          patch("tff.core.cli.render_lint_report", return_value=True):
         
         mock_load_config.return_value = MagicMock()
         
-        with patch("tff.dataform.manifest.load_dataform_models") as mock_load_df_models:
-            mock_load_df_models.return_value = {
-                "my_model": ModelRepresentation(
-                    name="my_model",
-                    path=str(sql_file),
-                    dialect="bigquery"
-                )
-            }
-            
-            exit_code = main(["lint", "--project", str(tmp_path), "--fix"])
-            
-            assert exit_code == 0
-            # Verify file was updated
-            assert 'name: "my_model"' in sql_file.read_text(encoding="utf-8")
-            assert mock_runner.run_all_checks.call_count == 2
+        exit_code = main(["lint", "--project", str(tmp_path), "--fix"])
+        
+        assert exit_code == 0
+        # Verify file was updated
+        assert 'name: "my_model"' in sql_file.read_text(encoding="utf-8")
+        assert mock_adapter.run_checks.call_count == 2
 
 
 def test_cli_main_lint_with_fix_sqlmesh(tmp_path: Path):
-    from tff.core.report import LintFinding
-    from tff.core.model import ModelRepresentation
+    from conftest import _make_finding, _make_model
     
     # Create config.py to auto-detect provider as SQLMesh
     (tmp_path / "config.py").write_text(
@@ -885,12 +887,13 @@ def test_cli_main_lint_with_fix_sqlmesh(tmp_path: Path):
     sql_file.parent.mkdir(parents=True, exist_ok=True)
     sql_file.write_text("MODEL (\n  name wrong_model\n);\nSELECT 1", encoding="utf-8")
     
-    # Mock runner
-    mock_runner = MagicMock()
-    mock_runner.run_all_checks.side_effect = [
+    # Mock adapter
+    mock_adapter = MagicMock()
+    mock_adapter.provider_name = "sqlmesh"
+    mock_adapter.run_checks.side_effect = [
         (
             [
-                LintFinding(
+                _make_finding(
                     check="filenameequalsmodelname",
                     severity="error",
                     model="wrong_model",
@@ -907,36 +910,35 @@ def test_cli_main_lint_with_fix_sqlmesh(tmp_path: Path):
             ["sqlmesh"]
         )
     ]
+    mock_adapter.load_models.return_value = {
+        "my_model": _make_model(
+            name="my_model",
+            path=str(sql_file),
+            dialect="ansi"
+        )
+    }
     
-    with patch("tff.core.cli._get_runner", return_value=mock_runner), \
+    with patch("tff.core.cli._get_adapter", return_value=mock_adapter), \
          patch("tff.core.cli.load_fitness_config") as mock_load_config, \
-         patch("tff.core.cli.render_lint_report", return_value=True), \
-         patch("sqlmesh.core.context.Context"), \
-         patch("tff.sqlmesh.runner.map_sqlmesh_context_models") as mock_map_models:
+         patch("tff.core.cli.render_lint_report", return_value=True):
         
         mock_load_config.return_value = MagicMock()
-        mock_map_models.return_value = {
-            "my_model": ModelRepresentation(
-                name="my_model",
-                path=str(sql_file),
-                dialect="ansi"
-            )
-        }
         
         exit_code = main(["lint", "--project", str(tmp_path), "--fix"])
         assert exit_code == 0
         assert "name my_model" in sql_file.read_text(encoding="utf-8")
-        assert mock_runner.run_all_checks.call_count == 2
+        assert mock_adapter.run_checks.call_count == 2
 
 
 def test_cli_main_lint_with_fix_load_models_exception(tmp_path: Path):
-    from tff.core.report import LintFinding
+    from conftest import _make_finding
     (tmp_path / "dbt_project.yml").touch()
     
-    mock_runner = MagicMock()
-    mock_runner.run_all_checks.return_value = (
+    mock_adapter = MagicMock()
+    mock_adapter.provider_name = "dbt"
+    mock_adapter.run_checks.return_value = (
         [
-            LintFinding(
+            _make_finding(
                 check="nopositionalgroupbyororderby",
                 severity="error",
                 model="my_model",
@@ -947,32 +949,32 @@ def test_cli_main_lint_with_fix_load_models_exception(tmp_path: Path):
         1,
         ["rules"]
     )
+    mock_adapter.load_models.side_effect = Exception("Load failed")
     
-    with patch("tff.core.cli._get_runner", return_value=mock_runner), \
+    with patch("tff.core.cli._get_adapter", return_value=mock_adapter), \
          patch("tff.core.cli.load_fitness_config") as mock_load_config, \
-         patch("tff.core.cli.render_lint_report", return_value=False), \
-         patch("tff.dbt.manifest.load_dbt_models", side_effect=Exception("Load failed")):
+         patch("tff.core.cli.render_lint_report", return_value=False):
         
         mock_load_config.return_value = MagicMock()
         exit_code = main(["lint", "--project", str(tmp_path), "--fix"])
         assert exit_code == 1  # Should fail since it wasn't fixed and returned a finding
-        assert mock_runner.run_all_checks.call_count == 1  # No re-run
+        assert mock_adapter.run_checks.call_count == 1  # No re-run
 
 
 def test_cli_main_lint_with_fix_rerun_exception(tmp_path: Path):
-    from tff.core.report import LintFinding
-    from tff.core.model import ModelRepresentation
+    from conftest import _make_finding, _make_model
     (tmp_path / "config.py").write_text("from sqlmesh.core.config import Config\nconfig = Config()")
     
     sql_file = tmp_path / "models/my_model.sql"
     sql_file.parent.mkdir(parents=True, exist_ok=True)
     sql_file.write_text("MODEL (\n  name wrong_model\n);\nSELECT 1", encoding="utf-8")
     
-    mock_runner = MagicMock()
-    mock_runner.run_all_checks.side_effect = [
+    mock_adapter = MagicMock()
+    mock_adapter.provider_name = "sqlmesh"
+    mock_adapter.run_checks.side_effect = [
         (
             [
-                LintFinding(
+                _make_finding(
                     check="filenameequalsmodelname",
                     severity="error",
                     model="wrong_model",
@@ -985,24 +987,22 @@ def test_cli_main_lint_with_fix_rerun_exception(tmp_path: Path):
         ),
         Exception("Re-run failed")
     ]
+    mock_adapter.load_models.return_value = {
+        "my_model": _make_model(
+            name="my_model",
+            path=str(sql_file),
+            dialect="ansi"
+        )
+    }
     
-    with patch("tff.core.cli._get_runner", return_value=mock_runner), \
-         patch("tff.core.cli.load_fitness_config") as mock_load_config, \
-         patch("sqlmesh.core.context.Context"), \
-         patch("tff.sqlmesh.runner.map_sqlmesh_context_models") as mock_map_models:
+    with patch("tff.core.cli._get_adapter", return_value=mock_adapter), \
+         patch("tff.core.cli.load_fitness_config") as mock_load_config:
         
         mock_load_config.return_value = MagicMock()
-        mock_map_models.return_value = {
-            "my_model": ModelRepresentation(
-                name="my_model",
-                path=str(sql_file),
-                dialect="ansi"
-            )
-        }
         
         exit_code = main(["lint", "--project", str(tmp_path), "--fix"])
         assert exit_code == 1
-        assert mock_runner.run_all_checks.call_count == 2
+        assert mock_adapter.run_checks.call_count == 2
 
 
 def test_cli_init_success(tmp_path: Path, capsys):
@@ -1056,14 +1056,14 @@ def test_cli_config_notice(
         (tmp_path / "fitness_functions.yaml").write_text(
             "layers:\n  order: [staging, marts]\n", encoding="utf-8"
         )
-    mock_runner = MagicMock()
-    mock_runner.run_all_checks.return_value = ([], 0, [])
+    mock_adapter = MagicMock()
+    mock_adapter.run_checks.return_value = ([], 0, [])
 
     args = [cmd, "--project", str(tmp_path)]
     if is_json:
         args.append("--json")
 
-    with patch("tff.core.cli._get_runner", return_value=mock_runner), \
+    with patch("tff.core.cli._get_adapter", return_value=mock_adapter), \
          patch("tff.core.health.render_health_report"):
         exit_code = main(args)
         assert exit_code == 0
@@ -1088,10 +1088,10 @@ def test_cli_lint_format_sarif(tmp_path: Path, capsys):
         path="models/model_a.sql",
         line=10,
     )
-    mock_runner = MagicMock()
-    mock_runner.run_all_checks.return_value = ([finding], 1, ["banselectstar"])
+    mock_adapter = MagicMock()
+    mock_adapter.run_checks.return_value = ([finding], 1, ["banselectstar"])
 
-    with patch("tff.core.cli._get_runner", return_value=mock_runner):
+    with patch("tff.core.cli._get_adapter", return_value=mock_adapter):
         exit_code = main(["lint", "--project", str(tmp_path), "--format", "sarif"])
         assert exit_code == 1
         captured = capsys.readouterr()
@@ -1103,10 +1103,10 @@ def test_cli_lint_format_sarif(tmp_path: Path, capsys):
 
 def test_cli_lint_format_json(tmp_path: Path, capsys):
     (tmp_path / "dbt_project.yml").touch()
-    mock_runner = MagicMock()
-    mock_runner.run_all_checks.return_value = ([], 1, [])
+    mock_adapter = MagicMock()
+    mock_adapter.run_checks.return_value = ([], 1, [])
 
-    with patch("tff.core.cli._get_runner", return_value=mock_runner):
+    with patch("tff.core.cli._get_adapter", return_value=mock_adapter):
         exit_code = main(["lint", "--project", str(tmp_path), "--format", "json"])
         assert exit_code == 0
         captured = capsys.readouterr()
@@ -1117,10 +1117,10 @@ def test_cli_lint_format_json(tmp_path: Path, capsys):
 
 def test_cli_lint_format_text(tmp_path: Path):
     (tmp_path / "dbt_project.yml").touch()
-    mock_runner = MagicMock()
-    mock_runner.run_all_checks.return_value = ([], 1, [])
+    mock_adapter = MagicMock()
+    mock_adapter.run_checks.return_value = ([], 1, [])
 
-    with patch("tff.core.cli._get_runner", return_value=mock_runner), \
+    with patch("tff.core.cli._get_adapter", return_value=mock_adapter), \
          patch("tff.core.cli.render_lint_report", return_value=True) as mock_render:
         exit_code = main(["lint", "--project", str(tmp_path), "--format", "text"])
         assert exit_code == 0
@@ -1139,10 +1139,10 @@ def test_cli_lint_github_annotations_flag(tmp_path: Path, capsys):
         path="models/staging/stg_users.sql",
         line=1,
     )
-    mock_runner = MagicMock()
-    mock_runner.run_all_checks.return_value = ([finding], 1, ["nomissingowner"])
+    mock_adapter = MagicMock()
+    mock_adapter.run_checks.return_value = ([finding], 1, ["nomissingowner"])
 
-    with patch("tff.core.cli._get_runner", return_value=mock_runner), \
+    with patch("tff.core.cli._get_adapter", return_value=mock_adapter), \
          patch("tff.core.cli.render_lint_report", return_value=True):
         exit_code = main(["lint", "--project", str(tmp_path), "--github-annotations"])
         assert exit_code == 0
@@ -1166,10 +1166,10 @@ def test_cli_lint_github_actions_env(tmp_path: Path, capsys, monkeypatch):
         path="models/marts/fct_orders.sql",
         line=25,
     )
-    mock_runner = MagicMock()
-    mock_runner.run_all_checks.return_value = ([finding], 1, ["banselectstar"])
+    mock_adapter = MagicMock()
+    mock_adapter.run_checks.return_value = ([finding], 1, ["banselectstar"])
 
-    with patch("tff.core.cli._get_runner", return_value=mock_runner), \
+    with patch("tff.core.cli._get_adapter", return_value=mock_adapter), \
          patch("tff.core.cli.render_lint_report", return_value=False):
         exit_code = main(["lint", "--project", str(tmp_path)])
         assert exit_code == 1
@@ -1190,10 +1190,10 @@ def test_cli_lint_github_actions_env_sarif_no_annotations(tmp_path: Path, capsys
         path="models/marts/fct_orders.sql",
         line=25,
     )
-    mock_runner = MagicMock()
-    mock_runner.run_all_checks.return_value = ([finding], 1, ["banselectstar"])
+    mock_adapter = MagicMock()
+    mock_adapter.run_checks.return_value = ([finding], 1, ["banselectstar"])
 
-    with patch("tff.core.cli._get_runner", return_value=mock_runner):
+    with patch("tff.core.cli._get_adapter", return_value=mock_adapter):
         exit_code = main(["lint", "--project", str(tmp_path), "--format", "sarif"])
         assert exit_code == 1
         captured = capsys.readouterr()
@@ -1204,11 +1204,11 @@ def test_cli_lint_github_actions_env_sarif_no_annotations(tmp_path: Path, capsys
 
 def test_cli_lint_junit_xml(tmp_path: Path):
     (tmp_path / "dbt_project.yml").touch()
-    mock_runner = MagicMock()
-    mock_runner.run_all_checks.return_value = ([], 2, [])
+    mock_adapter = MagicMock()
+    mock_adapter.run_checks.return_value = ([], 2, [])
     junit_target = tmp_path / "reports" / "junit.xml"
 
-    with patch("tff.core.cli._get_runner", return_value=mock_runner), \
+    with patch("tff.core.cli._get_adapter", return_value=mock_adapter), \
          patch("tff.core.cli.render_lint_report", return_value=True):
         exit_code = main(["lint", "--project", str(tmp_path), "--junit-xml", str(junit_target)])
         assert exit_code == 0
@@ -1231,10 +1231,10 @@ def test_cli_lint_format_github_with_findings(tmp_path: Path, capsys):
         path="models/marts/fct_orders.sql",
         line=12,
     )
-    mock_runner = MagicMock()
-    mock_runner.run_all_checks.return_value = ([finding], 1, ["banselectstar"])
+    mock_adapter = MagicMock()
+    mock_adapter.run_checks.return_value = ([finding], 1, ["banselectstar"])
 
-    with patch("tff.core.cli._get_runner", return_value=mock_runner):
+    with patch("tff.core.cli._get_adapter", return_value=mock_adapter):
         exit_code = main(["lint", "--project", str(tmp_path), "--format", "github"])
         assert exit_code == 1
         captured = capsys.readouterr()
@@ -1248,10 +1248,10 @@ def test_cli_lint_format_github_with_findings(tmp_path: Path, capsys):
 
 def test_cli_lint_format_github_empty(tmp_path: Path, capsys):
     (tmp_path / "dbt_project.yml").touch()
-    mock_runner = MagicMock()
-    mock_runner.run_all_checks.return_value = ([], 5, [])
+    mock_adapter = MagicMock()
+    mock_adapter.run_checks.return_value = ([], 5, [])
 
-    with patch("tff.core.cli._get_runner", return_value=mock_runner):
+    with patch("tff.core.cli._get_adapter", return_value=mock_adapter):
         exit_code = main(["lint", "--project", str(tmp_path), "--format", "github"])
         assert exit_code == 0
         captured = capsys.readouterr()
@@ -1270,10 +1270,10 @@ def test_cli_lint_structured_with_github_annotations(tmp_path: Path, capsys):
         path="models/staging/stg_customers.sql",
         line=1,
     )
-    mock_runner = MagicMock()
-    mock_runner.run_all_checks.return_value = ([finding], 1, ["nomissingowner"])
+    mock_adapter = MagicMock()
+    mock_adapter.run_checks.return_value = ([finding], 1, ["nomissingowner"])
 
-    with patch("tff.core.cli._get_runner", return_value=mock_runner):
+    with patch("tff.core.cli._get_adapter", return_value=mock_adapter):
         # 1. SARIF with --github-annotations
         exit_code = main(["lint", "--project", str(tmp_path), "--format", "sarif", "--github-annotations"])
         assert exit_code == 0
@@ -1426,15 +1426,15 @@ def test_cli_lint_workers_and_cache_flags(tmp_path: Path, capsys, monkeypatch: p
     assert exit_code_config_no_cache == 0
 
 
-@patch("tff.core.cli._get_runner")
+@patch("tff.core.cli._get_adapter")
 @patch("tff.core.cli.load_fitness_config")
 @patch("tff.core.cli.render_lint_report")
-def test_cli_debug_flag_root(mock_render, mock_load_config, mock_get_runner, tmp_path: Path):
+def test_cli_debug_flag_root(mock_render, mock_load_config, mock_get_adapter, tmp_path: Path):
     import logging
 
-    mock_runner = MagicMock()
-    mock_runner.run_all_checks.return_value = ([], 1, ["rules"])
-    mock_get_runner.return_value = mock_runner
+    mock_adapter = MagicMock()
+    mock_adapter.run_checks.return_value = ([], 1, ["rules"])
+    mock_get_adapter.return_value = mock_adapter
     mock_render.return_value = True
 
     exit_code = main(["--debug", "lint", "--project", str(tmp_path), "--provider", "dbt"])
@@ -1442,15 +1442,15 @@ def test_cli_debug_flag_root(mock_render, mock_load_config, mock_get_runner, tmp
     assert logging.getLogger().level == logging.DEBUG
 
 
-@patch("tff.core.cli._get_runner")
+@patch("tff.core.cli._get_adapter")
 @patch("tff.core.cli.load_fitness_config")
 @patch("tff.core.cli.render_lint_report")
-def test_cli_debug_flag_subcommand(mock_render, mock_load_config, mock_get_runner, tmp_path: Path):
+def test_cli_debug_flag_subcommand(mock_render, mock_load_config, mock_get_adapter, tmp_path: Path):
     import logging
 
-    mock_runner = MagicMock()
-    mock_runner.run_all_checks.return_value = ([], 1, ["rules"])
-    mock_get_runner.return_value = mock_runner
+    mock_adapter = MagicMock()
+    mock_adapter.run_checks.return_value = ([], 1, ["rules"])
+    mock_get_adapter.return_value = mock_adapter
     mock_render.return_value = True
 
     exit_code = main(["lint", "--debug", "--project", str(tmp_path), "--provider", "dbt"])
@@ -1458,15 +1458,15 @@ def test_cli_debug_flag_subcommand(mock_render, mock_load_config, mock_get_runne
     assert logging.getLogger().level == logging.DEBUG
 
 
-@patch("tff.core.cli._get_runner")
+@patch("tff.core.cli._get_adapter")
 @patch("tff.core.cli.load_fitness_config")
 @patch("tff.core.health.render_health_report")
-def test_cli_debug_flag_health(mock_render_health, mock_load_config, mock_get_runner, tmp_path: Path):
+def test_cli_debug_flag_health(mock_render_health, mock_load_config, mock_get_adapter, tmp_path: Path):
     import logging
 
-    mock_runner = MagicMock()
-    mock_runner.run_all_checks.return_value = ([], 1, ["rules"])
-    mock_get_runner.return_value = mock_runner
+    mock_adapter = MagicMock()
+    mock_adapter.run_checks.return_value = ([], 1, ["rules"])
+    mock_get_adapter.return_value = mock_adapter
 
     exit_code = main(["health", "--debug", "--project", str(tmp_path), "--provider", "dbt"])
     assert exit_code == 0
@@ -1490,13 +1490,13 @@ def test_cli_debug_env_var(monkeypatch):
     assert logging.getLogger().level == logging.DEBUG
 
 
-@patch("tff.core.cli._get_runner")
+@patch("tff.core.cli._get_adapter")
 @patch("tff.core.cli.load_fitness_config")
 @patch("tff.core.cli.render_lint_report")
-def test_cli_debug_captures_logs(mock_render, mock_load_config, mock_get_runner, tmp_path: Path, capsys):
-    mock_runner = MagicMock()
-    mock_runner.run_all_checks.return_value = ([], 2, ["rules"])
-    mock_get_runner.return_value = mock_runner
+def test_cli_debug_captures_logs(mock_render, mock_load_config, mock_get_adapter, tmp_path: Path, capsys):
+    mock_adapter = MagicMock()
+    mock_adapter.run_checks.return_value = ([], 2, ["rules"])
+    mock_get_adapter.return_value = mock_adapter
     mock_render.return_value = True
 
     exit_code = main(["--debug", "lint", "--project", str(tmp_path), "--provider", "dbt"])
@@ -1857,10 +1857,10 @@ def test_cli_debug_logging_masks_github_token_equals(capsys):
 
 def test_cli_lint_interactive_spinner(tmp_path: Path):
     (tmp_path / "dbt_project.yml").touch()
-    mock_runner = MagicMock()
-    mock_runner.run_all_checks.return_value = ([], 3, ["rules"])
+    mock_adapter = MagicMock()
+    mock_adapter.run_checks.return_value = ([], 3, ["rules"])
 
-    with patch("tff.core.cli._get_runner", return_value=mock_runner), \
+    with patch("tff.core.cli._get_adapter", return_value=mock_adapter), \
          patch("sys.stderr.isatty", return_value=True), \
          patch.dict(os.environ, {"TERM": "xterm-256color", "CI": ""}, clear=False), \
          patch("tff.core.cli.render_lint_report", return_value=True) as mock_render:

@@ -6,7 +6,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from conftest import _make_model
-from tff.core.cli import _detect_provider, _get_runner, main
+from tff.core.cli import _detect_provider, _get_adapter, main
 from tff.core.health import _domain_key
 from tff.core.utils.jinja import clean_dataform_for_parsing
 from tff.core.utils.paths import (
@@ -498,7 +498,7 @@ def test_cli_integration_with_dataform(tmp_path: Path):
 def test_get_runner_dataform_import_error():
     with patch("importlib.import_module", side_effect=ImportError("mocked import error")):
         with pytest.raises(ImportError, match="Dataform project detected, but tff is not installed with dataform support"):
-            _get_runner("dataform")
+            _get_adapter("dataform")
 
 
 def test_info_command_with_dataform_json_and_missing(tmp_path: Path):

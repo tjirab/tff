@@ -16,7 +16,7 @@ from pydantic import ValidationError
 from rich.console import Console
 from rich.markup import escape
 
-from tff.core.adapter import PipelineAdapter, detect_provider, get_adapter, normalize_project_roots
+from tff.core.adapter import PipelineAdapter, detect_provider, get_adapter
 from tff.core.config import (
     MISSING_CONFIG_NOTICE,
     init_fitness_config,
@@ -34,7 +34,6 @@ from tff.core.registry import CheckDefinition, normalize_check_name, registry
 from tff.core.report import render_lint_report
 
 if TYPE_CHECKING:
-    from tff.core.config import FitnessFunctionsConfig
     from tff.core.model import ModelRepresentation
     from tff.core.report import LintFinding
 
@@ -147,179 +146,8 @@ def _detect_provider(
     return detect_provider(project_root, config_path=config_path)
 
 
-def _get_runner(provider: str) -> Any:
-    """Load and return the runner module for the specified provider."""
-    if provider == "dbt":
-        try:
-            return importlib.import_module("tff.dbt.runner")
-        except ImportError as e:
-            raise TffDependencyError(
-                "dbt project detected, but tff is not installed with dbt support.",
-                hint='Please install it using: pip install "tff-core[dbt]" or uv add "tff-core[dbt]"',
-                provider="dbt",
-                package_hint="tff-core[dbt]",
-                original_error=e,
-            ) from e
-    elif provider == "sqlmesh":
-        try:
-            return importlib.import_module("tff.sqlmesh.runner")
-        except ImportError as e:
-            raise TffDependencyError(
-                "SQLMesh project detected, but tff is not installed with sqlmesh support.",
-                hint='Please install it using: pip install "tff-core[sqlmesh]" or uv add "tff-core[sqlmesh]"',
-                provider="sqlmesh",
-                package_hint="tff-core[sqlmesh]",
-                original_error=e,
-            ) from e
-    elif provider == "dataform":
-        try:
-            return importlib.import_module("tff.dataform.runner")
-        except ImportError as e:
-            raise TffDependencyError(
-                "Dataform project detected, but tff is not installed with dataform support.",
-                hint='Please install it using: pip install "tff-core[dataform]" or uv add "tff-core[dataform]"',
-                provider="dataform",
-                package_hint="tff-core[dataform]",
-                original_error=e,
-            ) from e
-    else:
-        raise TffProviderError(
-            f"Unknown provider: {provider}",
-            hint="Supported providers: dbt, sqlmesh, dataform",
-            provider=provider,
-        )
-
-
-class _MockRunnerAdapter(PipelineAdapter):
-    """Fallback adapter wrapping a mock runner for backwards-compatibility with existing tests."""
-
-    def __init__(self, provider: str, mock_runner: Any) -> None:
-        self._provider = provider
-        self._runner = mock_runner
-
-    @property
-    def provider_name(self) -> str:
-        return self._provider
-
-    def is_applicable(self, project_root: Path) -> bool:
-        return True
-
-    def load_models(
-        self,
-        project_root: Path | Sequence[Path],
-        dialect: str | None = None,
-        manifest_path: str | Path | None = None,
-    ) -> dict[str, Any]:
-        roots = normalize_project_roots(project_root)
-        if self._provider == "dbt":
-            from tff.dbt.manifest import load_dbt_models
-
-            root_arg = roots[0] if len(roots) == 1 else roots
-            return load_dbt_models(root_arg, dialect=dialect)
-        elif self._provider == "dataform":
-            from tff.dataform.manifest import load_dataform_models
-
-            return load_dataform_models(
-                roots[0], manifest_path=manifest_path, dialect=dialect
-            )
-        elif self._provider == "sqlmesh":
-            from sqlmesh.core.context import Context
-            from tff.sqlmesh.loader import FitnessLoader
-            from tff.sqlmesh.runner import map_sqlmesh_context_models
-
-            context = Context(paths=[str(r) for r in roots], loader=FitnessLoader)
-            return map_sqlmesh_context_models(context)
-        return {}
-
-    def run_checks(
-        self,
-        project_root: Path | Sequence[Path],
-        config: FitnessFunctionsConfig,
-        checks: list[str] | None = None,
-        dialect: str | None = None,
-        manifest_path: str | Path | None = None,
-        models: dict[str, ModelRepresentation] | None = None,
-        scoped_models: set[str] | None = None,
-        chunk_size: int | None = None,
-    ) -> tuple[list[LintFinding], int, list[str]]:
-        roots = normalize_project_roots(project_root)
-        root_arg = roots[0] if len(roots) == 1 else roots
-        kwargs: dict[str, Any] = {
-            "project_root": root_arg,
-            "config": config,
-            "checks": checks,
-        }
-        if chunk_size is not None:
-            kwargs["chunk_size"] = chunk_size
-        if self._provider == "dbt":
-            kwargs["dialect"] = dialect
-            if models is not None:
-                kwargs["models"] = models
-            if scoped_models is not None:
-                kwargs["scoped_models"] = scoped_models
-        elif self._provider == "dataform":
-            kwargs["dialect"] = dialect
-            kwargs["manifest_path"] = manifest_path
-            if models is not None:
-                kwargs["models"] = models
-            if scoped_models is not None:
-                kwargs["scoped_models"] = scoped_models
-        elif self._provider == "sqlmesh":
-            if models is not None:
-                kwargs["models"] = models
-            if scoped_models is not None:
-                kwargs["scoped_models"] = scoped_models
-        return self._runner.run_all_checks(**kwargs)
-
-    def get_diagnostic_files(
-        self, project_root: Path | Sequence[Path]
-    ) -> list[tuple[str, str]]:
-        roots = normalize_project_roots(project_root)
-        results: list[tuple[str, str]] = []
-        for r in roots:
-            prefix = f"[{r.name}] " if len(roots) > 1 else ""
-            if self._provider == "dbt":
-                dbt_project = r / "dbt_project.yml"
-                manifest = r / "target" / "manifest.json"
-                dbt_project_status = (
-                    "[green]found[/green]" if dbt_project.exists() else "[red]missing[/red]"
-                )
-                manifest_status = (
-                    "[green]found[/green]" if manifest.exists() else "[red]missing[/red]"
-                )
-                results.append((f"{prefix}dbt_project.yml", f"{dbt_project} ({dbt_project_status})"))
-                results.append((f"{prefix}manifest.json", f"{manifest} ({manifest_status})"))
-            elif self._provider == "sqlmesh":
-                config_py = r / "config.py"
-                settings_yaml = r / "settings.yaml"
-                config_py_status = (
-                    "[green]found[/green]" if config_py.exists() else "[red]missing[/red]"
-                )
-                settings_yaml_status = (
-                    "[green]found[/green]"
-                    if settings_yaml.exists()
-                    else "[red]missing[/red]"
-                )
-                results.append((f"{prefix}config.py", f"{config_py} ({config_py_status})"))
-                results.append((f"{prefix}settings.yaml", f"{settings_yaml} ({settings_yaml_status})"))
-        return results
-
-
 def _get_adapter(provider: str) -> PipelineAdapter:
-    """Load and return the adapter instance for the specified provider, wrapping test mocks if present."""
-    from unittest.mock import Mock
-
-    if isinstance(_get_runner, Mock):
-        runner = _get_runner(provider)
-        if isinstance(runner, Mock):
-            return _MockRunnerAdapter(provider, runner)
-    else:
-        try:
-            runner = _get_runner(provider)
-            if isinstance(runner, Mock):
-                return _MockRunnerAdapter(provider, runner)
-        except Exception:
-            pass
+    """Load and return the adapter instance for the specified provider."""
     return get_adapter(provider)
 
 

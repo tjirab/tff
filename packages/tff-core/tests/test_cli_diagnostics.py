@@ -10,6 +10,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 from rich.console import Console
 
+from conftest import _make_finding, _make_model
 from tff.core import render_cli_error
 from tff.core.cli import _is_debug_requested, main
 from tff.core.exceptions import (
@@ -324,16 +325,13 @@ def test_main_propagates_tff_error_from_run_checks(tmp_path: Path, capsys):
 
 def test_main_propagates_tff_error_from_autofix_rerun(tmp_path: Path, capsys):
     """TffError in rerun checks after autofix bubbles up to main exception boundary."""
-    from tff.core.report import LintFinding
-    from tff.core.model import ModelRepresentation
-
     (tmp_path / "dbt_project.yml").touch()
     mock_adapter = MagicMock()
     mock_adapter.provider_name = "dbt"
     mock_adapter.load_models.return_value = {
-        "orders": ModelRepresentation(name="orders", path=str(tmp_path / "orders.sql"), dialect="ansi")
+        "orders": _make_model(name="orders", path=str(tmp_path / "orders.sql"), dialect="ansi")
     }
-    initial_finding = LintFinding(
+    initial_finding = _make_finding(
         check="nopositionalgroupbyororderby",
         severity="error",
         model="orders",
@@ -571,43 +569,43 @@ def test_convert_to_dependency_error_edge_cases():
         (
             "lint",
             "workers: 0\n",
-            "✖ Error: workers must be at least 1, got 0",
-            "• Hint: Set workers to an integer >= 1 in fitness_functions.yaml or CLI flag.",
+            "FAIL Error: workers must be at least 1, got 0",
+            "● Hint: Set workers to an integer >= 1 in fitness_functions.yaml or CLI flag.",
             1,
         ),
         (
             "lint",
             "unknown_field: 42\n",
-            "✖ Error: Invalid configuration: 'unknown_field': Extra inputs are not permitted",
-            "• Hint: Check fitness_functions.yaml against 'tff rules' or 'tff explain <rule>'",
+            "FAIL Error: Invalid configuration: 'unknown_field': Extra inputs are not permitted",
+            "● Hint: Check fitness_functions.yaml against 'tff rules' or 'tff explain <rule>'",
             1,
         ),
         (
             "docs",
             "rules:\n  metadata:\n    grain: 999\n",
-            "✖ Error: Invalid configuration for 'rules.metadata.grain': expected boolean",
-            "• Hint: Set 'grain: true' or 'grain: false' under 'rules.metadata'.",
+            "FAIL Error: Invalid configuration for 'rules.metadata.grain': expected boolean",
+            "● Hint: Set 'grain: true' or 'grain: false' under 'rules.metadata'.",
             1,
         ),
         (
             "docs",
             "unknown_docs_key: true\n",
-            "✖ Error: Invalid configuration: 'unknown_docs_key': Extra inputs are not permitted",
-            "• Hint: Check fitness_functions.yaml against 'tff rules' or 'tff explain <rule>'",
+            "FAIL Error: Invalid configuration: 'unknown_docs_key': Extra inputs are not permitted",
+            "● Hint: Check fitness_functions.yaml against 'tff rules' or 'tff explain <rule>'",
             1,
         ),
         (
             "info",
             "workers: 0\n",
-            "✖ Error: workers must be at least 1, got 0",
-            "• Hint: Set workers to an integer >= 1 in fitness_functions.yaml or CLI flag.",
+            "FAIL Error: workers must be at least 1, got 0",
+            "● Hint: Set workers to an integer >= 1 in fitness_functions.yaml or CLI flag.",
             0,
         ),
         (
             "info",
             "unknown_info_key: [1, 2]\n",
-            "✖ Error: Invalid configuration: 'unknown_info_key': Extra inputs are not permitted",
-            "• Hint: Check fitness_functions.yaml against 'tff rules' or 'tff explain <rule>'",
+            "FAIL Error: Invalid configuration: 'unknown_info_key': Extra inputs are not permitted",
+            "● Hint: Check fitness_functions.yaml against 'tff rules' or 'tff explain <rule>'",
             0,
         ),
     ],
@@ -652,7 +650,7 @@ def test_main_top_level_handles_validation_error(capsys):
             assert exit_code == 1
 
     captured = capsys.readouterr()
-    assert "✖ Error: workers must be at least 1, got 0" in captured.err
-    assert "• Hint: Set workers to an integer >= 1" in captured.err
+    assert "FAIL Error: workers must be at least 1, got 0" in captured.err
+    assert "● Hint: Set workers to an integer >= 1" in captured.err
 
 
