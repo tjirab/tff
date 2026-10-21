@@ -1,4 +1,4 @@
-.PHONY: help init lint test coverage docs-serve docs-build demos
+.PHONY: help init lint typecheck test coverage docs-serve docs-build demos
 
 help:
 	@echo "Usage: make [target]"
@@ -6,6 +6,7 @@ help:
 	@echo "Targets:"
 	@echo "  init        Initialize environment and set up git hooks"
 	@echo "  lint        Run ruff check linter"
+	@echo "  typecheck   Run static type checker"
 	@echo "  test        Run pytest unit/integration tests"
 	@echo "  coverage    Run tests and print diff coverage report"
 	@echo "  docs-serve  Run local documentation server"
@@ -20,6 +21,9 @@ init:
 lint:
 	uv run ruff check .
 	uv run python scripts/lint_tests.py
+
+typecheck:
+	uv run ty check
 
 test:
 	uv run pytest -n auto

@@ -6,6 +6,7 @@ dev = [
     "pytest>=8.0",
     "pytest-xdist>=3.6.0",
     "ruff>=0.9",
+    "ty>=0.0.1a0",
     "pytest-cov>=7.1.0",
     "diff-cover>=10.5.1",
     "pip-audit>=2.8.0",
@@ -41,4 +42,21 @@ exclude_lines = [
     "if typing.TYPE_CHECKING:",
     "if TYPE_CHECKING:",
 ]
+
+[tool.ty.src]
+include = [
+    "packages/tff-core/src",
+    "packages/sqlmesh-ff/src",
+]
+
+[tool.ty.rules]
+invalid-argument-type = "ignore"
+invalid-return-type = "ignore"
+invalid-assignment = "ignore"
+invalid-method-override = "ignore"
+invalid-mutable-override = "ignore"
+not-iterable = "ignore"
+unsupported-operator = "ignore"
+unresolved-attribute = "ignore"
+
 
