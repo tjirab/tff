@@ -179,7 +179,7 @@ runs:
 
     - name: Cache tff AST Cache
       if: ${{ inputs.cache == 'true' }}
-      uses: actions/cache@v4
+      uses: actions/cache@v6
       with:
         path: ${{ inputs.project }}/.tff_cache
         key: tff-cache-${{ runner.os }}-${{ hashFiles(format('{0}/dbt_project.yml', inputs.project), format('{0}/models/**/*.sql', inputs.project), format('{0}/models/**/*.sqlmesh', inputs.project)) }}
