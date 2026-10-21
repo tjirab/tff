@@ -22,6 +22,7 @@ from tff.core.formatters import emit_github_annotations
 from tff.core.health import _get_action_phrase, calculate_health_scores, render_health_report
 from tff.core.registry import registry
 from tff.core.report import CONNASCENCE_CATEGORIES, LintFinding, _format_connascence_tag
+from tff.core.utils.paths import is_finding_in_files
 
 logger = logging.getLogger(__name__)
 
@@ -189,51 +190,6 @@ def get_modified_files(
     except Exception as e:
         logger.debug("Failed to get modified files: %s", e)
     return set()
-
-
-def is_finding_in_files(
-    finding: dict[str, Any] | LintFinding,
-    modified_files: set[str],
-    project_root: Path | Sequence[Path],
-    repo_root: Path,
-) -> bool:
-    """Check whether a finding belongs to one of the modified files."""
-    if not modified_files:
-        return False
-
-    raw_path = finding.path if isinstance(finding, LintFinding) else finding.get("path")
-    model = finding.model if isinstance(finding, LintFinding) else finding.get("model")
-
-    path_str = str(raw_path or "").replace("\\", "/")
-    roots: list[Path] = (
-        [project_root]
-        if isinstance(project_root, Path)
-        else list(project_root)
-    )
-
-    for r in roots:
-        try:
-            rel_project = r.resolve().relative_to(repo_root.resolve())
-            rel_proj_str = str(rel_project).replace("\\", "/")
-            if rel_proj_str == ".":
-                path_rel_repo = path_str
-            else:
-                path_rel_repo = f"{rel_proj_str}/{path_str}" if path_str else ""
-        except Exception:
-            path_rel_repo = path_str
-
-        for mf in modified_files:
-            norm_mf = mf.replace("\\", "/")
-            if path_rel_repo and (norm_mf == path_rel_repo or norm_mf.endswith(f"/{path_str}")):
-                return True
-            if path_str and (norm_mf == path_str or norm_mf.endswith(f"/{path_str}")):
-                return True
-            if model:
-                mf_stem = Path(norm_mf).stem
-                if mf_stem == model:
-                    return True
-
-    return False
 
 
 def evaluate_project(

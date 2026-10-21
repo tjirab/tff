@@ -3,8 +3,77 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Any, Sequence
 
 from tff.core.config import DEFAULT_LAYER_ORDER
+
+
+def get_relative_path(
+    file_path: str | Path,
+    project_root: Path | Sequence[Path] | None = None,
+) -> str:
+    """Normalize file path to a relative path with forward slashes."""
+    path_obj = Path(file_path)
+    if project_root is not None:
+        roots = [project_root] if isinstance(project_root, Path) else list(project_root)
+        for r in roots:
+            try:
+                if path_obj.is_absolute():
+                    rel = path_obj.relative_to(r.resolve())
+                else:
+                    rel = path_obj
+                return str(rel).replace("\\", "/")
+            except ValueError:
+                pass
+    try:
+        if path_obj.is_absolute():
+            rel = path_obj.relative_to(Path.cwd().resolve())
+            return str(rel).replace("\\", "/")
+    except ValueError:
+        pass
+    return str(path_obj).replace("\\", "/")
+
+
+def is_finding_in_files(
+    finding: dict[str, Any] | Any,
+    modified_files: set[str],
+    project_root: Path | Sequence[Path] | None = None,
+    repo_root: Path | None = None,
+) -> bool:
+    """Check whether a finding belongs to one of the modified files."""
+    if not modified_files:
+        return False
+
+    if isinstance(finding, dict):
+        raw_path = finding.get("path")
+        model = finding.get("model")
+    else:
+        raw_path = getattr(finding, "path", None)
+        model = getattr(finding, "model", None)
+
+    path_str = str(raw_path or "").replace("\\", "/")
+    roots = (
+        [project_root]
+        if isinstance(project_root, Path)
+        else list(project_root)
+        if project_root is not None
+        else []
+    )
+    rel_proj_strs = (
+        [get_relative_path(path_str, r) for r in roots]
+        if (path_str and roots)
+        else ([path_str] if path_str else [])
+    )
+
+    for mf in modified_files:
+        norm_mf = mf.replace("\\", "/")
+        for candidate in (path_str, *rel_proj_strs):
+            if candidate and (norm_mf == candidate or norm_mf.endswith(f"/{candidate}")):
+                return True
+        if model and Path(norm_mf).stem == model:
+            return True
+    return False
+
 
 
 def _find_base_index(parts: tuple[str, ...]) -> int:

@@ -10,32 +10,10 @@ import xml.dom.minidom as minidom
 import xml.etree.ElementTree as ET
 
 from tff.core.report import CHECK_LABELS, LintFinding, format_message
-
-
-def _get_relative_path(
-    file_path: str | Path,
-    project_root: Path | Sequence[Path] | None = None,
-) -> str:
-    """Normalize file path to a relative path with forward slashes."""
-    path_obj = Path(file_path)
-    if project_root is not None:
-        roots = [project_root] if isinstance(project_root, Path) else list(project_root)
-        for r in roots:
-            try:
-                if path_obj.is_absolute():
-                    rel = path_obj.relative_to(r.resolve())
-                else:
-                    rel = path_obj
-                return str(rel).replace("\\", "/")
-            except ValueError:
-                pass
-    try:
-        if path_obj.is_absolute():
-            rel = path_obj.relative_to(Path.cwd().resolve())
-            return str(rel).replace("\\", "/")
-    except ValueError:
-        pass
-    return str(path_obj).replace("\\", "/")
+from tff.core.utils.paths import (
+    get_relative_path as _get_relative_path,
+    is_finding_in_files as _is_finding_in_modified_files,
+)
 
 
 def _format_annotation_title(check: str, severity: str = "error") -> str:
@@ -89,37 +67,6 @@ def format_github_annotation(
 
     param_str = f" {','.join(params)}" if params else ""
     return f"::{command}{param_str}::{msg}"
-
-
-def _is_finding_in_modified_files(
-    finding: LintFinding,
-    modified_files: set[str],
-    project_root: Path | Sequence[Path] | None = None,
-) -> bool:
-    """Check whether a finding matches any file in modified_files."""
-    if not modified_files:
-        return False
-
-    raw_path = finding.path
-    path_str = str(raw_path or "").replace("\\", "/")
-    roots = []
-    if project_root is not None:
-        roots = [project_root] if isinstance(project_root, Path) else list(project_root)
-
-    rel_proj_strs = [
-        _get_relative_path(path_str, r) for r in roots
-    ] if (path_str and roots) else ([path_str] if path_str else [])
-
-    for mf in modified_files:
-        norm_mf = mf.replace("\\", "/")
-        if path_str and (norm_mf == path_str or norm_mf.endswith(f"/{path_str}")):
-            return True
-        for rel_proj_str in rel_proj_strs:
-            if rel_proj_str and (norm_mf == rel_proj_str or norm_mf.endswith(f"/{rel_proj_str}")):
-                return True
-        if finding.model and Path(norm_mf).stem == finding.model:
-            return True
-    return False
 
 
 def emit_github_annotations(

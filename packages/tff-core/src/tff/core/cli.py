@@ -403,6 +403,30 @@ def _parse_checks(value: str | None) -> list[str] | None:
     return [part.strip() for part in value.split(",") if part.strip()]
 
 
+def _inject_target_venv(project_roots: Sequence[Path]) -> list[str]:
+    """Discover target projects' virtualenv site-packages, register them via site.addsitedir, and return their paths."""
+    import site
+
+    target_site_packages: list[str] = []
+    for root in project_roots:
+        for venv_name in (".venv", "venv", "env"):
+            venv_dir = root / venv_name
+            if venv_dir.is_dir():
+                # Unix
+                libs_dir = venv_dir / "lib"
+                if libs_dir.is_dir():
+                    for p in libs_dir.glob("python*/site-packages"):
+                        if p.is_dir():
+                            site.addsitedir(str(p))
+                            target_site_packages.append(str(p))
+                # Windows
+                win_lib = venv_dir / "Lib" / "site-packages"
+                if win_lib.is_dir():
+                    site.addsitedir(str(win_lib))
+                    target_site_packages.append(str(win_lib))
+    return target_site_packages
+
+
 class TffArgumentParser(argparse.ArgumentParser):
     _current_argv: list[str] | None = None
     _KNOWN_SUBCOMMANDS: tuple[str, ...] = (
@@ -1427,21 +1451,7 @@ def _main_impl(argv: list[str] | None = None) -> int:
     project_root = project_roots[0]
 
     # Register target projects' virtualenv site-packages if present
-    import site
-    for root in project_roots:
-        for venv_name in (".venv", "venv", "env"):
-            venv_dir = root / venv_name
-            if venv_dir.is_dir():
-                # Unix
-                libs_dir = venv_dir / "lib"
-                if libs_dir.is_dir():
-                    for p in libs_dir.glob("python*/site-packages"):
-                        if p.is_dir():
-                            site.addsitedir(str(p))
-                # Windows
-                win_lib = venv_dir / "Lib" / "site-packages"
-                if win_lib.is_dir():
-                    site.addsitedir(str(win_lib))
+    target_site_packages = _inject_target_venv(project_roots)
 
     if args.command == "info":
         # Run info command: show diagnostics
@@ -1515,20 +1525,6 @@ def _main_impl(argv: list[str] | None = None) -> int:
 
         console.print("\n[bold]Adapter Versions[/bold]")
         console.print("─" * width, style="dim")
-        target_site_packages = []
-        for venv_name in (".venv", "venv", "env"):
-            venv_dir = project_root / venv_name
-            if venv_dir.is_dir():
-                # Unix
-                libs_dir = venv_dir / "lib"
-                if libs_dir.is_dir():
-                    for p in libs_dir.glob("python*/site-packages"):
-                        if p.is_dir():
-                            target_site_packages.append(str(p))
-                # Windows
-                win_lib = venv_dir / "Lib" / "site-packages"
-                if win_lib.is_dir():
-                    target_site_packages.append(str(win_lib))
 
         def get_version(pkg: str) -> str:
             try:
