@@ -142,17 +142,30 @@ def emit_github_annotations(
 
     sorted_findings = sorted(findings, key=_priority_key)
 
+    # Deduplicate inline annotations per (file, check) so multiple violations
+    # of the same rule in a file only produce a single in-file comment / annotation.
+    unique_findings: list[LintFinding] = []
+    seen: set[tuple[str | None, str]] = set()
+    for f in sorted_findings:
+        file_key = (
+            _get_relative_path(f.path, project_root) if f.path else None
+        )
+        dedup_key = (file_key, f.check)
+        if dedup_key not in seen:
+            seen.add(dedup_key)
+            unique_findings.append(f)
+
     total_count = len(sorted_findings)
-    if total_count > max_annotations:
+    if len(unique_findings) > max_annotations:
         notice = (
             f"::warning::tff found {total_count} violations. "
             f"Displaying the {max_annotations} highest-priority annotations; "
             f"see Job Summary or PR comment for the complete list."
         )
         print(notice, file=target_stream)
-        sorted_findings = sorted_findings[:max_annotations]
+        unique_findings = unique_findings[:max_annotations]
 
-    for finding in sorted_findings:
+    for finding in unique_findings:
         annotation = format_github_annotation(finding, project_root=project_root)
         print(annotation, file=target_stream)
 

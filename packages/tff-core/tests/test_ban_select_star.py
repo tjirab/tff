@@ -59,3 +59,17 @@ def test_ban_select_star_error_paths(model_kwargs: dict) -> None:
 
     model = _make_model(name="marts.err_model", dialect="bigquery", **model_kwargs)
     assert rule.check_model(model) is None
+
+
+def test_ban_select_star_multiple_stars_consolidated() -> None:
+    config = FitnessFunctionsConfig()
+    config.rules.ban_select_star.enabled = True
+    rule = BanSelectStar(config=config)
+
+    query = "SELECT a.*, b.*, c.* FROM a JOIN b ON a.id = b.id JOIN c ON a.id = c.id"
+    model = _make_model(name="marts.multi_star", path="models/marts/multi_star.sql", query=query, dialect="bigquery")
+    violation = rule.check_model(model)
+    assert violation is not None
+    assert isinstance(violation.violation_msg, list)
+    assert len(violation.violation_msg) == 1
+    assert "SELECT * is prohibited" in violation.violation_msg[0]

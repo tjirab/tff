@@ -14,6 +14,7 @@ from tff.core.formatters import (
     generate_sarif_report,
 )
 from tff.core.report import LintFinding
+from conftest import _make_finding
 
 
 def test_get_relative_path_project_root(tmp_path: Path):
@@ -176,6 +177,65 @@ def test_emit_github_annotations():
     assert len(lines) == 2
     assert lines[0] == "::error file=models/a.sql,line=10,title=ERR · c1::! Error 1"
     assert lines[1] == "::warning file=models/b.sql,line=1,title=WRN · c2::* Warning 1"
+
+
+def test_emit_github_annotations_deduplication():
+    findings = [
+        _make_finding(
+            check="ban_select_star",
+            severity="error",
+            message="SELECT * is prohibited",
+            path="models/marts/orders.sql",
+            line=10,
+        ),
+        _make_finding(
+            check="ban_select_star",
+            severity="error",
+            message="SELECT * is prohibited",
+            path="models/marts/orders.sql",
+            line=25,
+        ),
+        _make_finding(
+            check="duplicate_ctes",
+            severity="error",
+            message="Duplicate CTE found",
+            path="models/marts/orders.sql",
+            line=5,
+        ),
+        _make_finding(
+            check="ban_select_star",
+            severity="error",
+            message="SELECT * is prohibited",
+            path="models/marts/customers.sql",
+            line=12,
+        ),
+        _make_finding(
+            check="layer_integrity",
+            severity="error",
+            message="Missing layers",
+            path=None,
+        ),
+        _make_finding(
+            check="layer_integrity",
+            severity="error",
+            message="Missing layers duplicate",
+            path=None,
+        ),
+    ]
+    stream = io.StringIO()
+    emit_github_annotations(findings, stream=stream)
+    output = stream.getvalue()
+    lines = output.strip().split("\n")
+    # 4 distinct (file, check) pairs:
+    # 1. (models/marts/orders.sql, ban_select_star) -> line 10
+    # 2. (models/marts/orders.sql, duplicate_ctes) -> line 5
+    # 3. (models/marts/customers.sql, ban_select_star) -> line 12
+    # 4. (None, layer_integrity)
+    assert len(lines) == 4
+    assert lines[0] == "::error file=models/marts/orders.sql,line=10,title=ERR · No SELECT * (Connascence of Name)::! SELECT * is prohibited (https://tff.readthedocs.io/en/latest/rules_and_checks/#ban-select-ban_select_star)"
+    assert lines[1] == "::error file=models/marts/orders.sql,line=5,title=ERR · Duplicate CTEs (Connascence of Algorithm)::! Duplicate CTE found (https://tff.readthedocs.io/en/latest/rules_and_checks/#duplicate-ctes-duplicate_ctes)"
+    assert lines[2] == "::error file=models/marts/customers.sql,line=12,title=ERR · No SELECT * (Connascence of Name)::! SELECT * is prohibited (https://tff.readthedocs.io/en/latest/rules_and_checks/#ban-select-ban_select_star)"
+    assert lines[3] == "::error title=ERR · Layer integrity (Dynamic Coupling & DAG Structure)::! Missing layers (https://tff.readthedocs.io/en/latest/rules_and_checks/#layer-integrity-layer_integrity)"
 
 
 def test_emit_github_annotations_prioritization_and_capping(tmp_path: Path):
