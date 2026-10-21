@@ -1,5 +1,10 @@
 """Tests for schema contract utilities."""
 
+from __future__ import annotations
+
+import pytest
+import sqlglot
+
 from tff.core.utils.schema_contract_utils import (
     check_column_list_parity,
     extract_final_select_columns,
@@ -7,15 +12,67 @@ from tff.core.utils.schema_contract_utils import (
 )
 
 
-def test_extract_final_select_columns() -> None:
-    sql = """
-SELECT
-  id AS account_id,
-  name
-FROM t
-"""
-    cols = extract_final_select_columns(sql)
-    assert cols == ["account_id", "name"]
+@pytest.mark.parametrize(
+    ("sql", "expected"),
+    [
+        (
+            "SELECT\n  id AS account_id,\n  name\nFROM t",
+            ["account_id", "name"],
+        ),
+        (
+            "SELECT id, user_name AS name FROM users",
+            ["id", "name"],
+        ),
+        (
+            """
+            WITH base AS (
+                SELECT raw_id, org_id, created_at, state_code FROM raw_events
+            )
+            SELECT
+                raw_id AS event_id,
+                CASE
+                    WHEN state_code = 1 THEN 'active'
+                    ELSE 'inactive'
+                END AS status,
+                ROW_NUMBER() OVER (
+                    PARTITION BY org_id
+                    ORDER BY created_at DESC
+                ) AS rn
+            FROM base
+            """,
+            ["event_id", "status", "rn"],
+        ),
+        (
+            "SELECT * FROM users",
+            [],
+        ),
+        (
+            "SELECT t.*, id, {{ some_macro() }} FROM users t",
+            ["id"],
+        ),
+        (
+            "SELECT\n"
+            "  {% for col in cols %}\n"
+            "  {{ col }} AS {{ col }}_alias,\n"
+            "  {% endfor %}\n"
+            "  id AS user_id,\n"
+            "  t.name\n"
+            "FROM (\n",
+            ["user_id", "name"],
+        ),
+        (
+            "CREATE TABLE users (id INT)",
+            [],
+        ),
+    ],
+)
+def test_extract_final_select_columns(sql: str, expected: list[str]) -> None:
+    assert extract_final_select_columns(sql) == expected
+
+
+def test_extract_final_select_columns_with_preparsed_ast() -> None:
+    ast = sqlglot.parse_one("SELECT id, email AS user_email FROM users")
+    assert extract_final_select_columns("", ast=ast) == ["id", "user_email"]
 
 
 def test_column_list_parity_detects_missing() -> None:

@@ -28,6 +28,35 @@ def _resolve_path(project_root: Path, models_dir: str, filename: str) -> Path:
     return _ensure_under_root(project_root / models_dir / filename, project_root)
 
 
+def _find_matching_model(
+    models_dir: str,
+    filename: str,
+    models: dict[str, ModelRepresentation] | None = None,
+) -> ModelRepresentation | None:
+    """Find a matching ModelRepresentation by path or name."""
+    if not models:
+        return None
+    clean_file = Path(filename).name
+    model_stem = Path(filename).stem
+    for name, model in models.items():
+        model_path = getattr(model, "path", None)
+        matched = False
+        if model_path:
+            norm_path = model_path.replace("\\", "/")
+            target_subpath = f"{models_dir}/{filename}".replace("\\", "/").strip("/")
+            if (
+                norm_path.endswith(target_subpath)
+                or norm_path.endswith(f"/{clean_file}")
+                or Path(model_path).name == clean_file
+            ):
+                matched = True
+        if not matched and (name == model_stem or name == clean_file or name == filename):
+            matched = True
+        if matched:
+            return model
+    return None
+
+
 def _get_model_sql_and_path(
     project_root: Path,
     models_dir: str,
@@ -35,29 +64,13 @@ def _get_model_sql_and_path(
     models: dict[str, ModelRepresentation] | None = None,
 ) -> tuple[str | None, str]:
     """Retrieve SQL query and model path from ModelRepresentation or disk."""
-    if models:
-        clean_file = Path(filename).name
-        model_stem = Path(filename).stem
-        for name, model in models.items():
-            model_path = getattr(model, "path", None)
-            matched = False
-            if model_path:
-                norm_path = model_path.replace("\\", "/")
-                target_subpath = f"{models_dir}/{filename}".replace("\\", "/").strip("/")
-                if (
-                    norm_path.endswith(target_subpath)
-                    or norm_path.endswith(f"/{clean_file}")
-                    or Path(model_path).name == clean_file
-                ):
-                    matched = True
-            if not matched and (name == model_stem or name == clean_file or name == filename):
-                matched = True
-
-            if matched:
-                if model.query:
-                    return model.query, model_path or filename
-                if model_path and Path(model_path).exists():
-                    return read_model_sql(Path(model_path)), model_path
+    model = _find_matching_model(models_dir, filename, models)
+    if model is not None:
+        model_path = getattr(model, "path", None)
+        if model.query:
+            return model.query, model_path or filename
+        if model_path and Path(model_path).exists():
+            return read_model_sql(Path(model_path)), model_path
 
     try:
         reference_path = _resolve_path(project_root, models_dir, filename)
@@ -67,6 +80,21 @@ def _get_model_sql_and_path(
         pass
 
     return None, filename
+
+
+def _extract_model_columns(
+    sql: str,
+    models_dir: str,
+    filename: str,
+    models: dict[str, ModelRepresentation] | None = None,
+) -> list[str]:
+    """Extract final projection columns using model AST when available."""
+    model = _find_matching_model(models_dir, filename, models)
+    return extract_final_select_columns(
+        sql,
+        dialect=model.dialect if model is not None else None,
+        ast=model.ast if model is not None else None,
+    )
 
 
 def _extract_contract_config(config: FitnessFunctionsConfig) -> dict:
@@ -130,7 +158,7 @@ def _schema_contract_errors(
         exclude = set(group.get("exclude_columns", []))
         ref_substitutions = group.get("reference_substitutions", {})
         reference_cols = normalize_columns(
-            extract_final_select_columns(ref_sql),
+            _extract_model_columns(ref_sql, models_dir, ref_name, models),
             substitutions=ref_substitutions,
             exclude=exclude,
         )
@@ -145,7 +173,7 @@ def _schema_contract_errors(
                 errors.append(f"{Path(member_file).name} not found")
                 continue
             member_cols = normalize_columns(
-                extract_final_select_columns(member_sql),
+                _extract_model_columns(member_sql, models_dir, member_file, models),
                 substitutions=substitutions,
                 exclude=exclude,
             )
@@ -172,8 +200,12 @@ def _schema_contract_errors(
         if left_sql is None or right_sql is None:
             continue
 
-        left_dims = set(extract_final_select_columns(left_sql)) - set(left_exclude)
-        right_dims = set(extract_final_select_columns(right_sql)) - set(right_exclude)
+        left_dims = set(_extract_model_columns(left_sql, models_dir, left_file, models)) - set(
+            left_exclude
+        )
+        right_dims = set(_extract_model_columns(right_sql, models_dir, right_file, models)) - set(
+            right_exclude
+        )
         errors.extend(
             check_dimension_set_parity(
                 left_dims,

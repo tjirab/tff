@@ -5,9 +5,44 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
+import sqlglot
+from sqlglot import exp
 
-def extract_final_select_columns(sql: str) -> list[str]:
+from tff.core.utils.jinja import clean_dataform_for_parsing, clean_jinja_for_parsing
+
+_DUMMY_PLACEHOLDERS = frozenset(
+    {"*", "__jinja_var__", "__sqlmesh_macro__", "__dataform_var__"}
+)
+
+
+def extract_final_select_columns(
+    sql: str,
+    dialect: str | None = None,
+    ast: exp.Expression | None = None,
+) -> list[str]:
     """Extract column names/aliases from the final SELECT statement."""
+    parsed_ast = ast
+    if parsed_ast is None and sql and sql.strip():
+        cleaned_sql = re.sub(
+            r"^MODEL\s*\(.*?\)\s*;", "", sql, flags=re.DOTALL | re.IGNORECASE
+        ).strip()
+        cleaned_sql = clean_dataform_for_parsing(cleaned_sql)
+        cleaned_sql = clean_jinja_for_parsing(cleaned_sql)
+        try:
+            parsed_ast = sqlglot.parse_one(cleaned_sql, read=dialect)
+        except Exception:
+            parsed_ast = None
+
+    if isinstance(parsed_ast, exp.Query) and parsed_ast.selects:
+        ast_columns: list[str] = []
+        for select_expr in parsed_ast.selects:
+            if select_expr.is_star:
+                continue
+            col_name = select_expr.alias_or_name.strip().lower()
+            if col_name and col_name not in _DUMMY_PLACEHOLDERS:
+                ast_columns.append(col_name)
+        return ast_columns
+
     last_select_match = None
     for match in re.finditer(r"(?:^|\n)SELECT\b", sql, re.IGNORECASE):
         last_select_match = match
