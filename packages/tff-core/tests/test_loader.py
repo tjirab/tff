@@ -142,3 +142,32 @@ def test_map_sqlmesh_model_query_exception() -> None:
     model_rep = map_sqlmesh_model(mock_model)
     assert model_rep.query is None
 
+
+def test_fitness_loader_wraps_custom_plugin_rules(tmp_path: Path) -> None:
+    from tff.core.registry import CheckRegistry
+    from tff.core.rules.base import Rule, RuleViolation
+
+    class CustomPluginRule(Rule):
+        name = "custompluginrule"
+
+        def check_model(self, model):
+            return RuleViolation("custom plugin violation")
+
+    reg = CheckRegistry.get_default()
+    reg.register_rule(CustomPluginRule, id="custom_plugin_rule")
+    try:
+        mock_loader = MagicMock(spec=FitnessLoader)
+        mock_loader._ff_config = FitnessFunctionsConfig()
+        mock_loader._fitness_config = mock_loader._ff_config
+        mock_loader.config_path = tmp_path
+        mock_loader.config = MagicMock()
+        mock_loader.config.ignore_patterns = []
+        mock_loader._glob_paths.return_value = []
+
+        rule_set = FitnessLoader._load_linting_rules(mock_loader)
+        rule_names = set(rule_set.keys()) if hasattr(rule_set, "keys") else {r.name for r in rule_set}
+        assert "custompluginrule" in rule_names
+    finally:
+        reg.unregister("custom_plugin_rule")
+
+

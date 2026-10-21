@@ -17,6 +17,7 @@ from sqlmesh.utils.metaprogramming import import_python_file
 
 from tff.core.config import FitnessFunctionsConfig, load_fitness_config
 from tff.core.model import ModelRepresentation
+from tff.core.registry import CheckRegistry
 from tff.core.rules import ALL_RULES as CORE_RULES
 
 
@@ -85,6 +86,9 @@ def wrap_core_rule(
     return type(cls_name, (SqlMeshRule,), attrs)
 
 
+_wrap_core_rule_for_sqlmesh = wrap_core_rule
+
+
 class FitnessLoader(SqlMeshLoader):
     """Load core fitness rules adapted for SQLMesh, plus optional project-local rules."""
 
@@ -102,14 +106,22 @@ class FitnessLoader(SqlMeshLoader):
             overrides=overrides or None,
         )
         self._ff_config = ff_config
+        self._fitness_config = ff_config
 
     def _load_linting_rules(self) -> RuleSet:
         user_rules: UniqueKeyDict[str, type[SqlMeshRule]] = UniqueKeyDict("rules")
 
         # Dynamically wrap all tff-core rules to be SQLMesh-compatible
         for core_rule_cls in CORE_RULES:
-            wrapped = wrap_core_rule(core_rule_cls, config=self._ff_config)
+            wrapped = _wrap_core_rule_for_sqlmesh(core_rule_cls, config=self._ff_config)
             user_rules[wrapped.name] = wrapped
+
+        for check_def in CheckRegistry.get_default().get_all_checks():
+            if check_def.rule_cls is not None and check_def.rule_cls not in CORE_RULES:
+                wrapped = _wrap_core_rule_for_sqlmesh(
+                    check_def.rule_cls, config=self._ff_config
+                )
+                user_rules[wrapped.name] = wrapped
 
         for path in self._glob_paths(
             self.config_path / c.LINTER,

@@ -214,3 +214,104 @@ def test_sqlmesh_runner_and_adapter_propagate_chunk_size() -> None:
         assert mock_run_all.call_args.kwargs.get("chunk_size") == 13
 
 
+def test_collect_findings_error_isolation_and_scoping() -> None:
+    from unittest.mock import MagicMock, patch
+    from conftest import _make_finding
+    from tff.core.config import FitnessFunctionsConfig
+    from tff.sqlmesh.runner import collect_findings, run_all_checks
+
+    cfg = FitnessFunctionsConfig()
+    models = {
+        "db.m1": _make_model(name="db.m1", path="models/m1.sql", dialect="duckdb"),
+        "db.m2": _make_model(name="db.m2", path="models/m2.sql", dialect="duckdb"),
+    }
+
+    def failing_collector(_models, _cfg):
+        raise RuntimeError("boom in collector")
+
+    def passing_collector(_models, _cfg):
+        return [
+            _make_finding(check="passing_check", severity="error", model="db.m1", message="ok1"),
+            _make_finding(check="passing_check", severity="error", model="db.m2", message="ok2"),
+        ]
+
+    with patch.dict(
+        "tff.sqlmesh.runner.CHECK_COLLECTORS",
+        {"crashing_dag": failing_collector, "passing_dag": passing_collector},
+        clear=True,
+    ), patch("tff.sqlmesh.runner._check_enabled", return_value=True):
+        # 1. Dict context with scoped_models
+        findings = collect_findings(models, cfg, scoped_models={"db.m1"})
+        err_findings = [f for f in findings if f.check == "rule_execution_error"]
+        assert len(err_findings) == 1
+        assert err_findings[0].severity == "warning"
+        assert "Check 'crashing_dag' failed with RuntimeError: boom in collector" in err_findings[0].message
+
+        pass_findings = [f for f in findings if f.check == "passing_check"]
+        assert len(pass_findings) == 1
+        assert pass_findings[0].model == "db.m1"
+
+        # 2. SQLMesh Context object without scoped_models
+        mock_ctx = MagicMock()
+        mock_ctx.models = {}
+        mock_ctx._linters = {}
+        findings_ctx = collect_findings(mock_ctx, cfg)
+        assert any(f.check == "rule_execution_error" for f in findings_ctx)
+        assert len([f for f in findings_ctx if f.check == "passing_check"]) == 2
+
+        # 3. run_all_checks with checks=None and checks=["layer_integrity"]
+        findings_all, _, _ = run_all_checks(models=models, config=cfg, scoped_models={"db.m1"})
+        assert any(f.check == "rule_execution_error" for f in findings_all)
+
+    with patch(
+        "tff.core.registry.CheckDefinition.get_collector_fn",
+        return_value=failing_collector,
+    ):
+        findings_chk, _, _ = run_all_checks(
+            models=models, config=cfg, checks=["layer_integrity"]
+        )
+        assert len(findings_chk) == 1
+        assert findings_chk[0].check == "rule_execution_error"
+
+
+def test_get_executed_checks_includes_all_rules_and_plugins() -> None:
+    from tff.core.config import ColumnTypeRuleEntry, FitnessFunctionsConfig
+    from tff.core.registry import CheckRegistry
+    from tff.core.rules.base import Rule
+    from tff.sqlmesh.runner import get_executed_checks
+
+    class CustomSqlmeshPluginRule(Rule):
+        name = "custom_sqlmesh_plugin"
+
+        def check_model(self, model):
+            return None
+
+    reg = CheckRegistry.get_default()
+    reg.register_rule(CustomSqlmeshPluginRule, id="custom_sqlmesh_plugin")
+    try:
+        assert reg.get("custom_sqlmesh_plugin") in reg.get_all_checks()
+
+        cfg = FitnessFunctionsConfig()
+        cfg.rules.column_names.enabled = True
+        cfg.rules.column_names.replacements = {"old_col": "new_col"}
+        cfg.rules.column_types.enabled = True
+        cfg.rules.column_types.rules = [
+            ColumnTypeRuleEntry(name="id_text", pattern="_id$", data_type="text")
+        ]
+        cfg.rules.classification_macros.enabled = True
+
+        executed = get_executed_checks(cfg)
+        assert "columnnames" in executed
+        assert "columntypes" in executed
+        assert "classificationmacros" in executed
+        assert "custom_sqlmesh_plugin" in executed
+        assert "layer_integrity" in executed
+
+        # Explicit checks list
+        explicit = get_executed_checks(cfg, checks=["layer_integrity"])
+        assert explicit == ["layer_integrity"]
+    finally:
+        reg.unregister("custom_sqlmesh_plugin")
+
+
+

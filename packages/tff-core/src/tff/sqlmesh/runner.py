@@ -12,8 +12,9 @@ from sqlmesh.core.linter.definition import AnnotatedRuleViolation
 from tff.core.adapter import normalize_project_roots
 from tff.core.config import FitnessFunctionsConfig, load_fitness_config
 from tff.core.model import ModelRepresentation
-from tff.core.registry import normalize_check_name, registry
+from tff.core.registry import CheckRegistry, normalize_check_name, registry
 from tff.core.report import LintFinding, Severity, format_message, normalize_model_name
+from tff.core.rules import ALL_RULES as CORE_RULES
 from tff.core.utils.paths import model_path_relative
 from tff.sqlmesh.loader import FitnessLoader, map_sqlmesh_model
 
@@ -133,6 +134,144 @@ def _check_enabled(config: FitnessFunctionsConfig, check_name: str) -> bool:
     return registry.is_check_enabled(config, check_name, provider="sqlmesh")
 
 
+def _run_collector_safely(
+    name: str,
+    collector,
+    mapped_models: dict[str, ModelRepresentation],
+    config: FitnessFunctionsConfig,
+    scoped_models: set[str] | None = None,
+    norm_scoped: set[str] | None = None,
+) -> list[LintFinding]:
+    try:
+        dag_res = collector(mapped_models, config)
+    except Exception as exc:
+        logger.warning("Check '%s' failed to execute: %s", name, exc, exc_info=True)
+        return [
+            LintFinding(
+                check="rule_execution_error",
+                severity="warning",
+                message=f"Check '{name}' failed with {type(exc).__name__}: {exc}",
+            )
+        ]
+
+    if norm_scoped is not None:
+        return [
+            f
+            for f in dag_res
+            if f.model
+            and (
+                f.model in scoped_models  # type: ignore[operator]
+                or normalize_model_name(str(f.model)) in norm_scoped
+            )
+        ]
+    return dag_res
+
+
+def collect_findings(
+    context: Context | dict[str, ModelRepresentation],
+    config: FitnessFunctionsConfig,
+    checks: list[str] | None = None,
+    scoped_models: set[str] | None = None,
+) -> list[LintFinding]:
+    findings: list[LintFinding] = []
+    norm_scoped = (
+        {normalize_model_name(m) for m in scoped_models}
+        if scoped_models is not None
+        else None
+    )
+
+    if isinstance(context, dict):
+        mapped_models = context
+        sqlmesh_ctx = None
+    else:
+        sqlmesh_ctx = context
+        mapped_models = map_sqlmesh_context_models(context)
+
+    selected = (
+        checks
+        if checks is not None
+        else ["sqlmesh"] + [name for name in CHECK_COLLECTORS if _check_enabled(config, name)]
+    )
+
+    if "sqlmesh" in selected and sqlmesh_ctx is not None:
+        findings.extend(
+            collect_sqlmesh_findings(sqlmesh_ctx, config=config, scoped_models=scoped_models)
+        )
+
+    for name, collector in CHECK_COLLECTORS.items():
+        if name in selected and collector is not None:
+            findings.extend(
+                _run_collector_safely(
+                    name, collector, mapped_models, config, scoped_models, norm_scoped
+                )
+            )
+
+    return findings
+
+
+def get_executed_checks(
+    config: FitnessFunctionsConfig,
+    checks: list[str] | None = None,
+) -> list[str]:
+    selected = (
+        checks
+        if checks is not None
+        else ["sqlmesh"] + [name for name in CHECK_COLLECTORS if _check_enabled(config, name)]
+    )
+    executed: list[str] = []
+    for name in selected:
+        if name == "sqlmesh":
+            if config.rules.ban_select_star.enabled:
+                executed.append("banselectstar")
+            if config.rules.filename_equals_modelname.enabled:
+                executed.append("filenameequalsmodelname")
+            if config.rules.mart_naming.enabled:
+                executed.append("martmodelnamingconvention")
+            if config.rules.column_names.enabled and config.rules.column_names.replacements:
+                executed.append("columnnames")
+            if config.rules.column_types.enabled and config.rules.column_types.rules:
+                executed.append("columntypes")
+            if config.rules.classification_macros.enabled:
+                executed.append("classificationmacros")
+            if config.rules.sql_complexity.enabled:
+                executed.append("sqlcomplexity")
+            if config.rules.environment_agnostic_references.enabled:
+                executed.append("environmentagnosticreferences")
+            if (
+                config.rules.no_positional_group_by.enabled
+                and config.rules.no_positional_group_by_or_order_by.enabled
+                and config.rules.no_positional_group_by_or_order_by.group_by
+            ):
+                executed.append("nopositionalgroupby")
+            if (
+                config.rules.no_positional_order_by.enabled
+                and config.rules.no_positional_group_by_or_order_by.enabled
+                and config.rules.no_positional_group_by_or_order_by.order_by
+            ):
+                executed.append("nopositionalorderby")
+            if config.rules.metadata.enabled:
+                if config.rules.metadata.owner:
+                    executed.append("nomissingowner")
+                if config.rules.metadata.description:
+                    executed.append("nomissingdescription")
+                if config.rules.metadata.grain:
+                    executed.append("nomissinggrain")
+                if config.rules.metadata.not_null:
+                    executed.append("nomissingnotnull")
+                if config.rules.metadata.unique_values:
+                    executed.append("nomissinguniquevalues")
+            for check_def in CheckRegistry.get_default().get_all_checks():
+                if (
+                    check_def.rule_cls is not None
+                    and check_def.rule_cls not in CORE_RULES
+                    and check_def.is_enabled(config, provider="sqlmesh")
+                ):
+                    executed.append(check_def.finding_id)
+        else:
+            executed.append(name)
+    return executed
+
+
 def map_sqlmesh_context_models(context: Context) -> dict[str, ModelRepresentation]:
     mapped = {}
     for model_name, model in context.models.items():
@@ -180,18 +319,16 @@ def run_all_checks(
 
         for check_name, collector in CHECK_COLLECTORS.items():
             if _check_enabled(config, check_name) and collector is not None:
-                dag_res = collector(mapped_models, config)
-                if norm_scoped is not None:
-                    dag_res = [
-                        f
-                        for f in dag_res
-                        if f.model
-                        and (
-                            f.model in scoped_models  # type: ignore[operator]
-                            or normalize_model_name(str(f.model)) in norm_scoped
-                        )
-                    ]
-                findings.extend(dag_res)
+                findings.extend(
+                    _run_collector_safely(
+                        check_name,
+                        collector,
+                        mapped_models,
+                        config,
+                        scoped_models,
+                        norm_scoped,
+                    )
+                )
     else:
         selected = checks
         # Validate checks or raise ValueError
@@ -258,18 +395,16 @@ def run_all_checks(
             if c_def is not None and c_def.scope == "dag":
                 collector = c_def.get_collector_fn()
                 if collector is not None:
-                    dag_res = collector(mapped_models, config)
-                    if norm_scoped is not None:
-                        dag_res = [
-                            f
-                            for f in dag_res
-                            if f.model
-                            and (
-                                f.model in scoped_models  # type: ignore[operator]
-                                or normalize_model_name(str(f.model)) in norm_scoped
-                            )
-                        ]
-                    findings.extend(dag_res)
+                    findings.extend(
+                        _run_collector_safely(
+                            c_def.finding_id,
+                            collector,
+                            mapped_models,
+                            config,
+                            scoped_models,
+                            norm_scoped,
+                        )
+                    )
 
     if scoped_models is not None:
         checked_count = len(scoped_models)

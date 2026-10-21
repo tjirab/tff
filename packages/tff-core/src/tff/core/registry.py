@@ -374,6 +374,13 @@ class CheckRegistry:
             )
         return check
 
+    @classmethod
+    def get_default(cls) -> CheckRegistry:
+        return registry
+
+    def get_all_checks(self) -> list[CheckDefinition]:
+        return list(self._checks.values())
+
     def all_checks(self) -> list[CheckDefinition]:
         return list(self._checks.values())
 
