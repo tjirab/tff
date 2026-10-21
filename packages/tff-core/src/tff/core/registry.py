@@ -745,7 +745,7 @@ def create_default_registry() -> CheckRegistry:
             description="Flags ambiguous column references or invalid column resolutions in SQL queries using SQLMesh semantic analysis.",
             why_it_matters="Ambiguous column references make queries brittle and can cause runtime syntax or semantic errors when schemas evolve.",
             how_to_fix="Disambiguate column references by qualifying them with table or CTE aliases.",
-            configuration_example="checks:\n  ambiguous_or_invalid_column:\n    enabled: true",
+            configuration_example="# Configured via SQLMesh config.yaml (linter.rules: [ambiguousorinvalidcolumn])\nprovider: sqlmesh",
             providers=("sqlmesh",),
             is_fixable=False,
         )
@@ -763,7 +763,7 @@ def create_default_registry() -> CheckRegistry:
             description="Flags invalid wildcard expansions or column projections that cannot be resolved against upstream model schemas.",
             why_it_matters="Unresolvable SELECT * projections indicate missing upstream columns or broken lineage contracts.",
             how_to_fix="Explicitly specify valid projected columns or resolve upstream schema definitions.",
-            configuration_example="checks:\n  invalid_select_star_expansion:\n    enabled: true",
+            configuration_example="# Configured via SQLMesh config.yaml (linter.rules: [invalidselectstarexpansion])\nprovider: sqlmesh",
             providers=("sqlmesh",),
             is_fixable=False,
         )
@@ -943,7 +943,7 @@ def create_default_registry() -> CheckRegistry:
             description="Detects duplicate or near-identical Common Table Expressions (CTEs) across different SQL models using normalized AST subtree hashing.",
             why_it_matters="When transformation algorithms are duplicated across models, any future change to the business logic requires finding and updating every copy in sync. If one copy is missed, data warehouse divergence occurs silently.",
             how_to_fix="1. Lift the duplicate CTE into a shared upstream model (e.g. models/intermediate/int_users_cleaned.sql).\n2. Reference the shared model downstream using ref('int_users_cleaned').",
-            configuration_example="checks:\n  duplicate_ctes:\n    enabled: true\n    min_lines: 4\n    severity: warning",
+            configuration_example="checks:\n  duplicate_ctes:\n    enabled: true\n    min_ast_nodes: 8\n    severity: warning",
             providers=("dbt", "sqlmesh", "dataform"),
             is_fixable=False,
         )

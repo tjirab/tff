@@ -1046,6 +1046,27 @@ def test_all_builtin_checks_have_rich_metadata() -> None:
         assert len(check.providers) > 0, f"{check.id} has no providers"
 
 
+@pytest.mark.parametrize(
+    "check",
+    [c for c in create_default_registry().all_checks() if c.configuration_example],
+    ids=lambda c: c.id,
+)
+def test_builtin_check_configuration_examples_validate_against_schema(
+    check: CheckDefinition,
+) -> None:
+    import yaml
+
+    parsed = yaml.safe_load(check.configuration_example) or {}
+    assert isinstance(parsed, dict), f"{check.id} configuration_example must parse to a mapping"
+    cfg = FitnessFunctionsConfig.model_validate(parsed)
+    assert not cfg.checks.model_extra, (
+        f"{check.id} configuration_example contains unknown checks keys: {cfg.checks.model_extra}"
+    )
+    assert not cfg.rules.model_extra, (
+        f"{check.id} configuration_example contains unknown rules keys: {cfg.rules.model_extra}"
+    )
+
+
 def test_positional_checks_registry() -> None:
     reg = create_default_registry()
 
