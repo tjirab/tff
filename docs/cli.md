@@ -371,6 +371,33 @@ tff explain --all
 tff explain duplicate_ctes --json
 ```
 
+### Model Complexity & Decision Points Inspection
+
+When troubleshooting SQL complexity threshold violations (such as cyclomatic decision points, CTE counts, JOINs, or nested subqueries), inspect exact decision points and source line locations for any model or SQL file:
+
+```bash
+# Explain SQL complexity for a specific model
+tff explain sqlcomplexity --model stg_orders
+
+# Shorthand model inspection syntax
+tff explain stg_orders
+tff check explain sqlcomplexity for stg_orders
+
+# Inspect a standalone SQL file directly
+tff explain sqlcomplexity --model path/to/model.sql
+
+# Output complexity metrics and decision points as JSON
+tff explain sqlcomplexity --model stg_orders --json
+```
+
+| Option | Type | Default | Description |
+| :--- | :--- | :--- | :--- |
+| `--model`, `-m` | String | (none) | Model name or SQL file path to inspect for decision points and complexity metrics. |
+| `--project`, `-p` | Path | `.` | Root directory of the dbt/SQLMesh project. |
+| `--config`, `-c` | Path | (none) | Path to fitness functions config file (`tff.yaml`). |
+| `--dialect` | String | `duckdb` | SQL dialect for parsing (e.g. `duckdb`, `snowflake`, `bigquery`, `postgres`). |
+
+
 ---
 
 ## 12. Output Formats & Integrations

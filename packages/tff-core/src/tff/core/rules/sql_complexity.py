@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 import re
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import sqlglot.expressions as exp
 from sqlglot import parse_one
@@ -17,8 +18,106 @@ if TYPE_CHECKING:
 MODEL_BLOCK_PATTERN = re.compile(r"^MODEL\s*\(.*?\)\s*;", re.DOTALL | re.IGNORECASE)
 
 
+@dataclass
+class DecisionPointDetail:
+    """Detailed record of a single cyclomatic decision point."""
+
+    kind: str  # 'case', 'when', 'if', 'where_and', 'where_or'
+    line: int | None
+    col: int | None
+    snippet: str
+    cte_name: str | None = None
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "kind": self.kind,
+            "line": self.line,
+            "col": self.col,
+            "snippet": self.snippet,
+            "cte_name": self.cte_name,
+        }
+
+
+@dataclass
+class CteDetail:
+    """Record of a Common Table Expression in the model."""
+
+    name: str
+    line: int | None
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "name": self.name,
+            "line": self.line,
+        }
+
+
+@dataclass
+class JoinDetail:
+    """Record of a JOIN expression in the model."""
+
+    kind: str
+    table: str
+    line: int | None
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "kind": self.kind,
+            "table": self.table,
+            "line": self.line,
+        }
+
+
+@dataclass
+class ComplexityInspection:
+    """Complete diagnostic inspection of model complexity and decision points."""
+
+    model_name: str
+    path: str | None
+    dialect: str
+    metrics: dict[str, int | bool]
+    thresholds: dict[str, list[int]]
+    decision_points: list[DecisionPointDetail]
+    ctes: list[CteDetail]
+    joins: list[JoinDetail]
+    nested_subquery: bool
+    recommendations: list[str]
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "model_name": self.model_name,
+            "path": self.path,
+            "dialect": self.dialect,
+            "metrics": self.metrics,
+            "thresholds": self.thresholds,
+            "decision_points": [dp.to_dict() for dp in self.decision_points],
+            "ctes": [c.to_dict() for c in self.ctes],
+            "joins": [j.to_dict() for j in self.joins],
+            "nested_subquery": self.nested_subquery,
+            "recommendations": self.recommendations,
+        }
+
+
 def strip_model_block(sql: str) -> str:
     return MODEL_BLOCK_PATTERN.sub("", sql).strip()
+
+
+def _extract_node_line_col(node: exp.Expression) -> tuple[int | None, int | None]:
+    """Find the earliest line and column coordinates from an AST node or its leaf tokens."""
+    meta = getattr(node, "meta", None)
+    if isinstance(meta, dict) and "line" in meta:
+        return meta.get("line"), meta.get("col")
+
+    best_pos: tuple[int, int] | None = None
+    for child in node.walk():
+        m = getattr(child, "meta", None)
+        if isinstance(m, dict) and "line" in m:
+            pos = (m["line"], m.get("col", 0))
+            if best_pos is None or pos < best_pos:
+                best_pos = pos
+    if best_pos is not None:
+        return best_pos[0], best_pos[1]
+    return None, None
 
 
 def count_decision_points(expression: exp.Expression) -> int:
@@ -138,6 +237,212 @@ def format_violations(
     if messages:
         return [f"{model_name}: " + "; ".join(messages)]
     return []
+
+
+def inspect_sql_complexity(
+    sql: str,
+    dialect: str = "duckdb",
+    model_name: str = "",
+    path: str | None = None,
+    thresholds: dict[str, list[int]] | None = None,
+    parsed: exp.Expression | None = None,
+) -> ComplexityInspection:
+    """Analyze and inspect detailed SQL complexity metrics and decision points.
+
+    Tracks cyclomatic decision points (CASE, WHEN, IF, WHERE AND/OR), CTEs,
+    and JOIN operations with line numbers and source snippets.
+    """
+    if thresholds is None:
+        thresholds = {
+            "decision_points": [15, 25],
+            "cte_count": [8, 12],
+            "join_count": [8, 12],
+            "line_count": [250, 400],
+        }
+
+    # If SQL has a MODEL (...) block, preserve line count with newlines
+    preserved_sql = MODEL_BLOCK_PATTERN.sub(
+        lambda m: "\n" * m.group(0).count("\n"), sql
+    )
+    sql_lines = sql.splitlines()
+
+    metrics = analyze_sql(sql, dialect=dialect, parsed=parsed)
+
+    if parsed is None:
+        stripped = preserved_sql.strip()
+        if stripped:
+            try:
+                parsed = parse_one(preserved_sql, read=dialect)
+            except Exception:
+                try:
+                    parsed = parse_one(preserved_sql)
+                except Exception:
+                    parsed = None
+
+    decision_points: list[DecisionPointDetail] = []
+    ctes: list[CteDetail] = []
+    joins: list[JoinDetail] = []
+    nested_subquery = bool(metrics.get("nested_subquery_in_final_select", False))
+
+    if parsed is not None:
+        # 1. Decision Points
+        for node in parsed.walk():
+            cte_ancestor = node.find_ancestor(exp.CTE)
+            cte_name = cte_ancestor.alias_or_name if cte_ancestor else None
+
+            if isinstance(node, exp.Case):
+                first_line, col = _extract_node_line_col(node)
+                case_line = first_line
+                if (
+                    first_line
+                    and first_line > 1
+                    and 0 < first_line - 1 <= len(sql_lines)
+                    and "case" in sql_lines[first_line - 2].lower()
+                ):
+                    case_line = first_line - 1
+                snip = (
+                    sql_lines[case_line - 1].strip()
+                    if case_line and 0 < case_line <= len(sql_lines)
+                    else node.sql()[:50]
+                )
+                decision_points.append(
+                    DecisionPointDetail(
+                        kind="case",
+                        line=case_line,
+                        col=col,
+                        snippet=snip,
+                        cte_name=cte_name,
+                    )
+                )
+            elif isinstance(node, exp.If):
+                dp_line, dp_col = _extract_node_line_col(node)
+                kind = "when" if isinstance(node.parent, exp.Case) else "if"
+                snip = (
+                    sql_lines[dp_line - 1].strip()
+                    if dp_line and 0 < dp_line <= len(sql_lines)
+                    else node.sql()[:50]
+                )
+                decision_points.append(
+                    DecisionPointDetail(
+                        kind=kind,
+                        line=dp_line,
+                        col=dp_col,
+                        snippet=snip,
+                        cte_name=cte_name,
+                    )
+                )
+            elif isinstance(node, exp.Where):
+                for b in node.this.walk():
+                    if isinstance(b, (exp.And, exp.Or)):
+                        rhs = getattr(b, "expression", None)
+                        rhs_line, rhs_col = (
+                            _extract_node_line_col(rhs) if rhs is not None else (None, None)
+                        )
+                        kind = "where_and" if isinstance(b, exp.And) else "where_or"
+                        snip = (
+                            sql_lines[rhs_line - 1].strip()
+                            if rhs_line and 0 < rhs_line <= len(sql_lines)
+                            else b.sql()[:50]
+                        )
+                        decision_points.append(
+                            DecisionPointDetail(
+                                kind=kind,
+                                line=rhs_line,
+                                col=rhs_col,
+                                snippet=snip,
+                                cte_name=cte_name,
+                            )
+                        )
+
+        # 2. CTEs
+        for cte in parsed.find_all(exp.CTE):
+            cte_l, _ = _extract_node_line_col(cte)
+            ctes.append(CteDetail(name=cte.alias_or_name, line=cte_l))
+
+        # 3. Joins
+        for join in parsed.find_all(exp.Join):
+            kind_str = join.side or ""
+            if join.kind:
+                kind_str = f"{kind_str} {join.kind}".strip()
+            if not kind_str:
+                kind_str = "JOIN"
+            table_name = join.this.sql() if join.this else ""
+            join_l, _ = _extract_node_line_col(join)
+            joins.append(
+                JoinDetail(kind=kind_str.upper(), table=table_name, line=join_l)
+            )
+
+    # Sort decision points chronologically by line number
+    decision_points.sort(key=lambda dp: (dp.line or float("inf"), dp.col or 0))
+
+    # Recommendations
+    recommendations: list[str] = []
+    dp_threshold = thresholds.get("decision_points", [15, 25])
+    cte_threshold = thresholds.get("cte_count", [8, 12])
+    join_threshold = thresholds.get("join_count", [8, 12])
+    line_threshold = thresholds.get("line_count", [250, 400])
+
+    dp_count = int(metrics.get("decision_points", 0))
+    if dp_count > dp_threshold[0]:
+        case_when_count = sum(
+            1 for dp in decision_points if dp.kind in ("case", "when", "if")
+        )
+        where_count = sum(
+            1 for dp in decision_points if dp.kind in ("where_and", "where_or")
+        )
+        if case_when_count > 0:
+            recommendations.append(
+                f"Model has {case_when_count} CASE/IF decision branch{'es' if case_when_count != 1 else ''}. "
+                "Consider extracting conditional mapping into seed lookup tables, dimension enums, or classification macros."
+            )
+        if where_count > 0:
+            recommendations.append(
+                f"Model has {where_count} boolean filter condition{'s' if where_count != 1 else ''} in WHERE clauses. "
+                "Consider decomposing filter predicates into upstream CTEs or intermediate staging layers."
+            )
+
+    cte_cnt = int(metrics.get("cte_count", 0))
+    if cte_cnt > cte_threshold[0]:
+        recommendations.append(
+            f"Model defines {cte_cnt} CTEs (warn>{cte_threshold[0]}, fail>{cte_threshold[1]}). "
+            "Consider breaking down this complex transformation into multiple intermediate staging models."
+        )
+
+    join_cnt = int(metrics.get("join_count", 0))
+    if join_cnt > join_threshold[0]:
+        recommendations.append(
+            f"Model executes {join_cnt} JOINs (warn>{join_threshold[0]}, fail>{join_threshold[1]}). "
+            "Consider reviewing upstream marts or pre-joining relations in an intermediate layer."
+        )
+
+    if nested_subquery:
+        recommendations.append(
+            "Final SELECT contains nested subqueries. Prefer CTEs per project style guide to enhance readability and maintainability."
+        )
+
+    line_cnt = int(metrics.get("line_count", 0))
+    if line_cnt > line_threshold[0]:
+        recommendations.append(
+            f"Model spans {line_cnt} lines (warn>{line_threshold[0]}, fail>{line_threshold[1]}). "
+            "Consider modularizing into smaller, single-responsibility models."
+        )
+
+    if not recommendations:
+        recommendations.append("Model is within all maintainability thresholds.")
+
+    return ComplexityInspection(
+        model_name=model_name,
+        path=path,
+        dialect=dialect,
+        metrics=metrics,
+        thresholds=thresholds,
+        decision_points=decision_points,
+        ctes=ctes,
+        joins=joins,
+        nested_subquery=nested_subquery,
+        recommendations=recommendations,
+    )
+
 
 
 def split_complexity_message(

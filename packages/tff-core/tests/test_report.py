@@ -922,6 +922,52 @@ def test_render_lint_report_status_footers(
     assert expected_text in console.export_text()
 
 
+def test_render_lint_report_sqlcomplexity_tip() -> None:
+    from rich.console import Console
+
+    console = Console(record=True, width=120)
+    findings = [
+        _make_finding(
+            check="sqlcomplexity",
+            severity="error",
+            message="FAIL: decision_points=26",
+            model="raw.orders",
+        )
+    ]
+    render_lint_report(findings, models_checked=1, console=console)
+    output = console.export_text()
+    assert "● Tip: Run 'tff explain sqlcomplexity --model raw.orders'" in output
+    assert "💡" not in output
+
+
+def test_render_lint_report_zero_emoji_guarantee() -> None:
+    """Ensure zero decorative emojis appear in any generated CLI lint report."""
+    from rich.console import Console
+
+    console = Console(record=True, width=120)
+    findings = [
+        _make_finding(
+            check="sqlcomplexity",
+            severity="error",
+            message="FAIL: decision_points=26",
+            model="raw.orders",
+        ),
+        _make_finding(
+            check="banselectstar",
+            severity="warning",
+            message="WARN: SELECT * used",
+            model="raw.users",
+        ),
+    ]
+    render_lint_report(findings, models_checked=2, console=console)
+    output = console.export_text()
+
+    prohibited_emojis = ["💡", "📁", "🔧", "📈", "📉", "🚀", "🎉", "❌", "⚠️", "✅"]
+    for emoji in prohibited_emojis:
+        assert emoji not in output, f"Prohibited emoji '{emoji}' found in lint report"
+
+
+
 @pytest.mark.parametrize(
     ("findings_severities", "fail_level", "expected_passed"),
     [

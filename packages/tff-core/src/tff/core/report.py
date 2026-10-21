@@ -457,4 +457,14 @@ def render_lint_report(
         footer.append(f"WARN — {len(warnings)} warning{'s' if len(warnings) != 1 else ''} found. Review before merge.", style="bold yellow")
 
     console.print(footer)
+
+    complexity_findings = [
+        f for f in findings if f.check in ("sqlcomplexity", "sql_complexity") and f.model
+    ]
+    if complexity_findings:
+        m_name = normalize_model_name(complexity_findings[0].model)
+        console.print(
+            f"[dim]● Tip: Run 'tff explain sqlcomplexity --model {m_name}' to inspect decision points.[/dim]"
+        )
+
     return not failed

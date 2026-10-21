@@ -16,7 +16,12 @@ from pydantic import ValidationError
 from rich.console import Console
 from rich.markup import escape
 
-from tff.core.adapter import PipelineAdapter, detect_provider, get_adapter
+from tff.core.adapter import (
+    PipelineAdapter,
+    detect_provider,
+    get_adapter,
+    normalize_project_roots,
+)
 from tff.core.config import (
     MISSING_CONFIG_NOTICE,
     init_fitness_config,
@@ -31,7 +36,7 @@ from tff.core.exceptions import (
 )
 from tff.core.logs import is_debug_enabled, setup_cli_logging
 from tff.core.registry import CheckDefinition, normalize_check_name, registry
-from tff.core.report import render_lint_report
+from tff.core.report import normalize_model_name, render_lint_report
 
 if TYPE_CHECKING:
     from tff.core.model import ModelRepresentation
@@ -467,6 +472,11 @@ def _explain_single_check(check: CheckDefinition, console: Console | None = None
     if check.docs_url:
         console.print(f"\n[bold]Documentation:[/bold] [link={check.docs_url}]{check.docs_url}[/link]")
 
+    if check.id in ("sqlcomplexity", "sql_complexity"):
+        console.print("\n[bold]Model Inspection:[/bold]")
+        console.print("To inspect decision points in a specific model, run:")
+        console.print("  [bold cyan]tff explain sqlcomplexity --model <model_name>[/bold cyan]")
+
 
 def _render_rules_table(
     checks: list[CheckDefinition],
@@ -513,17 +523,274 @@ def _render_rules_table(
     console.print("[dim]For detailed remediation guidance, try 'tff explain <rule_name>'[/dim]")
 
 
+def _find_model_by_name(
+    models: dict[str, ModelRepresentation], name: str
+) -> ModelRepresentation | None:
+    """Resolve a user-provided model query against loaded project models."""
+    if not name or not models:
+        return None
+    if name in models:
+        return models[name]
+    norm_query = name.lower()
+    for k, m in models.items():
+        if k.lower() == norm_query:
+            return m
+    for k, m in models.items():
+        m_name = getattr(m, "name", "")
+        if m_name.lower() == norm_query:
+            return m
+        if normalize_model_name(m_name).lower() == norm_query:
+            return m
+        if normalize_model_name(k).lower() == norm_query:
+            return m
+    for k, m in models.items():
+        m_name = getattr(m, "name", "")
+        if m_name.lower().endswith(f".{norm_query}") or k.lower().endswith(f".{norm_query}"):
+            return m
+    for m in models.values():
+        path_str = getattr(m, "path", "")
+        if path_str:
+            p = Path(path_str)
+            if p.stem.lower() == norm_query or str(p).lower().endswith(norm_query):
+                return m
+    return None
+
+
+def _render_complexity_inspection(
+    inspection: Any,
+    console: Console | None = None,
+) -> None:
+    """Render terminal inspection report for model SQL complexity and decision points."""
+    if console is None:
+        console = Console()
+
+    from rich.table import Table
+
+    width = min(console.width if console.width else 80, 78)
+    console.print(f"[bold]Model Complexity Inspection: {inspection.model_name}[/bold]")
+    console.print("─" * width, style="dim")
+    if inspection.path:
+        console.print(f"[bold]Path:[/bold]        {inspection.path}")
+    console.print(f"[bold]Dialect:[/bold]     {inspection.dialect}")
+
+    # Metrics Overview Table
+    console.print("\n[bold]Metrics Overview[/bold]")
+    table = Table(box=None, show_header=True, header_style="bold dim", padding=(0, 2, 0, 0))
+    table.add_column("Metric", style="bold")
+    table.add_column("Value", justify="right")
+    table.add_column("Warn", justify="right", style="dim")
+    table.add_column("Fail", justify="right", style="dim")
+    table.add_column("Status", justify="center")
+
+    metric_labels = [
+        ("decision_points", "Decision Points"),
+        ("cte_count", "CTEs"),
+        ("join_count", "Joins"),
+        ("line_count", "Lines"),
+    ]
+
+    for key, label in metric_labels:
+        val = int(inspection.metrics.get(key, 0))
+        warn, fail = inspection.thresholds.get(key, [0, 0])
+        if val > fail:
+            status = "[bold red]FAIL[/bold red]"
+        elif val > warn:
+            status = "[bold yellow]WARN[/bold yellow]"
+        else:
+            status = "[bold green]PASS[/bold green]"
+        table.add_row(label, str(val), str(warn), str(fail), status)
+
+    sub_val = inspection.nested_subquery
+    sub_status = "[bold yellow]WARN[/bold yellow]" if sub_val else "[bold green]PASS[/bold green]"
+    table.add_row("Subquery in Final", "Yes" if sub_val else "No", "—", "—", sub_status)
+    console.print(table)
+
+    # Decision Points Breakdown
+    console.print(
+        f"\n[bold]Decision Points Breakdown[/bold] [dim]({len(inspection.decision_points)} total)[/dim]"
+    )
+    if not inspection.decision_points:
+        console.print("  [dim]No decision points found.[/dim]")
+    else:
+        dp_table = Table(box=None, show_header=True, header_style="bold dim", padding=(0, 2, 0, 0))
+        dp_table.add_column("Line", justify="right", style="bold")
+        dp_table.add_column("Scope / CTE", style="dim")
+        dp_table.add_column("Kind", style="cyan")
+        dp_table.add_column("Expression / Snippet")
+
+        kind_labels = {
+            "case": "CASE",
+            "when": "WHEN",
+            "if": "IF",
+            "where_and": "WHERE AND",
+            "where_or": "WHERE OR",
+        }
+
+        for dp in inspection.decision_points:
+            line_str = str(dp.line) if dp.line is not None else "·"
+            scope = dp.cte_name or "[dim]main[/dim]"
+            kind_str = kind_labels.get(dp.kind, dp.kind.upper())
+            snip = dp.snippet.strip()
+            if len(snip) > 55:
+                snip = snip[:52] + "..."
+            dp_table.add_row(line_str, scope, kind_str, snip)
+
+        console.print(dp_table)
+
+    # Recommendations
+    console.print("\n[bold]Recommendations[/bold]")
+    for rec in inspection.recommendations:
+        console.print(f"  [dim]•[/dim] {rec}")
+    console.print("─" * width, style="dim")
+
+
+def handle_model_complexity_explain(
+    model_name: str,
+    project_roots: list[Path] | None = None,
+    config_path: str | Path | None = None,
+    dialect: str | None = None,
+    manifest_path: str | Path | None = None,
+    as_json: bool = False,
+    console: Console | None = None,
+) -> int:
+    """Inspect and explain SQL complexity and decision points for a specific model."""
+    import json
+    from tff.core.rules.sql_complexity import inspect_sql_complexity
+
+    if console is None:
+        console = Console()
+
+    roots = normalize_project_roots(project_roots or [Path.cwd()])
+    fitness_config = load_fitness_config(roots[0], config_path=config_path)
+    rule_config = fitness_config.rules.sql_complexity
+    thresholds = rule_config.thresholds
+    resolved_dialect = dialect or getattr(fitness_config, "dialect", None) or "duckdb"
+
+    # 1. Direct file check
+    candidate_file = Path(model_name)
+    if not candidate_file.is_absolute():
+        candidate_file = roots[0] / candidate_file
+    if candidate_file.is_file():
+        sql_content = candidate_file.read_text(encoding="utf-8")
+        rel_path = str(
+            candidate_file.relative_to(roots[0])
+            if candidate_file.is_relative_to(roots[0])
+            else candidate_file
+        )
+        inspection = inspect_sql_complexity(
+            sql_content,
+            dialect=resolved_dialect,
+            model_name=candidate_file.stem,
+            path=rel_path,
+            thresholds=thresholds,
+        )
+        if as_json:
+            print(json.dumps(inspection.to_dict(), indent=2))
+            return 0
+        _render_complexity_inspection(inspection, console=console)
+        return 0
+
+    # 2. Project model lookup via adapter
+    try:
+        provider = detect_provider(roots, config_path=config_path)
+        adapter = get_adapter(provider)
+        models = adapter.load_models(
+            roots,
+            dialect=dialect or getattr(fitness_config, "dialect", None),
+            manifest_path=manifest_path,
+        )
+    except Exception as e:
+        if as_json:
+            print(json.dumps({"error": f"Failed to load project models: {e}"}, indent=2))
+            return 1
+        err_console = Console(stderr=True)
+        err_console.print(f"[bold red]FAIL Error:[/bold red] Failed to load project models: {e}")
+        return 1
+
+    model = _find_model_by_name(models, model_name)
+    if model is None:
+        candidate_names = set()
+        for m in models.values():
+            candidate_names.add(m.name)
+            candidate_names.add(m.name.split(".")[-1])
+            candidate_names.add(normalize_model_name(m.name))
+            if m.path:
+                candidate_names.add(Path(m.path).stem)
+        close = difflib.get_close_matches(model_name, sorted(candidate_names), n=1, cutoff=0.5)
+        suggestion = f"\n  Did you mean '{close[0]}'?" if close else ""
+        if as_json:
+            payload: dict[str, Any] = {"error": f"Model '{model_name}' not found."}
+            if close:
+                payload["suggestion"] = close[0]
+            print(json.dumps(payload, indent=2))
+            return 1
+        err_console = Console(stderr=True)
+        err_console.print(
+            f"[bold red]FAIL Error:[/bold red] Model '{model_name}' not found in project.{suggestion}"
+        )
+        return 1
+
+    sql = model.get_sql(prefer_file=True, project_root=roots[0])
+    if not sql:
+        if as_json:
+            print(
+                json.dumps(
+                    {"error": f"No SQL content available for model '{model.name}'."},
+                    indent=2,
+                )
+            )
+            return 1
+        err_console = Console(stderr=True)
+        err_console.print(
+            f"[bold red]FAIL Error:[/bold red] No SQL content available for model '{model.name}'."
+        )
+        return 1
+
+    inspection = inspect_sql_complexity(
+        sql,
+        dialect=model.dialect or resolved_dialect,
+        model_name=model.name,
+        path=model.path,
+        thresholds=thresholds,
+        parsed=model.expression or getattr(model, "_raw_ast", None),
+    )
+
+    if as_json:
+        print(json.dumps(inspection.to_dict(), indent=2))
+        return 0
+
+    _render_complexity_inspection(inspection, console=console)
+    return 0
+
+
 def handle_explain(
     rule_arg: str | None,
+    model_arg: str | None = None,
     as_json: bool = False,
     show_all: bool = False,
     console: Console | None = None,
+    project_roots: list[Path] | None = None,
+    config_path: str | Path | None = None,
+    dialect: str | None = None,
+    manifest_path: str | Path | None = None,
 ) -> int:
     """Handle explain and rules subcommands."""
     import json
 
     if console is None:
         console = Console()
+
+    # If model_arg is explicitly provided, inspect model complexity
+    if model_arg:
+        return handle_model_complexity_explain(
+            model_arg,
+            project_roots=project_roots,
+            config_path=config_path,
+            dialect=dialect,
+            manifest_path=manifest_path,
+            as_json=as_json,
+            console=console,
+        )
 
     # If no rule argument given or --all, list all checks
     if not rule_arg or show_all:
@@ -568,7 +835,46 @@ def handle_explain(
             _render_rules_table(cat_checks, title=cat_name, console=console)
             return 0
 
-    # 3. Partial substring matching
+    # 3. Check if rule_arg refers to a project model or a .sql file
+    candidate_file = Path(rule_arg)
+    roots = normalize_project_roots(project_roots or [Path.cwd()])
+    if not candidate_file.is_absolute():
+        candidate_file = roots[0] / candidate_file
+    if candidate_file.is_file():
+        return handle_model_complexity_explain(
+            rule_arg,
+            project_roots=project_roots,
+            config_path=config_path,
+            dialect=dialect,
+            manifest_path=manifest_path,
+            as_json=as_json,
+            console=console,
+        )
+
+    try:
+        provider = detect_provider(roots, config_path=config_path)
+        adapter = get_adapter(provider)
+        fit_cfg = load_fitness_config(roots[0], config_path=config_path)
+        models = adapter.load_models(
+            roots,
+            dialect=dialect or getattr(fit_cfg, "dialect", None),
+            manifest_path=manifest_path,
+        )
+        if _find_model_by_name(models, rule_arg) is not None:
+            return handle_model_complexity_explain(
+                rule_arg,
+                project_roots=project_roots,
+                config_path=config_path,
+                dialect=dialect,
+                manifest_path=manifest_path,
+                as_json=as_json,
+                console=console,
+            )
+    except Exception:
+        pass
+
+
+    # 4. Partial substring matching
     norm_query = normalize_check_name(rule_arg)
     if len(norm_query) >= 3:
         sub_matches = [
@@ -602,7 +908,7 @@ def handle_explain(
             )
             return 0
 
-    # 4. Fuzzy matching for typos
+    # 5. Fuzzy matching for typos
     all_targets: list[str] = []
     for c in registry.all_checks():
         all_targets.append(c.id)
@@ -1204,7 +1510,39 @@ def _main_impl(argv: list[str] | None = None) -> int:
         "rule",
         nargs="?",
         default=None,
-        help="Name or alias of the check or category to explain (e.g. duplicate_ctes, ban_select_star, CoA, CoV)",
+        help="Name or alias of the check or category to explain (e.g. duplicate_ctes, ban_select_star, CoA, CoV, sqlcomplexity)",
+    )
+    explain_parser.add_argument(
+        "model",
+        nargs="?",
+        default=None,
+        help="Optional model name or file path to inspect (e.g. 'tff explain sqlcomplexity customers')",
+    )
+    explain_parser.add_argument(
+        "--model",
+        "-m",
+        dest="model_opt",
+        default=None,
+        help="Model name or file path to inspect (e.g. 'tff explain sqlcomplexity --model customers')",
+    )
+    explain_parser.add_argument(
+        "--project",
+        "-p",
+        action="append",
+        dest="projects",
+        type=Path,
+        default=None,
+        help="Project root directory (default: current directory)",
+    )
+    explain_parser.add_argument(
+        "--config",
+        default="fitness_functions.yaml",
+        help="Path to fitness_functions.yaml (relative to project root)",
+    )
+    explain_parser.add_argument(
+        "--dialect",
+        default=None,
+        help="SQL dialect of models (default: auto-inferred or duckdb)",
     )
     explain_parser.add_argument(
         "--all",
@@ -1243,6 +1581,12 @@ def _main_impl(argv: list[str] | None = None) -> int:
         help="Specific command to get help for",
     )
 
+    if len(args_list) >= 2 and args_list[0] in ("lint", "check") and args_list[1] == "explain":
+        remaining = [a for a in args_list[2:] if a != "for"]
+        args_list = ["explain", *remaining]
+    elif len(args_list) >= 1 and args_list[0] == "explain":
+        args_list = ["explain", *[a for a in args_list[1:] if a != "for"]]
+
     args = parser.parse_args(args_list)
 
     is_debug = is_debug_enabled(args)
@@ -1279,12 +1623,24 @@ def _main_impl(argv: list[str] | None = None) -> int:
 
     if args.command in ("explain", "rules"):
         rule_arg = getattr(args, "rule", None)
-        show_all = getattr(args, "all", False) or (args.command == "rules" and not rule_arg)
+        model_arg = getattr(args, "model_opt", None) or getattr(args, "model", None)
+        show_all = getattr(args, "all", False) or (
+            args.command == "rules" and not rule_arg and not model_arg
+        )
         as_json = getattr(args, "json", False)
+        project_roots_raw = getattr(args, "projects", None) or getattr(args, "project", None)
+        config_path = getattr(args, "config", "fitness_functions.yaml")
         return handle_explain(
             rule_arg=rule_arg,
+            model_arg=model_arg,
             as_json=as_json,
             show_all=show_all,
+            project_roots=[Path(p).resolve() for p in project_roots_raw]
+            if project_roots_raw
+            else None,
+            config_path=config_path,
+            dialect=getattr(args, "dialect", None),
+            manifest_path=getattr(args, "manifest", None),
         )
 
     # Normalize project roots

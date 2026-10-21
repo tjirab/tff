@@ -1,5 +1,7 @@
 """Tests for SQL complexity analysis."""
+
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -320,4 +322,229 @@ def test_has_nested_subquery_in_final_select() -> None:
     # Subquery in SELECT expressions
     q5 = sqlglot.parse_one("SELECT (SELECT 1) AS x FROM t")
     assert has_nested_subquery_in_final_select(q5) is False
+
+
+def test_inspect_sql_complexity_detailed_breakdown() -> None:
+    from tff.core.rules.sql_complexity import inspect_sql_complexity
+
+    sql = """WITH active_users AS (
+    SELECT
+        id,
+        CASE
+            WHEN status = 'active' THEN 1
+            WHEN status = 'trial' THEN 2
+            ELSE 0
+        END AS status_code
+    FROM raw.users
+    WHERE age >= 18
+      AND country = 'NL'
+),
+vip_users AS (
+    SELECT
+        u.id,
+        u.status_code
+    FROM active_users u
+    LEFT JOIN raw.purchases p ON u.id = p.user_id
+    WHERE p.amount > 1000
+       OR p.is_vip = 1
+)
+SELECT * FROM vip_users
+"""
+    inspection = inspect_sql_complexity(
+        sql,
+        dialect="duckdb",
+        model_name="analytics.vip_users",
+        path="models/analytics/vip_users.sql",
+    )
+
+    assert inspection.model_name == "analytics.vip_users"
+    assert inspection.path == "models/analytics/vip_users.sql"
+    assert inspection.dialect == "duckdb"
+    assert inspection.metrics["cte_count"] == 2
+    assert inspection.metrics["join_count"] == 1
+    assert inspection.metrics["decision_points"] == 5
+    assert len(inspection.decision_points) == 5
+
+    # Check decision points kinds and line coordinates
+    kinds = [dp.kind for dp in inspection.decision_points]
+    assert kinds == ["case", "when", "when", "where_and", "where_or"]
+
+    # Verify CTE scoping
+    ctes = [dp.cte_name for dp in inspection.decision_points]
+    assert ctes[:4] == ["active_users", "active_users", "active_users", "active_users"]
+    assert ctes[4] == "vip_users"
+
+    # Verify line numbers are captured
+    lines = [dp.line for dp in inspection.decision_points]
+    assert all(line is not None and line > 0 for line in lines)
+    assert lines == sorted(lines)
+
+    # Verify CTE details
+    assert len(inspection.ctes) == 2
+    assert inspection.ctes[0].name == "active_users"
+    assert inspection.ctes[1].name == "vip_users"
+
+    # Verify Join details
+    assert len(inspection.joins) == 1
+    assert "LEFT" in inspection.joins[0].kind
+    assert "purchases" in inspection.joins[0].table
+
+
+def test_inspect_sql_complexity_model_block_preservation() -> None:
+    from tff.core.rules.sql_complexity import inspect_sql_complexity
+
+    sql = """MODEL (
+  name analytics.customers,
+  kind full
+);
+
+SELECT
+    id,
+    CASE
+        WHEN status = 'active' THEN 1
+        ELSE 0
+    END as is_active
+FROM raw.users
+WHERE age > 18
+  AND country = 'NL'
+"""
+    inspection = inspect_sql_complexity(sql, dialect="duckdb", model_name="analytics.customers")
+    assert inspection.metrics["decision_points"] == 3
+
+    # Lines should account for the MODEL header (approx lines 9-16)
+    dp_lines = [dp.line for dp in inspection.decision_points if dp.line is not None]
+    assert all(ln >= 8 for ln in dp_lines)
+
+
+def test_inspect_sql_complexity_to_dict_serialization() -> None:
+    import json
+    from tff.core.rules.sql_complexity import inspect_sql_complexity
+
+    sql = "SELECT id, CASE WHEN x = 1 THEN 'a' END FROM t WHERE y = 2 AND z = 3"
+    inspection = inspect_sql_complexity(sql, dialect="duckdb", model_name="test_model")
+    d = inspection.to_dict()
+
+    assert d["model_name"] == "test_model"
+    assert "metrics" in d
+    assert "decision_points" in d
+    assert "recommendations" in d
+    # Ensure it's valid JSON
+    serialized = json.dumps(d)
+    assert "decision_points" in serialized
+
+
+@pytest.mark.parametrize(
+    ("metrics", "thresholds", "expected_rec_substr"),
+    [
+        (
+            {"decision_points": 28, "cte_count": 2, "join_count": 2, "line_count": 50},
+            {"decision_points": [15, 25], "cte_count": [8, 12], "join_count": [8, 12], "line_count": [250, 400]},
+            "decision branch",
+        ),
+        (
+            {"decision_points": 5, "cte_count": 14, "join_count": 2, "line_count": 50},
+            {"decision_points": [15, 25], "cte_count": [8, 12], "join_count": [8, 12], "line_count": [250, 400]},
+            "defines 14 CTEs",
+        ),
+        (
+            {"decision_points": 5, "cte_count": 2, "join_count": 15, "line_count": 50},
+            {"decision_points": [15, 25], "cte_count": [8, 12], "join_count": [8, 12], "line_count": [250, 400]},
+            "executes 15 JOINs",
+        ),
+        (
+            {"decision_points": 5, "cte_count": 2, "join_count": 2, "line_count": 450},
+            {"decision_points": [15, 25], "cte_count": [8, 12], "join_count": [8, 12], "line_count": [250, 400]},
+            "spans 450 lines",
+        ),
+        (
+            {"decision_points": 2, "cte_count": 2, "join_count": 2, "line_count": 50, "nested_subquery_in_final_select": True},
+            {"decision_points": [15, 25], "cte_count": [8, 12], "join_count": [8, 12], "line_count": [250, 400]},
+            "Final SELECT contains nested subqueries",
+        ),
+        (
+            {"decision_points": 2, "cte_count": 2, "join_count": 2, "line_count": 50},
+            {"decision_points": [15, 25], "cte_count": [8, 12], "join_count": [8, 12], "line_count": [250, 400]},
+            "within all maintainability thresholds",
+        ),
+    ],
+)
+def test_inspect_sql_complexity_recommendations_matrix(
+    metrics: dict[str, Any],
+    thresholds: dict[str, list[int]],
+    expected_rec_substr: str,
+) -> None:
+    from tff.core.rules.sql_complexity import inspect_sql_complexity
+
+    # Use inspect_sql_complexity with minimal sql to test recommendation engine
+    sql = "SELECT 1"
+    if metrics.get("nested_subquery_in_final_select"):
+        sql = "SELECT * FROM (SELECT 1) s"
+    elif metrics.get("decision_points", 0) > 15:
+        sql = "SELECT " + " + ".join(f"CASE WHEN id = {i} THEN {i} END" for i in range(20))
+    elif metrics.get("cte_count", 0) > 8:
+        sql = "WITH " + ", ".join(f"c{i} AS (SELECT {i})" for i in range(14)) + " SELECT * FROM c0"
+    elif metrics.get("join_count", 0) > 8:
+        sql = "SELECT * FROM t " + " ".join(f"JOIN j{i} ON true" for i in range(15))
+    elif metrics.get("line_count", 0) > 250:
+        sql = "\n".join(f"SELECT {i};" for i in range(450))
+
+    insp = inspect_sql_complexity(sql, thresholds=thresholds)
+    assert any(expected_rec_substr in r for r in insp.recommendations)
+
+
+def test_inspect_sql_complexity_empty_and_invalid_sql() -> None:
+    from tff.core.rules.sql_complexity import inspect_sql_complexity
+
+    insp_empty = inspect_sql_complexity("")
+    assert insp_empty.metrics["line_count"] == 0
+    assert insp_empty.decision_points == []
+
+    insp_invalid = inspect_sql_complexity("SELECT FROM WHERE ;;;")
+    assert insp_invalid.metrics["line_count"] == 1
+    assert insp_invalid.decision_points == []
+
+
+def test_complexity_detail_dataclasses_to_dict() -> None:
+    from tff.core.rules.sql_complexity import CteDetail, JoinDetail
+
+    cte = CteDetail(name="stg_orders", line=5)
+    assert cte.to_dict() == {"name": "stg_orders", "line": 5}
+
+    join = JoinDetail(kind="LEFT JOIN", table="users", line=12)
+    assert join.to_dict() == {"kind": "LEFT JOIN", "table": "users", "line": 12}
+
+
+def test_inspect_sql_complexity_where_boolean_branches_recommendation() -> None:
+    from tff.core.rules.sql_complexity import inspect_sql_complexity
+
+    # Construct SQL with 20 boolean branches in WHERE to trigger WHERE filter recommendation
+    where_conditions = " AND ".join(f"col_{i} = {i}" for i in range(20))
+    sql = f"SELECT * FROM tbl INNER JOIN other ON true WHERE {where_conditions}"
+
+    insp = inspect_sql_complexity(sql, thresholds={"decision_points": [15, 25]})
+    assert insp.metrics["decision_points"] >= 19
+    assert any("boolean filter condition" in r for r in insp.recommendations)
+    assert any(j.kind == "INNER" for j in insp.joins)
+
+
+def test_extract_node_line_col_direct_and_none() -> None:
+    import sqlglot.expressions as exp
+    from tff.core.rules.sql_complexity import _extract_node_line_col
+
+    # Direct meta on node
+    node_with_meta = exp.Literal.number(1)
+    node_with_meta.meta["line"] = 10
+    node_with_meta.meta["col"] = 4
+    line, col = _extract_node_line_col(node_with_meta)
+    assert line == 10
+    assert col == 4
+
+    # Node with no meta anywhere in tree
+    node_empty = exp.Literal.string("val")
+    node_empty.meta.clear()
+    line_none, col_none = _extract_node_line_col(node_empty)
+    assert line_none is None
+    assert col_none is None
+
+
 

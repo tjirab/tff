@@ -2315,6 +2315,322 @@ def test_deprecated_provider_cli_tff_error(
         assert "● Hint: Fix model SQL" in captured.err
 
 
+@pytest.mark.parametrize(
+    ("query", "expected_match"),
+    [
+        ("analytics.orders", True),
+        ("ANALYTICS.ORDERS", True),
+        ("orders", True),
+        ("orders.sql", True),
+        ("unknown_model", False),
+    ],
+)
+def test_find_model_by_name(query: str, expected_match: bool) -> None:
+    from tff.core.cli import _find_model_by_name
+
+    models = {
+        "analytics.orders": _make_model(
+            name="analytics.orders",
+            path="models/analytics/orders.sql",
+        )
+    }
+    match = _find_model_by_name(models, query)
+    if expected_match:
+        assert match is not None
+        assert match.name == "analytics.orders"
+    else:
+        assert match is None
+
+
+def test_render_complexity_inspection_smoke() -> None:
+    from rich.console import Console
+    from tff.core.cli import _render_complexity_inspection
+    from tff.core.rules.sql_complexity import ComplexityInspection, DecisionPointDetail
+
+    console = Console(record=True, width=100)
+    inspection = ComplexityInspection(
+        model_name="analytics.customers",
+        path="models/analytics/customers.sql",
+        dialect="duckdb",
+        metrics={
+            "decision_points": 20,
+            "cte_count": 2,
+            "join_count": 1,
+            "line_count": 50,
+            "nested_subquery_in_final_select": False,
+        },
+        thresholds={
+            "decision_points": [15, 25],
+            "cte_count": [8, 12],
+            "join_count": [8, 12],
+            "line_count": [250, 400],
+        },
+        decision_points=[
+            DecisionPointDetail(
+                kind="case",
+                line=10,
+                col=4,
+                snippet="CASE WHEN status = 'a' THEN 1 END",
+                cte_name="stg_users",
+            )
+        ],
+        ctes=[],
+        joins=[],
+        nested_subquery=False,
+        recommendations=["Model has 1 CASE/IF decision branch."],
+    )
+
+    _render_complexity_inspection(inspection, console=console)
+    output = console.export_text()
+    assert "Model Complexity Inspection: analytics.customers" in output
+    assert "Decision Points" in output
+    assert "stg_users" in output
+    assert "Model has 1 CASE/IF decision branch." in output
+
+
+def test_cli_explain_direct_sql_file(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    sql_file = tmp_path / "test_model.sql"
+    sql_file.write_text(
+        "SELECT id, CASE WHEN a = 1 THEN 'yes' ELSE 'no' END FROM tbl WHERE x > 5 AND y < 10\n"
+    )
+
+    exit_code = main(["explain", "sqlcomplexity", str(sql_file)])
+    assert exit_code == 0
+    captured = capsys.readouterr()
+    assert "Model Complexity Inspection: test_model" in captured.out
+    assert "Decision Points Breakdown" in captured.out
+
+    # Test with --json
+    exit_code_json = main(["explain", str(sql_file), "--json"])
+    assert exit_code_json == 0
+    captured_json = capsys.readouterr()
+    payload = json.loads(captured_json.out)
+    assert payload["model_name"] == "test_model"
+    assert "decision_points" in payload
+    assert len(payload["decision_points"]) >= 2
+
+
+@pytest.mark.parametrize(
+    "cli_args",
+    [
+        ["explain", "sqlcomplexity", "--model", "orders"],
+        ["explain", "sqlcomplexity", "orders"],
+        ["explain", "orders"],
+        ["check", "explain", "sqlcomplexity", "for", "orders"],
+        ["lint", "explain", "sqlcomplexity", "orders"],
+    ],
+)
+def test_cli_explain_model_complexity_subcommand_variants(
+    cli_args: list[str],
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    model = _make_model(
+        name="analytics.orders",
+        path="models/analytics/orders.sql",
+        dialect="duckdb",
+        query="SELECT id, CASE WHEN status = 'shipped' THEN 1 ELSE 0 END AS is_shipped FROM raw.orders WHERE amount > 100",
+    )
+
+    mock_adapter = MagicMock()
+    mock_adapter.load_models.return_value = {"analytics.orders": model}
+
+    with (
+        patch("tff.core.cli.detect_provider", return_value="sqlmesh"),
+        patch("tff.core.cli.get_adapter", return_value=mock_adapter),
+    ):
+        exit_code = main(cli_args)
+        assert exit_code == 0
+        captured = capsys.readouterr()
+        assert "Model Complexity Inspection: analytics.orders" in captured.out
+        assert "Decision Points Breakdown" in captured.out
+
+
+def test_cli_explain_model_complexity_json(capsys: pytest.CaptureFixture[str]) -> None:
+    model = _make_model(
+        name="analytics.orders",
+        path="models/analytics/orders.sql",
+        dialect="duckdb",
+        query="SELECT id, CASE WHEN status = 'shipped' THEN 1 ELSE 0 END FROM raw.orders",
+    )
+
+    mock_adapter = MagicMock()
+    mock_adapter.load_models.return_value = {"analytics.orders": model}
+
+    with (
+        patch("tff.core.cli.detect_provider", return_value="sqlmesh"),
+        patch("tff.core.cli.get_adapter", return_value=mock_adapter),
+    ):
+        exit_code = main(["explain", "sqlcomplexity", "--model", "orders", "--json"])
+        assert exit_code == 0
+        captured = capsys.readouterr()
+        payload = json.loads(captured.out)
+        assert payload["model_name"] == "analytics.orders"
+        assert "metrics" in payload
+        assert "decision_points" in payload
+
+
+def test_cli_explain_model_not_found(capsys: pytest.CaptureFixture[str]) -> None:
+    model = _make_model(name="analytics.orders")
+    mock_adapter = MagicMock()
+    mock_adapter.load_models.return_value = {"analytics.orders": model}
+
+    with (
+        patch("tff.core.cli.detect_provider", return_value="sqlmesh"),
+        patch("tff.core.cli.get_adapter", return_value=mock_adapter),
+    ):
+        exit_code = main(["explain", "sqlcomplexity", "--model", "ordrs"])
+        assert exit_code == 1
+        captured = capsys.readouterr()
+        assert "Model 'ordrs' not found in project." in captured.err
+        assert "Did you mean 'orders'?" in captured.err or "Did you mean 'analytics.orders'?" in captured.err
+
+
+def test_cli_explain_model_no_sql_content(capsys: pytest.CaptureFixture[str]) -> None:
+    model = _make_model(name="analytics.orders", path="non_existent.sql", query=None)
+    mock_adapter = MagicMock()
+    mock_adapter.load_models.return_value = {"analytics.orders": model}
+
+    with (
+        patch("tff.core.cli.detect_provider", return_value="sqlmesh"),
+        patch("tff.core.cli.get_adapter", return_value=mock_adapter),
+    ):
+        exit_code = main(["explain", "sqlcomplexity", "--model", "orders"])
+        assert exit_code == 1
+        captured = capsys.readouterr()
+        assert "No SQL content available for model 'analytics.orders'." in captured.err
+
+
+def test_explain_single_check_sqlcomplexity_tip(capsys: pytest.CaptureFixture[str]) -> None:
+    exit_code = main(["explain", "sqlcomplexity"])
+    assert exit_code == 0
+    captured = capsys.readouterr()
+    assert "To inspect decision points in a specific model, run:" in captured.out
+    assert "tff explain sqlcomplexity --model <model_name>" in captured.out
+
+
+def test_find_model_by_name_edge_cases() -> None:
+    from tff.core.cli import _find_model_by_name
+
+    assert _find_model_by_name({}, "") is None
+    assert _find_model_by_name({}, "orders") is None
+    assert _find_model_by_name({"m": _make_model(name="m")}, "") is None
+
+    # Mismatched key and name
+    models = {"diff_key": _make_model(name="actual_model_name", path="models/m.sql")}
+    assert _find_model_by_name(models, "actual_model_name") is not None
+
+    # Normalized dbt model name
+    models_dbt = {"model.pkg.users": _make_model(name="model.pkg.users", path="models/users.sql")}
+    assert _find_model_by_name(models_dbt, "users") is not None
+
+
+def test_render_complexity_inspection_branches(capsys: pytest.CaptureFixture[str]) -> None:
+    from tff.core.cli import _render_complexity_inspection
+    from tff.core.rules.sql_complexity import ComplexityInspection
+
+    # Test with default console (console=None), val > fail, and no decision points
+    inspection = ComplexityInspection(
+        model_name="orders",
+        path=None,
+        dialect="duckdb",
+        metrics={"decision_points": 30, "cte_count": 0, "join_count": 0, "line_count": 10},
+        thresholds={"decision_points": [15, 25], "cte_count": [8, 12], "join_count": [8, 12], "line_count": [250, 400]},
+        decision_points=[],
+        ctes=[],
+        joins=[],
+        nested_subquery=False,
+        recommendations=["Model has high decision points."],
+    )
+    _render_complexity_inspection(inspection)
+    captured = capsys.readouterr()
+    assert "Model Complexity Inspection: orders" in captured.out
+    assert "No decision points found." in captured.out
+    assert "FAIL" in captured.out
+
+
+def test_handle_model_complexity_explain_adapter_error(capsys: pytest.CaptureFixture[str]) -> None:
+    mock_adapter = MagicMock()
+    mock_adapter.load_models.side_effect = RuntimeError("Adapter crash")
+
+    with (
+        patch("tff.core.cli.detect_provider", return_value="sqlmesh"),
+        patch("tff.core.cli.get_adapter", return_value=mock_adapter),
+    ):
+        # Plain text
+        exit_code = main(["explain", "sqlcomplexity", "--model", "orders"])
+        assert exit_code == 1
+        captured = capsys.readouterr()
+        assert "Failed to load project models: Adapter crash" in captured.err
+
+        # JSON
+        exit_code_json = main(["explain", "sqlcomplexity", "--model", "orders", "--json"])
+        assert exit_code_json == 1
+        captured_json = capsys.readouterr()
+        assert "Failed to load project models: Adapter crash" in captured_json.out
+
+
+def test_handle_model_complexity_explain_missing_model_and_sql_json(capsys: pytest.CaptureFixture[str]) -> None:
+    # 1. Missing model with --json
+    mock_adapter = MagicMock()
+    mock_adapter.load_models.return_value = {"orders": _make_model(name="orders")}
+
+    with (
+        patch("tff.core.cli.detect_provider", return_value="sqlmesh"),
+        patch("tff.core.cli.get_adapter", return_value=mock_adapter),
+    ):
+        exit_code = main(["explain", "sqlcomplexity", "--model", "missing_model", "--json"])
+        assert exit_code == 1
+        captured = capsys.readouterr()
+        payload = json.loads(captured.out)
+        assert payload["error"] == "Model 'missing_model' not found."
+
+    # 2. Model with no SQL with --json
+    model_no_sql = _make_model(name="empty_orders", path="non_existent.sql", query=None)
+    mock_adapter.load_models.return_value = {"empty_orders": model_no_sql}
+    with (
+        patch("tff.core.cli.detect_provider", return_value="sqlmesh"),
+        patch("tff.core.cli.get_adapter", return_value=mock_adapter),
+    ):
+        exit_code = main(["explain", "sqlcomplexity", "--model", "empty_orders", "--json"])
+        assert exit_code == 1
+        captured = capsys.readouterr()
+        payload = json.loads(captured.out)
+        assert "No SQL content available" in payload["error"]
+
+
+def test_handle_explain_multi_check_category_table(capsys: pytest.CaptureFixture[str]) -> None:
+    # Multiple checks in metadata category
+    exit_code = main(["explain", "metadata"])
+    assert exit_code == 0
+    captured = capsys.readouterr()
+    assert "Rule / Check" in captured.out
+    assert "no_missing_owner" in captured.out
+    assert "sql_complexity" in captured.out
+
+
+def test_find_model_by_name_dict_key_normalization() -> None:
+    from tff.core.cli import _find_model_by_name
+
+    model_obj = _make_model(name="custom_alias")
+    # Dict key is qualified dbt name, normalize_model_name strips prefix
+    models = {"model.analytics.stg_orders": model_obj}
+    found = _find_model_by_name(models, "stg_orders")
+    assert found is model_obj
+
+
+def test_handle_model_complexity_explain_default_console(tmp_path: Path) -> None:
+    from tff.core.cli import handle_model_complexity_explain
+
+    sql_file = tmp_path / "model.sql"
+    sql_file.write_text("SELECT 1 FROM tbl", encoding="utf-8")
+
+    # Call without passing console argument (defaults to None, instantiating Console())
+    exit_code = handle_model_complexity_explain(str(sql_file))
+    assert exit_code == 0
+
+
+
+
 
 
 
