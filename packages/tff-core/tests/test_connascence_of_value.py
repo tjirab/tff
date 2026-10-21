@@ -1,5 +1,7 @@
 
 from sqlglot import exp
+import pytest
+from conftest import _make_model
 from tff.core.checks.connascence_of_value import (
     collect_connascence_of_value_findings,
     is_ignored_literal,
@@ -398,6 +400,22 @@ def test_is_ignored_literal_standalone_node():
     node = exp.Literal.number(42)
     assert is_ignored_literal(node) is False
 
+    # Bracket index vs container
+    key_lit = exp.Literal.string("status")
+    exp.Bracket(this=exp.Column(this=exp.Identifier(this="obj")), expressions=[key_lit])
+    assert is_ignored_literal(key_lit) is True
+    # Container literal inside bracket, e.g. 'literal_str'[0]
+    str_lit = exp.Literal.string("hello")
+    exp.Bracket(this=str_lit, expressions=[exp.Literal.number(0)])
+    assert is_ignored_literal(str_lit) is False
+
+    # GetExtract / StructExtract / JSONExtract property
+    exp.GetExtract(this=exp.Column(this=exp.Identifier(this="obj")), expression=key_lit)
+    assert is_ignored_literal(key_lit) is True
+    # If target is container of GetExtract, not ignored
+    exp.GetExtract(this=str_lit, expression=exp.Literal.string("prop"))
+    assert is_ignored_literal(str_lit) is False
+
 
 def test_cov_does_not_rewrite_email_or_regex_at_symbols():
     config = FitnessFunctionsConfig()
@@ -544,5 +562,91 @@ def test_cov_min_string_length_alias():
     for f in findings:
         assert "Literal 'good'" in f.message
         assert "Literal 'abc'" not in f.message
+
+
+@pytest.mark.parametrize(
+    ("dialect", "query"),
+    [
+        ("snowflake", "SELECT jsontext['status']::varchar as pto_status FROM {{ ref('stg_a') }}"),
+        ("snowflake", "SELECT new_value['status'] as status FROM {{ ref('stg_a') }}"),
+        ("snowflake", "SELECT jsontext['user']['status'] FROM {{ ref('stg_a') }}"),
+        ("snowflake", "SELECT GET(jsontext, 'status') FROM {{ ref('stg_a') }}"),
+        ("snowflake", "SELECT STRUCT_EXTRACT(data, 'status') FROM {{ ref('stg_a') }}"),
+        ("bigquery", "SELECT data['status'] as status FROM {{ ref('stg_a') }}"),
+        ("duckdb", "SELECT payload['status'] as status FROM {{ ref('stg_a') }}"),
+        ("duckdb", "SELECT arr[0], arr[1] FROM {{ ref('stg_a') }}"),
+        ("postgres", "SELECT data['status'] FROM {{ ref('stg_a') }}"),
+    ],
+)
+def test_cov_bracket_and_json_field_access_ignored(dialect: str, query: str):
+    config = FitnessFunctionsConfig()
+    config.checks.connascence_of_value.enabled = True
+    config.checks.connascence_of_value.min_occurrences = 2
+
+    model1 = _make_model(
+        name="model1",
+        path="models/marts/model1.sql",
+        dialect=dialect,
+        query=query,
+    )
+    model2 = _make_model(
+        name="model2",
+        path="models/marts/model2.sql",
+        dialect=dialect,
+        query=query,
+    )
+    findings = collect_connascence_of_value_findings({"model1": model1, "model2": model2}, config)
+    assert len(findings) == 0
+
+
+def test_cov_repeated_column_alias_and_comment_not_flagged():
+    config = FitnessFunctionsConfig()
+    config.checks.connascence_of_value.enabled = True
+    config.checks.connascence_of_value.min_occurrences = 2
+
+    query = """
+    -- Primary Key status ...
+    WITH transformed AS (
+        SELECT new_value['status'] AS status FROM {{ ref('stg_a') }}
+    )
+    SELECT status FROM transformed
+    """
+    model1 = _make_model(
+        name="model1",
+        path="models/marts/model1.sql",
+        dialect="snowflake",
+        query=query,
+    )
+    model2 = _make_model(
+        name="model2",
+        path="models/marts/model2.sql",
+        dialect="snowflake",
+        query=query,
+    )
+    findings = collect_connascence_of_value_findings({"model1": model1, "model2": model2}, config)
+    assert len(findings) == 0
+
+
+def test_cov_genuine_literal_in_where_clause_still_flagged():
+    config = FitnessFunctionsConfig()
+    config.checks.connascence_of_value.enabled = True
+    config.checks.connascence_of_value.min_occurrences = 2
+
+    model1 = _make_model(
+        name="model1",
+        path="models/marts/model1.sql",
+        dialect="snowflake",
+        query="SELECT * FROM {{ ref('stg_a') }} WHERE audit_field IN ('status')",
+    )
+    model2 = _make_model(
+        name="model2",
+        path="models/marts/model2.sql",
+        dialect="snowflake",
+        query="SELECT * FROM {{ ref('stg_b') }} WHERE status = 'status'",
+    )
+    findings = collect_connascence_of_value_findings({"model1": model1, "model2": model2}, config)
+    assert len(findings) == 2
+    assert all("Literal 'status'" in f.message for f in findings)
+
 
 

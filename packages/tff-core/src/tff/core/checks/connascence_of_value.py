@@ -70,6 +70,17 @@ def is_ignored_literal(node: exp.Literal) -> bool:
     if isinstance(parent, (exp.Div, exp.IntDiv)) and target == parent.args.get("expression"):
         return True
 
+    # 9. Key or index in subscript/bracket access, e.g. obj['status'], payload[0]
+    if isinstance(parent, exp.Bracket) and target in parent.expressions:
+        return True
+
+    # 10. Semi-structured, struct, or JSON property extraction, e.g. GET(obj, 'status'), STRUCT_EXTRACT(data, 'status')
+    if (
+        isinstance(parent, (exp.StructExtract, exp.GetExtract, exp.JSONExtract, exp.JSONExtractScalar))
+        and target == parent.args.get("expression")
+    ):
+        return True
+
     return False
 
 

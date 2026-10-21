@@ -379,6 +379,8 @@ Architectural checks evaluate the structure, dependencies, and layout of your en
     * Positional string slicing parameters (e.g. `SUBSTRING(name, 1, 10)`, `LEFT(name, 5)`, `RIGHT(name, 5)`).
     * String concatenation operators (`||` / `DPipe`) and `CONCAT_WS` separators.
     * Mathematical divisors in arithmetic division (e.g. `amount / 100.00` cents-to-dollars divisor).
+    * Subscript/bracket key and index access on semi-structured or array fields (e.g. `payload['status']`, `row[0]`).
+    * Semi-structured property and struct extraction functions (e.g. `GET(obj, 'status')`, `STRUCT_EXTRACT(data, 'status')`).
   * Short punctuation characters (`|`, ` `, `-`, `_`, `/`, `:`) are ignored by default and configurable via `ignored_punctuation`.
   * Tiny string literals can be excluded by setting `min_length` (e.g. `min_length: 3` to ignore `'0'`, `'-1'`, `''`, `'3'`).
   * Project-specific literal escapes can be added to `ignored_values`.
