@@ -329,6 +329,9 @@ def fetch_base_scores(
     provider: str = "auto",
     config_path: str = "fitness_functions.yaml",
     checks: list[str] | None = None,
+    dialect: str | None = None,
+    manifest: Path | None = None,
+    workers: int | None = None,
 ) -> dict[str, Any] | None:
     """Attempt to checkout base_ref in a temp git worktree and calculate baseline health score."""
     roots = normalize_project_roots(project_dir)
@@ -408,11 +411,15 @@ def fetch_base_scores(
             base_project_dirs if len(roots) > 1 else base_project_dirs[0]
         )
 
+        resolved_manifest = manifest.resolve() if manifest is not None else None
         return evaluate_project(
             project_root=target_base_root,
             provider=provider,
             config_path=config_path,
             checks=checks,
+            dialect=dialect,
+            manifest=resolved_manifest,
+            workers=workers,
         )
     except Exception as e:
         logger.debug("Error calculating base scores: %s", e)
@@ -495,13 +502,13 @@ def generate_pr_comment_markdown(
         f for f in all_findings if get_finding_fingerprint(f) not in new_fps
     ]
 
-    def _is_untouched(f: dict[str, Any]) -> bool:
+    def _is_untouched(f: dict[str, Any] | LintFinding) -> bool:
         if not touched_files and not touched_stems:
             return base_data is not None
-        m = f.get("model")
+        m = f.model if isinstance(f, LintFinding) else f.get("model")
         if m and m in touched_stems:
             return False
-        p = f.get("path")
+        p = f.path if isinstance(f, LintFinding) else f.get("path")
         if p and Path(p).stem in touched_stems:
             return False
         return True
@@ -519,8 +526,14 @@ def generate_pr_comment_markdown(
     else:
         touched_findings = list(all_findings)
 
-    # 4. Compact Green Pass Card: when all checks pass and no new violations are introduced
-    if passed and not new_violations:
+    # 4. Compact Green Pass Card: when all checks pass, no new violations are introduced,
+    # and no touched models have violations (or if base_data is unavailable, when there are zero violations).
+    if (
+        passed
+        and not new_violations
+        and not touched_findings
+        and (base_data is not None or not all_findings)
+    ):
         score_val = f"{score:.1f}%"
         card_line = f"**tff Quality Gate Passed** — Health Score: {score_val}{delta_compact_str}"
         lines = [
@@ -698,7 +711,8 @@ def generate_pr_comment_markdown(
     if all_findings:
         check_counts: dict[str, int] = defaultdict(int)
         for f in all_findings:
-            check_counts[f.get("check", "")] += 1
+            chk = f.check if isinstance(f, LintFinding) else f.get("check", "")
+            check_counts[chk] += 1
         top_check, top_count = sorted(
             check_counts.items(), key=lambda x: x[1], reverse=True
         )[0]
@@ -983,6 +997,7 @@ def execute_action(args: argparse.Namespace) -> int:
     base_ref = getattr(args, "base_ref", None) or os.environ.get(
         "GITHUB_BASE_REF"
     )
+    base_manifest = getattr(args, "base_manifest", None)
     if getattr(args, "diff_against_base", True) and base_ref:
         base_data = fetch_base_scores(
             project_dir=target_project_root,
@@ -990,6 +1005,9 @@ def execute_action(args: argparse.Namespace) -> int:
             provider=args.provider,
             config_path=args.config,
             checks=checks,
+            dialect=getattr(args, "dialect", None),
+            manifest=base_manifest,
+            workers=getattr(args, "workers", None),
         )
 
     # 5. Generate PR Comment Markdown

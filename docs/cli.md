@@ -178,6 +178,8 @@ tff action [options]
 | `--comment-pr {true,false}` | String | `false` | Create or update idempotent PR summary comment on GitHub. |
 | `--github-token TOKEN` | String | `$GITHUB_TOKEN` | GitHub API token for PR comments. |
 | `--base-ref REF` | String | (auto-detected) | Base branch reference to compare health score against (e.g. `main`). |
+| `--base-manifest PATH` | File Path | (none) | Path to precompiled baseline manifest for base branch comparison (e.g. dbt Cloud production manifest). |
+| `--manifest PATH` | File Path | (none) | Path to precompiled manifest or Dataform `compilation_result.json`. |
 | `--diff-against-base` / `--no-diff-against-base` | Flag | `true` | Compute health score diff vs target branch in temporary worktree. |
 | `--annotations` / `--no-annotations` | Flag | `true` | Emit GitHub Actions workflow command annotations. |
 | `--pr-number NUM` | Integer | (auto-detected) | Pull request number (auto-inferred from `$GITHUB_EVENT_PATH`). |

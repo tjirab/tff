@@ -1177,6 +1177,12 @@ def _main_impl(argv: list[str] | None = None) -> int:
         help="Path to precompiled Dataform compilation_result.json or manifest",
     )
     action_parser.add_argument(
+        "--base-manifest",
+        type=Path,
+        default=None,
+        help="Path to precompiled baseline manifest for base branch comparison (e.g. dbt Cloud production manifest)",
+    )
+    action_parser.add_argument(
         "--json",
         action="store_true",
         help="Output results in JSON format to stdout",

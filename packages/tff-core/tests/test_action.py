@@ -1542,6 +1542,148 @@ def test_generate_pr_comment_pass_with_baseline_debt() -> None:
     assert "tff lint --fix --staged" in md
 
 
+@pytest.mark.parametrize(
+    ("scenario", "base_data_present", "modified_files", "expected_header", "expected_detail"),
+    [
+        (
+            "touched_warning_base_none",
+            False,
+            {"models/int_protolabs_activities.sql"},
+            "## ■ ▲ ● TFF ARCHITECTURE AUDIT",
+            "### Violations Detail (1)",
+        ),
+        (
+            "touched_warning_base_present",
+            True,
+            {"models/int_protolabs_activities.sql"},
+            "## ■ ▲ ● TFF ARCHITECTURE AUDIT",
+            "### Violations Detail (1)",
+        ),
+        (
+            "unmodified_findings_base_none",
+            False,
+            {"models/other_clean_model.sql"},
+            "## ■ ▲ ● TFF ARCHITECTURE AUDIT",
+            "View 1 pre-existing violations across untouched models",
+        ),
+    ],
+)
+def test_generate_pr_comment_suppresses_compact_pass_when_violations_exist(
+    scenario: str,
+    base_data_present: bool,
+    modified_files: set[str],
+    expected_header: str,
+    expected_detail: str,
+) -> None:
+    """Findings on modified models or missing baseline must render the full audit report, not compact pass card."""
+    finding = _make_finding(
+        check="connascence_of_value",
+        severity="warning",
+        message="Connascence of value: literal 'protolabs'",
+        model="int_protolabs_activities",
+        path="models/int_protolabs_activities.sql",
+    )
+    current_data = {
+        "overall_score": 98.9,
+        "findings": [finding],
+        "errors_count": 0,
+        "warnings_count": 1,
+        "category_scores": {},
+    }
+    base_data = (
+        {
+            "overall_score": 98.9,
+            "findings": [finding],
+            "errors_count": 0,
+            "warnings_count": 1,
+        }
+        if base_data_present
+        else None
+    )
+
+    md = generate_pr_comment_markdown(
+        current_data,
+        base_data=base_data,
+        fail_under=80.0,
+        fail_level="error",
+        base_ref="main",
+        modified_files=modified_files,
+    )
+    assert expected_header in md
+    assert expected_detail in md
+    assert "int_protolabs_activities" in md
+    assert not md.startswith(f"{PR_COMMENT_MARKER}\n**tff Quality Gate Passed**")
+
+
+def test_fetch_base_scores_accepts_manifest_dialect_workers(tmp_path: Path) -> None:
+    """Ensure fetch_base_scores forwards dialect, manifest, and workers to evaluate_project."""
+    manifest_file = tmp_path / "base_manifest.json"
+    manifest_file.write_text("{}", encoding="utf-8")
+
+    with patch("tff.core.action.evaluate_project") as mock_eval, patch(
+        "tff.core.action.subprocess.run"
+    ) as mock_run:
+        mock_run.return_value = MagicMock(returncode=0, stdout=str(tmp_path))
+        (tmp_path / "fitness_functions.yaml").write_text("version: 1\n", encoding="utf-8")
+
+        fetch_base_scores(
+            tmp_path,
+            base_ref="main",
+            provider="dbt",
+            dialect="duckdb",
+            manifest=manifest_file,
+            workers=4,
+        )
+        assert mock_eval.called
+        kwargs = mock_eval.call_args.kwargs
+        assert kwargs.get("dialect") == "duckdb"
+        assert kwargs.get("manifest") == manifest_file.resolve()
+        assert kwargs.get("workers") == 4
+
+
+def test_execute_action_forwards_base_manifest(tmp_path: Path) -> None:
+    """Ensure execute_action parses and passes base_manifest to fetch_base_scores."""
+    base_manifest = tmp_path / "base_manifest.json"
+    base_manifest.write_text("{}", encoding="utf-8")
+
+    args = argparse.Namespace(
+        project=tmp_path,
+        projects=None,
+        provider="auto",
+        config="fitness_functions.yaml",
+        checks=None,
+        dialect="duckdb",
+        manifest=None,
+        base_manifest=base_manifest,
+        base_ref="main",
+        diff_against_base=True,
+        workers=2,
+        fail_under=0.0,
+        fail_level="error",
+        only_changed=False,
+        annotations=False,
+        comment_pr="false",
+        json=True,
+    )
+
+    with patch("tff.core.action.evaluate_project") as mock_eval, patch(
+        "tff.core.action.fetch_base_scores"
+    ) as mock_fetch, patch("tff.core.action.get_modified_files", return_value=set()):
+        mock_eval.return_value = {
+            "overall_score": 100.0,
+            "findings": [],
+            "errors_count": 0,
+            "warnings_count": 0,
+        }
+        mock_fetch.return_value = None
+        code = execute_action(args)
+        assert code == 0
+        assert mock_fetch.called
+        assert mock_fetch.call_args.kwargs.get("manifest") == base_manifest
+        assert mock_fetch.call_args.kwargs.get("dialect") == "duckdb"
+        assert mock_fetch.call_args.kwargs.get("workers") == 2
+
+
 def test_generate_pr_comment_zero_emoji_guarantee() -> None:
     """Ensure zero decorative emojis appear in any generated PR comments per revised style guide."""
     prohibited_emojis = ["📁", "🔧", "📈", "📉", "🚀", "🎉", "❌", "⚠️", "✅"]
