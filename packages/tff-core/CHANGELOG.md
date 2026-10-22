@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.27.0](https://github.com/tjirab/tff/compare/tff-core-v0.26.0...tff-core-v0.27.0) (2026-10-22)
+
+
+### Features
+
+* **complexity:** inspect SQL complexity decision points and locations ([#432](https://github.com/tjirab/tff/issues/432)) ([d4f88cf](https://github.com/tjirab/tff/commit/d4f88cf7bc897b1ca2aa06e8517525a053800b7d))
+
+
+### Bug Fixes
+
+* **action:** preserve touched model violations and support baseline manifest in CI action ([#433](https://github.com/tjirab/tff/issues/433)) ([2c1f6a7](https://github.com/tjirab/tff/commit/2c1f6a70daadbea89f9842b18ee4e989c1feded4))
+
 ## [0.26.0](https://github.com/tjirab/tff/compare/tff-core-v0.25.0...tff-core-v0.26.0) (2026-10-21)
 
 
