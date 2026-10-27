@@ -458,17 +458,31 @@ def test_info_command_dbt(tmp_path: Path, capsys):
 
         assert "tff Info" in captured.out
         assert "Project root:" in captured.out
+        assert "tff version:" in captured.out
         assert "Provider:" in captured.out
         assert "dbt" in captured.out
         assert "fitness_functions.yaml" in captured.out
         assert "Contract groups:" in captured.out
         assert "Exclusions:" in captured.out
-        assert "Adapter Versions" in captured.out
-        assert "tff-core" in captured.out
-        assert "dbt integration" in captured.out
+        assert "Adapter Versions" not in captured.out
         assert "Provider Files" in captured.out
         assert "dbt_project.yml" in captured.out
         assert "manifest.json" in captured.out
+
+        exit_code_all = main(
+            [
+                "info",
+                "--project",
+                str(tmp_path),
+                "--config",
+                "fitness_functions.yaml",
+                "--all-adapters",
+            ]
+        )
+        assert exit_code_all == 0
+        captured_all = capsys.readouterr()
+        assert "Adapter Versions" in captured_all.out
+        assert "dbt integration" in captured_all.out
 
 
 def test_info_command_sqlmesh(tmp_path: Path, capsys):
@@ -544,11 +558,21 @@ def test_info_command_with_virtualenv(tmp_path: Path, capsys):
     assert exit_code == 0
     captured = capsys.readouterr()
 
-    # Verify that the versions from the simulated virtualenv are displayed
-    assert "tff-core" in captured.out
+    # Verify that the versions from the simulated virtualenv are displayed in tff version
+    assert "tff version:" in captured.out
     assert "1.2.3" in captured.out
-    assert "sqlmesh integration" in captured.out
-    assert "dbt integration" in captured.out
+    assert "Adapter Versions" not in captured.out
+
+    # Verify that --all-adapters displays the adapter table with virtualenv versions
+    exit_code_all = main(
+        ["info", "--project", str(tmp_path), "--provider", "sqlmesh", "--all-adapters"]
+    )
+    assert exit_code_all == 0
+    captured_all = capsys.readouterr()
+    assert "Adapter Versions" in captured_all.out
+    assert "1.2.3" in captured_all.out
+    assert "sqlmesh integration" in captured_all.out
+    assert "dbt integration" in captured_all.out
 
 
 @patch("tff.core.cli._detect_provider")
@@ -1346,10 +1370,21 @@ def test_cli_info_and_lint_with_plugins_and_custom_adapter(tmp_path: Path, capsy
         ])
         assert exit_code_info == 0
         captured_info = capsys.readouterr()
-        assert "my_custom_engine integration" in captured_info.out
+        assert "my_custom_engine" in captured_info.out
         assert "Plugin:" in captured_info.out
         assert "custom_plugin.py" in captured_info.out
         assert "custom_config.yml" in captured_info.out
+
+        # Test info command with --all-adapters
+        exit_code_info_all = main([
+            "info",
+            "--project", str(tmp_path),
+            "--provider", "my_custom_engine",
+            "--all-adapters",
+        ])
+        assert exit_code_info_all == 0
+        captured_info_all = capsys.readouterr()
+        assert "my_custom_engine integration" in captured_info_all.out
 
         # 2. Test lint command with custom provider
         exit_code_lint = main([
@@ -2238,6 +2273,15 @@ def test_cli_info_json_and_error_diagnostics(
     assert payload["models_loaded"] == 1
     assert payload["external_sources"] == 1
     assert "dbt_project.yml" in payload["files"]
+    assert "adapters" not in payload
+
+    # Test --all-adapters in --json mode
+    exit_code_all = main(["info", "-p", str(tmp_path), "--json", "--all-adapters"])
+    assert exit_code_all == 0
+    payload_all = json.loads(capsys.readouterr().out)
+    assert "adapters" in payload_all
+    assert payload_all["adapters"]["dbt"] == "core"
+    assert payload_all["adapters"]["dataform"] == "core"
 
     # Missing manifest fallback in --json mode
     (tmp_path / "target" / "manifest.json").unlink()
@@ -2627,6 +2671,71 @@ def test_handle_model_complexity_explain_default_console(tmp_path: Path) -> None
     # Call without passing console argument (defaults to None, instantiating Console())
     exit_code = handle_model_complexity_explain(str(sql_file))
     assert exit_code == 0
+
+
+@pytest.mark.parametrize(
+    "provider,has_sqlmesh,sqlmesh_ver,expected_status",
+    [
+        ("dbt", False, "not installed", "dbt [dim](core)[/dim]"),
+        ("dataform", False, "not installed", "dataform [dim](core)[/dim]"),
+        ("sqlmesh", True, "0.236.0", "sqlmesh [dim](sqlmesh 0.236.0 enabled)[/dim]"),
+        ("sqlmesh", True, "not installed", "sqlmesh [dim](sqlmesh extra enabled)[/dim]"),
+        (
+            "sqlmesh",
+            False,
+            "not installed",
+            "sqlmesh [dim red](not enabled - install 'tff-core[sqlmesh]')[/dim red]",
+        ),
+        ("custom_engine", False, "not installed", "custom_engine [dim](plugin)[/dim]"),
+    ],
+)
+def test_format_provider_status_display(
+    provider: str,
+    has_sqlmesh: bool,
+    sqlmesh_ver: str,
+    expected_status: str,
+) -> None:
+    from tff.core.cli import _format_provider_status_display
+
+    with (
+        patch("importlib.util.find_spec", return_value=MagicMock() if has_sqlmesh else None),
+        patch("tff.core.cli._get_package_version", return_value=sqlmesh_ver),
+    ):
+        result = _format_provider_status_display(provider)
+        assert result == expected_status
+
+
+@pytest.mark.parametrize(
+    "pkg_name,dist_name,version,expected",
+    [
+        ("tff-core", "tff-core", "1.2.3", "1.2.3"),
+        ("tff-core", "tff_core", "1.2.3", "1.2.3"),
+        ("missing_pkg", "other_pkg", "1.0.0", "not installed"),
+    ],
+)
+def test_get_package_version_target_site_packages(
+    pkg_name: str, dist_name: str, version: str, expected: str
+) -> None:
+    from tff.core.cli import _get_package_version
+
+    mock_dist = MagicMock()
+    mock_dist.metadata.get.return_value = dist_name
+    mock_dist.version = version
+
+    with patch("importlib.metadata.distributions", return_value=[mock_dist]):
+        res = _get_package_version(pkg_name, target_site_packages=["/fake/site-packages"])
+        assert res == expected
+
+
+def test_get_package_version_fallback_and_error() -> None:
+    from tff.core.cli import _get_package_version
+
+    with patch("importlib.metadata.version", return_value="2.0.0"):
+        assert _get_package_version("tff-core") == "2.0.0"
+
+    with patch("importlib.metadata.version", side_effect=Exception("not found")):
+        assert _get_package_version("unknown-pkg") == "not installed"
+
 
 
 

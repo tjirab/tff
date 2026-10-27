@@ -319,20 +319,23 @@ Verify that your custom rules, checks, and adapters are discovered using the `tf
 tff info
 ```
 
-Output will show the detected provider, active adapter versions, and discovered signature files:
+Output will show the detected provider, active adapter status, and discovered signature files:
 
 ```text
 ● tff Info
   Project root:  /path/to/project
-  Provider:      inhouse
+  tff version:   0.27.0
+  Provider:      inhouse (plugin)
   Config file:   fitness_functions.yaml (found)
-
-● Adapter Versions
-  tff-core              0.19.0
-  inhouse integration   1.0.0 (custom plugin)
 
 ● Provider Files
   pipeline_manifest.yaml  /path/to/project/pipeline_manifest.yaml (found)
+```
+
+To display compatibility and version status for all available adapters, use `--all-adapters`:
+
+```bash
+tff info --all-adapters
 ```
 
 Run your custom rules directly:

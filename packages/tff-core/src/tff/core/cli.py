@@ -270,6 +270,47 @@ def _inject_target_venv(project_roots: Sequence[Path]) -> list[str]:
     return target_site_packages
 
 
+def _get_package_version(
+    pkg: str, target_site_packages: Sequence[str] | None = None
+) -> str:
+    """Retrieve installed version of a package from target virtualenv or active Python environment."""
+    import importlib.metadata as metadata
+
+    try:
+        if target_site_packages:
+            dists = metadata.distributions(path=target_site_packages)
+            for dist in dists:
+                name = dist.metadata.get("Name")
+                if name and (
+                    name == pkg or name.replace("_", "-") == pkg.replace("_", "-")
+                ):
+                    return dist.version
+            return "not installed"
+        return metadata.version(pkg)
+    except Exception:
+        return "not installed"
+
+
+def _format_provider_status_display(
+    provider: str,
+    target_site_packages: Sequence[str] | None = None,
+) -> str:
+    """Return formatted status string for the provider (e.g. 'dbt (core)', 'sqlmesh (sqlmesh 0.236.2 enabled)')."""
+    import importlib.util
+
+    if provider in ("dbt", "dataform"):
+        return f"{provider} [dim](core)[/dim]"
+    if provider == "sqlmesh":
+        has_sqlmesh = importlib.util.find_spec("sqlmesh") is not None
+        if has_sqlmesh:
+            ver = _get_package_version("sqlmesh", target_site_packages)
+            if ver != "not installed":
+                return f"sqlmesh [dim](sqlmesh {ver} enabled)[/dim]"
+            return "sqlmesh [dim](sqlmesh extra enabled)[/dim]"
+        return "sqlmesh [dim red](not enabled - install 'tff-core[sqlmesh]')[/dim red]"
+    return f"{provider} [dim](plugin)[/dim]"
+
+
 class TffArgumentParser(argparse.ArgumentParser):
     _current_argv: list[str] | None = None
     _KNOWN_SUBCOMMANDS: tuple[str, ...] = (
@@ -1247,6 +1288,14 @@ def _main_impl(argv: list[str] | None = None) -> int:
         default=False,
         help="Output configuration and environment information in JSON format to stdout",
     )
+    info_parser.add_argument(
+        "--all-adapters",
+        "--all",
+        action="store_true",
+        default=False,
+        dest="all_adapters",
+        help="Display compatibility and version info for all supported adapters",
+    )
 
 
     # Stats subcommand
@@ -1673,7 +1722,6 @@ def _main_impl(argv: list[str] | None = None) -> int:
     if args.command == "info":
         # Run info command: show diagnostics
         from rich.table import Table
-        import importlib.metadata as metadata
         import json
         import re
 
@@ -1714,8 +1762,15 @@ def _main_impl(argv: list[str] | None = None) -> int:
         table.add_column()
         table.add_column()
 
+        raw_ver = _get_package_version("tff-core", target_site_packages)
+        tff_ver = raw_ver if raw_ver != "not installed" else __version__
+
         table.add_row("  [bold]Project root:[/bold]", str(project_root))
-        table.add_row("  [bold]Provider:[/bold]", provider)
+        table.add_row("  [bold]tff version:[/bold]", f"[bold blue]{tff_ver}[/bold blue]")
+        table.add_row(
+            "  [bold]Provider:[/bold]",
+            _format_provider_status_display(provider, target_site_packages),
+        )
         config_status = (
             "[green]found[/green]" if config_exists else "[red]missing[/red]"
         )
@@ -1759,62 +1814,41 @@ def _main_impl(argv: list[str] | None = None) -> int:
                     console.print(f"[yellow]Failed to load config: {norm_err}[/yellow]")
         if not as_json:
             console.print(table)
+
+        show_all_adapters = getattr(args, "all_adapters", False)
+        if not as_json and show_all_adapters:
             console.print("\n[bold]Adapter Versions[/bold]")
             console.print("─" * width, style="dim")
 
-        def get_version(pkg: str) -> str:
-            try:
-                if target_site_packages:
-                    dists = metadata.distributions(path=target_site_packages)
-                    for dist in dists:
-                        name = dist.metadata.get("Name")
-                        if name and (
-                            name == pkg
-                            or name.replace("_", "-") == pkg.replace("_", "-")
-                        ):
-                            return dist.version
-                    return "not installed"
-                return metadata.version(pkg)
-            except Exception:
-                return "not installed"
+            ver_table = Table(show_header=False, box=None, padding=(0, 2, 0, 0))
+            ver_table.add_column()
+            ver_table.add_column()
 
-        ver_table = Table(show_header=False, box=None, padding=(0, 2, 0, 0))
-        ver_table.add_column()
-        ver_table.add_column()
+            tff_ver_display = f"[bold blue]{tff_ver}[/bold blue]"
+            ver_table.add_row("  [bold]tff-core[/bold]", tff_ver_display)
 
-        def format_ver(pkg: str) -> str:
-            ver = get_version(pkg)
-            if ver == "not installed":
-                return "[dim red]not installed[/dim red]"
-            return f"[bold blue]{ver}[/bold blue]"
+            import importlib.util
 
-        tff_ver = format_ver("tff-core")
-        ver_table.add_row("  [bold]tff-core[/bold]", tff_ver)
+            has_sqlmesh = importlib.util.find_spec("sqlmesh") is not None
+            sqlmesh_status = (
+                f"{tff_ver_display} [dim](sqlmesh extra enabled)[/dim]"
+                if has_sqlmesh
+                else "[dim red]not enabled[/dim red] [dim](install using 'tff-core[sqlmesh]')[/dim]"
+            )
+            ver_table.add_row("  [bold]sqlmesh integration[/bold]", sqlmesh_status)
+            ver_table.add_row(
+                "  [bold]dbt integration[/bold]", f"{tff_ver_display} [dim](core)[/dim]"
+            )
+            ver_table.add_row(
+                "  [bold]dataform integration[/bold]", f"{tff_ver_display} [dim](core)[/dim]"
+            )
+            from tff.core.adapter import get_available_providers
 
-        import importlib.util
-
-        has_sqlmesh = importlib.util.find_spec("sqlmesh") is not None
-
-        sqlmesh_status = (
-            f"{tff_ver} [dim](sqlmesh extra enabled)[/dim]"
-            if has_sqlmesh
-            else "[dim red]not enabled[/dim red] [dim](install using 'tff-core[sqlmesh]')[/dim]"
-        )
-        ver_table.add_row("  [bold]sqlmesh integration[/bold]", sqlmesh_status)
-        ver_table.add_row(
-            "  [bold]dbt integration[/bold]", f"{tff_ver} [dim](core)[/dim]"
-        )
-        ver_table.add_row(
-            "  [bold]dataform integration[/bold]", f"{tff_ver} [dim](core)[/dim]"
-        )
-        from tff.core.adapter import get_available_providers
-
-        for prov in get_available_providers():
-            if prov not in ("dbt", "sqlmesh", "dataform"):
-                ver_table.add_row(
-                    f"  [bold]{prov} integration[/bold]", "[bold blue]plugin[/bold blue]"
-                )
-        if not as_json:
+            for prov in get_available_providers():
+                if prov not in ("dbt", "sqlmesh", "dataform"):
+                    ver_table.add_row(
+                        f"  [bold]{prov} integration[/bold]", "[bold blue]plugin[/bold blue]"
+                    )
             console.print(ver_table)
 
         try:
@@ -1827,7 +1861,6 @@ def _main_impl(argv: list[str] | None = None) -> int:
 
         diag_files = adapter.get_diagnostic_files(project_roots)
         if as_json:
-            raw_ver = get_version("tff-core")
             models_loaded = 0
             external_sources = 0
             try:
@@ -1840,7 +1873,7 @@ def _main_impl(argv: list[str] | None = None) -> int:
             except Exception:
                 pass
             info_payload: dict[str, Any] = {
-                "version": raw_ver if raw_ver != "not installed" else __version__,
+                "version": tff_ver,
                 "provider": provider,
                 "project_root": str(project_root),
                 "projects": [str(p) for p in project_roots],
@@ -1853,6 +1886,23 @@ def _main_impl(argv: list[str] | None = None) -> int:
                 "models_loaded": models_loaded,
                 "external_sources": external_sources,
             }
+            if show_all_adapters:
+                import importlib.util
+
+                has_sqlmesh = importlib.util.find_spec("sqlmesh") is not None
+                from tff.core.adapter import get_available_providers
+
+                info_payload["adapters"] = {
+                    "tff-core": tff_ver,
+                    "dbt": "core",
+                    "dataform": "core",
+                    "sqlmesh": "enabled" if has_sqlmesh else "not enabled",
+                    **{
+                        p: "plugin"
+                        for p in get_available_providers()
+                        if p not in ("dbt", "sqlmesh", "dataform")
+                    },
+                }
             print(json.dumps(info_payload, indent=2))
             return 0
 

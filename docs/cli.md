@@ -314,12 +314,18 @@ tff info [options]
 | `--project PATH`, `-p PATH` | Directory Path | `.` (current dir) | Project root directory (can be specified multiple times for multi-repo projects). |
 | `--config PATH` | File Path | `fitness_functions.yaml` | Path to fitness functions config. |
 | `--provider` | `auto`, `dbt`, `sqlmesh`, `dataform` | `auto` | Pipeline engine provider. |
+| `--all-adapters`, `--all` | Flag | `false` | Display compatibility and version info for all supported adapters. |
+| `--json` | Flag | `false` | Output configuration and environment information in JSON format to stdout. |
 | `--debug` | Flag | `false` | Enable verbose debug logging output to stderr. |
 
 ### Examples
 
 ```bash
+# View active environment and project diagnostics
 tff info
+
+# View all supported adapters and compatibility
+tff info --all-adapters
 ```
 
 ---
