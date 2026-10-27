@@ -46,13 +46,17 @@ def test_action_yml_exists_and_matches_composite_manifest() -> None:
     root_manifest = _REPO_ROOT / "action.yml"
     sub_manifest = _REPO_ROOT / ".github" / "actions" / "tff" / "action.yml"
 
-    assert root_manifest.is_file(), "action.yml must exist at repository root for Marketplace publication"
+    assert root_manifest.is_file(), (
+        "action.yml must exist at repository root for Marketplace publication"
+    )
     assert sub_manifest.is_file(), ".github/actions/tff/action.yml must exist"
 
     root_content = yaml.safe_load(root_manifest.read_text(encoding="utf-8"))
     sub_content = yaml.safe_load(sub_manifest.read_text(encoding="utf-8"))
 
-    assert root_content == sub_content, "action.yml and .github/actions/tff/action.yml must match"
+    assert root_content == sub_content, (
+        "action.yml and .github/actions/tff/action.yml must match"
+    )
 
     # Verify required Marketplace metadata
     assert root_content["name"] == "tff - Transformation Fitness Functions"
@@ -182,8 +186,13 @@ def test_evaluate_pass_fail() -> None:
         "errors_count": 0,
         "warnings_count": 2,
     }
-    assert evaluate_pass_fail(data_warnings, fail_under=80.0, fail_level="error") is True
-    assert evaluate_pass_fail(data_warnings, fail_under=80.0, fail_level="warning") is False
+    assert (
+        evaluate_pass_fail(data_warnings, fail_under=80.0, fail_level="error") is True
+    )
+    assert (
+        evaluate_pass_fail(data_warnings, fail_under=80.0, fail_level="warning")
+        is False
+    )
 
     data_errors = {
         "overall_score": 85.0,
@@ -202,7 +211,9 @@ def test_generate_pr_comment_markdown_clean_run() -> None:
         "warnings_count": 0,
         "category_scores": {"Connascence of Name (CoN)": 100.0},
     }
-    md = generate_pr_comment_markdown(clean_data, base_data=None, fail_under=80.0, fail_level="error")
+    md = generate_pr_comment_markdown(
+        clean_data, base_data=None, fail_under=80.0, fail_level="error"
+    )
     assert PR_COMMENT_MARKER in md
     assert "100.0%" in md
     assert "**tff Quality Gate Passed** — Health Score: 100.0%" in md
@@ -230,7 +241,10 @@ def test_generate_pr_comment_markdown_with_diff_and_violations() -> None:
         ],
         "errors_count": 1,
         "warnings_count": 1,
-        "category_scores": {"Connascence of Name (CoN)": 90.0, "Connascence of Algorithm (CoA)": 94.0},
+        "category_scores": {
+            "Connascence of Name (CoN)": 90.0,
+            "Connascence of Algorithm (CoA)": 94.0,
+        },
     }
     base_data = {
         "overall_score": 88.0,
@@ -247,7 +261,13 @@ def test_generate_pr_comment_markdown_with_diff_and_violations() -> None:
         "warnings_count": 1,
     }
 
-    md = generate_pr_comment_markdown(current_data, base_data=base_data, fail_under=80.0, fail_level="error", base_ref="main")
+    md = generate_pr_comment_markdown(
+        current_data,
+        base_data=base_data,
+        fail_under=80.0,
+        fail_level="error",
+        base_ref="main",
+    )
     assert PR_COMMENT_MARKER in md
     assert "+4.0% vs main" in md
     assert "Changes vs `main`" in md
@@ -282,7 +302,13 @@ def test_generate_pr_comment_markdown_negative_diff_and_truncation() -> None:
         "errors_count": 0,
         "warnings_count": 0,
     }
-    md = generate_pr_comment_markdown(current_data, base_data=base_data, fail_under=80.0, fail_level="error", base_ref="main")
+    md = generate_pr_comment_markdown(
+        current_data,
+        base_data=base_data,
+        fail_under=80.0,
+        fail_level="error",
+        base_ref="main",
+    )
     assert "-5.0% vs main" in md
     assert "FAILED" in md
     assert "more violations truncated" in md
@@ -302,7 +328,13 @@ def test_generate_pr_comment_markdown_zero_diff() -> None:
         "errors_count": 0,
         "warnings_count": 0,
     }
-    md = generate_pr_comment_markdown(current_data, base_data=base_data, fail_under=80.0, fail_level="error", base_ref="main")
+    md = generate_pr_comment_markdown(
+        current_data,
+        base_data=base_data,
+        fail_under=80.0,
+        fail_level="error",
+        base_ref="main",
+    )
     assert "**tff Quality Gate Passed** — Health Score: 85.0% (0.0%)" in md
 
 
@@ -313,16 +345,20 @@ def test_post_or_update_pr_comment_no_token() -> None:
 
 def test_post_or_update_pr_comment_create_new() -> None:
     mock_list_resp = MagicMock()
-    mock_list_resp.read.return_value = json.dumps([
-        {"id": 101, "body": "some other comment"},
-    ]).encode("utf-8")
+    mock_list_resp.read.return_value = json.dumps(
+        [
+            {"id": 101, "body": "some other comment"},
+        ]
+    ).encode("utf-8")
     mock_list_resp.__enter__.return_value = mock_list_resp
 
     mock_post_resp = MagicMock()
     mock_post_resp.read.return_value = json.dumps({"id": 999}).encode("utf-8")
     mock_post_resp.__enter__.return_value = mock_post_resp
 
-    with patch("urllib.request.urlopen", side_effect=[mock_list_resp, mock_post_resp]) as mock_open:
+    with patch(
+        "urllib.request.urlopen", side_effect=[mock_list_resp, mock_post_resp]
+    ) as mock_open:
         cid = post_or_update_pr_comment("fake_token", "owner/repo", 42, "hello world")
         assert cid == 999
         assert mock_open.call_count == 2
@@ -333,17 +369,23 @@ def test_post_or_update_pr_comment_create_new() -> None:
 
 def test_post_or_update_pr_comment_update_existing() -> None:
     mock_list_resp = MagicMock()
-    mock_list_resp.read.return_value = json.dumps([
-        {"id": 202, "body": f"old report\n{PR_COMMENT_MARKER}"},
-    ]).encode("utf-8")
+    mock_list_resp.read.return_value = json.dumps(
+        [
+            {"id": 202, "body": f"old report\n{PR_COMMENT_MARKER}"},
+        ]
+    ).encode("utf-8")
     mock_list_resp.__enter__.return_value = mock_list_resp
 
     mock_patch_resp = MagicMock()
     mock_patch_resp.read.return_value = json.dumps({"id": 202}).encode("utf-8")
     mock_patch_resp.__enter__.return_value = mock_patch_resp
 
-    with patch("urllib.request.urlopen", side_effect=[mock_list_resp, mock_patch_resp]) as mock_open:
-        cid = post_or_update_pr_comment("fake_token", "owner/repo", 42, "updated report")
+    with patch(
+        "urllib.request.urlopen", side_effect=[mock_list_resp, mock_patch_resp]
+    ) as mock_open:
+        cid = post_or_update_pr_comment(
+            "fake_token", "owner/repo", 42, "updated report"
+        )
         assert cid == 202
         assert mock_open.call_count == 2
         req2 = mock_open.call_args_list[1][0][0]
@@ -375,10 +417,12 @@ def test_detect_pr_context(tmp_path: Path) -> None:
     # 1. From event file
     event_file = tmp_path / "event.json"
     event_file.write_text(
-        json.dumps({
-            "pull_request": {"number": 88},
-            "repository": {"full_name": "tjirab/tff"},
-        }),
+        json.dumps(
+            {
+                "pull_request": {"number": 88},
+                "repository": {"full_name": "tjirab/tff"},
+            }
+        ),
         encoding="utf-8",
     )
     with patch.dict(os.environ, {"GITHUB_EVENT_PATH": str(event_file)}, clear=True):
@@ -427,7 +471,13 @@ def test_fetch_base_scores_failures(tmp_path: Path) -> None:
     with patch("subprocess.run") as mock_run:
         mock_res1 = MagicMock(stdout=str(_REPO_ROOT) + "\n", returncode=0)
         mock_res_fail = MagicMock(stderr="fatal: not a valid object", returncode=1)
-        mock_run.side_effect = [mock_res1, MagicMock(returncode=0), mock_res_fail, mock_res_fail, MagicMock(returncode=0)]
+        mock_run.side_effect = [
+            mock_res1,
+            MagicMock(returncode=0),
+            mock_res_fail,
+            mock_res_fail,
+            MagicMock(returncode=0),
+        ]
         scores = fetch_base_scores(_MINIMAL_DBT, "nonexistent-branch")
         assert scores is None
 
@@ -464,7 +514,9 @@ def test_execute_action_cli_json_and_annotations(tmp_path: Path) -> None:
         assert "**tff Quality Gate Passed**" in summary_file.read_text(encoding="utf-8")
 
 
-def test_execute_action_cli_with_annotations_and_findings(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+def test_execute_action_cli_with_annotations_and_findings(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
     args = argparse.Namespace(
         project=_MINIMAL_DBT,
         provider="auto",
@@ -490,7 +542,6 @@ def test_execute_action_cli_with_annotations_and_findings(tmp_path: Path, capsys
         assert "::error" in captured.out
 
 
-
 def test_execute_action_cli_fail_and_pr_comment(tmp_path: Path) -> None:
     args = argparse.Namespace(
         project=_MINIMAL_DBT,
@@ -512,7 +563,9 @@ def test_execute_action_cli_fail_and_pr_comment(tmp_path: Path) -> None:
     )
 
     out_file = tmp_path / "output.txt"
-    with patch("tff.core.action.post_or_update_pr_comment", return_value=777) as mock_post:
+    with patch(
+        "tff.core.action.post_or_update_pr_comment", return_value=777
+    ) as mock_post:
         with patch.dict(os.environ, {"GITHUB_OUTPUT": str(out_file)}):
             code = execute_action(args)
             assert code == 1
@@ -542,22 +595,38 @@ def test_cli_action_subcommand(capsys: pytest.CaptureFixture[str]) -> None:
     assert "Run tff checks" in captured.out
 
     # Test passing execution
-    assert main([
-        "action",
-        "--project", str(_MINIMAL_DBT),
-        "--checks", "layer_integrity",
-        "--no-annotations",
-        "--fail-under", "0",
-        "--fail-level", "error",
-    ]) == 0
+    assert (
+        main(
+            [
+                "action",
+                "--project",
+                str(_MINIMAL_DBT),
+                "--checks",
+                "layer_integrity",
+                "--no-annotations",
+                "--fail-under",
+                "0",
+                "--fail-level",
+                "error",
+            ]
+        )
+        == 0
+    )
 
     # Test failing execution
-    assert main([
-        "action",
-        "--project", str(_MINIMAL_DBT),
-        "--no-annotations",
-        "--fail-under", "99.0",
-    ]) == 1
+    assert (
+        main(
+            [
+                "action",
+                "--project",
+                str(_MINIMAL_DBT),
+                "--no-annotations",
+                "--fail-under",
+                "99.0",
+            ]
+        )
+        == 1
+    )
 
 
 def test_fetch_base_scores_success(tmp_path: Path) -> None:
@@ -566,9 +635,12 @@ def test_fetch_base_scores_success(tmp_path: Path) -> None:
     proj_dir.mkdir(parents=True)
 
     dummy_scores = {"overall_score": 90.0, "findings": []}
-    with patch("subprocess.run") as mock_run, patch(
-        "tff.core.action.evaluate_project", return_value=dummy_scores
-    ) as mock_eval:
+    with (
+        patch("subprocess.run") as mock_run,
+        patch(
+            "tff.core.action.evaluate_project", return_value=dummy_scores
+        ) as mock_eval,
+    ):
         mock_run.side_effect = lambda cmd, **kwargs: (
             MagicMock(stdout=str(tmp_path / "repo") + "\n", returncode=0)
             if "rev-parse" in cmd
@@ -621,13 +693,20 @@ def test_fetch_base_scores_general_exception(tmp_path: Path) -> None:
 
 def test_post_or_update_pr_comment_patch_exception() -> None:
     mock_list_resp = MagicMock()
-    mock_list_resp.read.return_value = json.dumps([
-        {"id": 303, "body": f"old report\n{PR_COMMENT_MARKER}"},
-    ]).encode("utf-8")
+    mock_list_resp.read.return_value = json.dumps(
+        [
+            {"id": 303, "body": f"old report\n{PR_COMMENT_MARKER}"},
+        ]
+    ).encode("utf-8")
     mock_list_resp.__enter__.return_value = mock_list_resp
 
-    with patch("urllib.request.urlopen", side_effect=[mock_list_resp, RuntimeError("network drop")]):
-        cid = post_or_update_pr_comment("fake_token", "owner/repo", 42, "updated report")
+    with patch(
+        "urllib.request.urlopen",
+        side_effect=[mock_list_resp, RuntimeError("network drop")],
+    ):
+        cid = post_or_update_pr_comment(
+            "fake_token", "owner/repo", 42, "updated report"
+        )
         assert cid is None
 
 
@@ -641,7 +720,9 @@ def test_detect_pr_context_corrupted_json(tmp_path: Path) -> None:
 
 
 def test_detect_pr_context_invalid_ref() -> None:
-    with patch.dict(os.environ, {"GITHUB_REF": "refs/pull/notanumber/merge"}, clear=True):
+    with patch.dict(
+        os.environ, {"GITHUB_REF": "refs/pull/notanumber/merge"}, clear=True
+    ):
         repo, pr = detect_pr_context()
         assert repo is None
         assert pr is None
@@ -649,20 +730,26 @@ def test_detect_pr_context_invalid_ref() -> None:
 
 def test_github_env_helpers_exceptions() -> None:
     # Invalid paths triggering IOError
-    with patch.dict(os.environ, {"GITHUB_OUTPUT": "/nonexistent_dir/impossible/out.txt"}):
+    with patch.dict(
+        os.environ, {"GITHUB_OUTPUT": "/nonexistent_dir/impossible/out.txt"}
+    ):
         write_github_output("key", "value")
 
-    with patch.dict(os.environ, {"GITHUB_STEP_SUMMARY": "/nonexistent_dir/impossible/summary.md"}):
+    with patch.dict(
+        os.environ, {"GITHUB_STEP_SUMMARY": "/nonexistent_dir/impossible/summary.md"}
+    ):
         write_github_step_summary("summary content")
 
 
 def test_execute_action_cli_with_base_diff_and_auto_pr(tmp_path: Path) -> None:
     event_file = tmp_path / "event.json"
     event_file.write_text(
-        json.dumps({
-            "pull_request": {"number": 12},
-            "repository": {"full_name": "tjirab/tff"},
-        }),
+        json.dumps(
+            {
+                "pull_request": {"number": 12},
+                "repository": {"full_name": "tjirab/tff"},
+            }
+        ),
         encoding="utf-8",
     )
 
@@ -692,9 +779,13 @@ def test_execute_action_cli_with_base_diff_and_auto_pr(tmp_path: Path) -> None:
         "warnings_count": 0,
     }
 
-    with patch("tff.core.action.fetch_base_scores", return_value=dummy_base_data), patch(
-        "tff.core.action.post_or_update_pr_comment", return_value=888
-    ) as mock_post, patch.dict(os.environ, {"GITHUB_EVENT_PATH": str(event_file)}):
+    with (
+        patch("tff.core.action.fetch_base_scores", return_value=dummy_base_data),
+        patch(
+            "tff.core.action.post_or_update_pr_comment", return_value=888
+        ) as mock_post,
+        patch.dict(os.environ, {"GITHUB_EVENT_PATH": str(event_file)}),
+    ):
         code = execute_action(args)
         assert code == 0
         mock_post.assert_called_once()
@@ -702,7 +793,9 @@ def test_execute_action_cli_with_base_diff_and_auto_pr(tmp_path: Path) -> None:
         assert mock_post.call_args[1]["pr_number"] == 12
 
 
-def test_execute_action_comment_pr_no_context(capsys: pytest.CaptureFixture[str]) -> None:
+def test_execute_action_comment_pr_no_context(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
     args = argparse.Namespace(
         project=_MINIMAL_DBT,
         provider="auto",
@@ -726,7 +819,10 @@ def test_execute_action_comment_pr_no_context(capsys: pytest.CaptureFixture[str]
         code = execute_action(args)
         assert code == 0
         captured = capsys.readouterr()
-        assert "Notice: comment-pr is enabled, but could not detect pull request context" in captured.err
+        assert (
+            "Notice: comment-pr is enabled, but could not detect pull request context"
+            in captured.err
+        )
 
 
 def test_action_manifest_has_only_changed() -> None:
@@ -739,9 +835,15 @@ def test_action_manifest_has_only_changed() -> None:
 def test_get_modified_files(tmp_path: Path) -> None:
     # 1. Success on origin/{base_ref}...HEAD
     with patch("subprocess.run") as mock_run:
-        mock_run.return_value = MagicMock(returncode=0, stdout="models/marts/dim_customers.sql\nmodels/staging/stg_orders.sql\n")
+        mock_run.return_value = MagicMock(
+            returncode=0,
+            stdout="models/marts/dim_customers.sql\nmodels/staging/stg_orders.sql\n",
+        )
         files = get_modified_files(tmp_path, base_ref="main")
-        assert files == {"models/marts/dim_customers.sql", "models/staging/stg_orders.sql"}
+        assert files == {
+            "models/marts/dim_customers.sql",
+            "models/staging/stg_orders.sql",
+        }
 
     # 2. Fallback to {base_ref}...HEAD
     with patch("subprocess.run") as mock_run:
@@ -767,7 +869,11 @@ def test_get_modified_files(tmp_path: Path) -> None:
 
 def test_is_finding_in_files() -> None:
     # Empty set
-    finding = {"check": "c", "model": "dim_customers", "path": "models/marts/dim_customers.sql"}
+    finding = {
+        "check": "c",
+        "model": "dim_customers",
+        "path": "models/marts/dim_customers.sql",
+    }
     assert is_finding_in_files(finding, set(), _REPO_ROOT, _REPO_ROOT) is False
 
     # Match by exact path
@@ -779,12 +885,19 @@ def test_is_finding_in_files() -> None:
     assert is_finding_in_files(finding, modified_stem, _REPO_ROOT, _REPO_ROOT) is True
 
     # Project root outside repo root (triggers except Exception fallback)
-    assert is_finding_in_files(
-        {"check": "c", "model": "dim_customers", "path": "models/marts/dim_customers.sql"},
-        {"models/marts/dim_customers.sql"},
-        Path("/some/arbitrary/project"),
-        Path("/other/repo"),
-    ) is True
+    assert (
+        is_finding_in_files(
+            {
+                "check": "c",
+                "model": "dim_customers",
+                "path": "models/marts/dim_customers.sql",
+            },
+            {"models/marts/dim_customers.sql"},
+            Path("/some/arbitrary/project"),
+            Path("/other/repo"),
+        )
+        is True
+    )
 
     # No match
     modified_other = {"models/staging/stg_orders.sql"}
@@ -795,7 +908,13 @@ def test_generate_pr_comment_markdown_only_changed() -> None:
     current_data = {
         "overall_score": 95.0,
         "findings": [
-            {"check": "c", "severity": "error", "message": "msg", "model": "m", "path": "p.sql"}
+            {
+                "check": "c",
+                "severity": "error",
+                "message": "msg",
+                "model": "m",
+                "path": "p.sql",
+            }
         ],
         "errors_count": 1,
         "warnings_count": 0,
@@ -836,7 +955,10 @@ def test_execute_action_cli_only_changed_filters_violations(tmp_path: Path) -> N
         json=False,
     )
 
-    with patch("tff.core.action.get_modified_files", return_value={"models/marts/marketing/dim_customers.sql"}):
+    with patch(
+        "tff.core.action.get_modified_files",
+        return_value={"models/marts/marketing/dim_customers.sql"},
+    ):
         with patch("tff.core.action.render_health_report"):
             code = execute_action(args)
             # Only dim_customers violation remains, which has error severity -> fails with 1
@@ -873,13 +995,20 @@ def test_execute_action_cli_only_changed_no_matching_files() -> None:
 
 def test_cli_only_changed_flag() -> None:
     with patch("tff.core.action.get_modified_files", return_value={"README.md"}):
-        assert main([
-            "action",
-            "--project", str(_MINIMAL_DBT),
-            "--only-changed",
-            "--no-annotations",
-            "--fail-under", "0",
-        ]) == 0
+        assert (
+            main(
+                [
+                    "action",
+                    "--project",
+                    str(_MINIMAL_DBT),
+                    "--only-changed",
+                    "--no-annotations",
+                    "--fail-under",
+                    "0",
+                ]
+            )
+            == 0
+        )
 
 
 def test_execute_action_git_rev_parse_failure() -> None:
@@ -942,9 +1071,14 @@ def test_execute_action_annotations_with_modified_files(capsys) -> None:
         manifest=None,
         json=False,
     )
-    with patch("subprocess.run", side_effect=RuntimeError("git rev-parse error")), \
-         patch("tff.core.action.get_modified_files", return_value={"models/staging/stg_orders.sql"}), \
-         patch("tff.core.action.render_health_report"):
+    with (
+        patch("subprocess.run", side_effect=RuntimeError("git rev-parse error")),
+        patch(
+            "tff.core.action.get_modified_files",
+            return_value={"models/staging/stg_orders.sql"},
+        ),
+        patch("tff.core.action.render_health_report"),
+    ):
         code = execute_action(args)
         assert code == 1
         captured = capsys.readouterr()
@@ -980,9 +1114,14 @@ def test_execute_action_only_changed_scopes_models() -> None:
         manifest=None,
         json=False,
     )
-    with patch("subprocess.run", side_effect=RuntimeError("git rev-parse error")), \
-         patch("tff.core.action.get_modified_files", return_value={"models/staging/stg_orders.sql"}), \
-         patch("tff.core.action.render_health_report"):
+    with (
+        patch("subprocess.run", side_effect=RuntimeError("git rev-parse error")),
+        patch(
+            "tff.core.action.get_modified_files",
+            return_value={"models/staging/stg_orders.sql"},
+        ),
+        patch("tff.core.action.render_health_report"),
+    ):
         code = execute_action(args)
         # Should execute successfully and evaluate scoped models
         assert code in (0, 1)
@@ -1008,10 +1147,18 @@ def test_execute_action_only_changed_scope_exception() -> None:
         manifest=None,
         json=False,
     )
-    with patch("subprocess.run", side_effect=RuntimeError("git rev-parse error")), \
-         patch("tff.core.action.get_modified_files", return_value={"models/staging/stg_orders.sql"}), \
-         patch("tff.core.adapter.get_adapter", side_effect=RuntimeError("Adapter load error")), \
-         patch("tff.core.action.render_health_report"):
+    with (
+        patch("subprocess.run", side_effect=RuntimeError("git rev-parse error")),
+        patch(
+            "tff.core.action.get_modified_files",
+            return_value={"models/staging/stg_orders.sql"},
+        ),
+        patch(
+            "tff.core.adapter.get_adapter",
+            side_effect=RuntimeError("Adapter load error"),
+        ),
+        patch("tff.core.action.render_health_report"),
+    ):
         code = execute_action(args)
         assert code in (0, 1)
 
@@ -1028,7 +1175,9 @@ def test_evaluate_project_multiple_roots(tmp_path: Path) -> None:
     assert res["project_roots"] == [str(p1), str(p2)]
 
 
-def test_execute_action_multi_project_json(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+def test_execute_action_multi_project_json(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
     p1 = tmp_path / "proj1"
     p2 = tmp_path / "proj2"
     shutil.copytree(_MINIMAL_DBT, p1)
@@ -1061,7 +1210,9 @@ def test_execute_action_multi_project_json(tmp_path: Path, capsys: pytest.Captur
     assert data["current"]["models_checked"] == 8
 
 
-def test_execute_action_multi_project_annotations(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+def test_execute_action_multi_project_annotations(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
     p1 = tmp_path / "proj1"
     p2 = tmp_path / "proj2"
     shutil.copytree(_MINIMAL_DBT, p1)
@@ -1117,8 +1268,10 @@ def test_execute_action_multi_project_only_changed(tmp_path: Path) -> None:
         only_changed=True,
     )
     # 1. When modified file is unrelated (e.g. README.md) -> 0 violations gated -> passes with 0
-    with patch("subprocess.run") as mock_subproc, \
-         patch("tff.core.action.get_modified_files", return_value={"README.md"}):
+    with (
+        patch("subprocess.run") as mock_subproc,
+        patch("tff.core.action.get_modified_files", return_value={"README.md"}),
+    ):
         mock_subproc.side_effect = lambda cmd, **kwargs: (
             MagicMock(stdout=str(tmp_path.resolve()) + "\n", returncode=0)
             if "rev-parse" in cmd
@@ -1128,8 +1281,13 @@ def test_execute_action_multi_project_only_changed(tmp_path: Path) -> None:
         assert code == 0
 
     # 2. When modified file belongs to proj2 model with violations -> fails with 1
-    with patch("subprocess.run") as mock_subproc, \
-         patch("tff.core.action.get_modified_files", return_value={"proj2/models/staging/stg_orders.sql"}):
+    with (
+        patch("subprocess.run") as mock_subproc,
+        patch(
+            "tff.core.action.get_modified_files",
+            return_value={"proj2/models/staging/stg_orders.sql"},
+        ),
+    ):
         mock_subproc.side_effect = lambda cmd, **kwargs: (
             MagicMock(stdout=str(tmp_path.resolve()) + "\n", returncode=0)
             if "rev-parse" in cmd
@@ -1145,9 +1303,13 @@ def test_fetch_base_scores_multi_project(tmp_path: Path) -> None:
     p1.mkdir()
     p2.mkdir()
     dummy_scores = {"overall_score": 95.0, "findings": []}
-    with patch("subprocess.run") as mock_subproc, \
-         patch("tempfile.mkdtemp", return_value=str(tmp_path / "temp-base")), \
-         patch("tff.core.action.evaluate_project", return_value=dummy_scores) as mock_eval:
+    with (
+        patch("subprocess.run") as mock_subproc,
+        patch("tempfile.mkdtemp", return_value=str(tmp_path / "temp-base")),
+        patch(
+            "tff.core.action.evaluate_project", return_value=dummy_scores
+        ) as mock_eval,
+    ):
         mock_subproc.side_effect = lambda cmd, **kwargs: (
             MagicMock(stdout=str(tmp_path.resolve()) + "\n", returncode=0)
             if "rev-parse" in cmd
@@ -1169,8 +1331,10 @@ def test_fetch_base_scores_multi_project_none_exist(tmp_path: Path) -> None:
     p2 = tmp_path / "proj2"
     p1.mkdir()
     p2.mkdir()
-    with patch("subprocess.run") as mock_subproc, \
-         patch("tempfile.mkdtemp", return_value=str(tmp_path / "temp-base-empty")):
+    with (
+        patch("subprocess.run") as mock_subproc,
+        patch("tempfile.mkdtemp", return_value=str(tmp_path / "temp-base-empty")),
+    ):
         mock_subproc.side_effect = lambda cmd, **kwargs: (
             MagicMock(stdout=str(tmp_path.resolve()) + "\n", returncode=0)
             if "rev-parse" in cmd
@@ -1185,9 +1349,13 @@ def test_fetch_base_scores_multi_project_outside_repo(tmp_path: Path) -> None:
     p1.mkdir(parents=True)
     p_outside = Path("/other/outside/directory")
     dummy_scores = {"overall_score": 95.0, "findings": []}
-    with patch("subprocess.run") as mock_subproc, \
-         patch("tempfile.mkdtemp", return_value=str(tmp_path / "temp-base")), \
-         patch("tff.core.action.evaluate_project", return_value=dummy_scores) as mock_eval:
+    with (
+        patch("subprocess.run") as mock_subproc,
+        patch("tempfile.mkdtemp", return_value=str(tmp_path / "temp-base")),
+        patch(
+            "tff.core.action.evaluate_project", return_value=dummy_scores
+        ) as mock_eval,
+    ):
         mock_subproc.side_effect = lambda cmd, **kwargs: (
             MagicMock(stdout=str((tmp_path / "repo").resolve()) + "\n", returncode=0)
             if "rev-parse" in cmd
@@ -1320,7 +1488,10 @@ def test_is_autofixable_dynamic_registry(is_fixable: bool, expected: bool) -> No
     try:
         dict_finding = {"check": custom_id, "message": "Custom violation"}
         obj_finding = _make_finding(
-            check=custom_id, severity="error", message="Custom violation", model="orders"
+            check=custom_id,
+            severity="error",
+            message="Custom violation",
+            model="orders",
         )
         assert is_autofixable(dict_finding) is expected
         assert is_autofixable(obj_finding) is expected
@@ -1543,7 +1714,13 @@ def test_generate_pr_comment_pass_with_baseline_debt() -> None:
 
 
 @pytest.mark.parametrize(
-    ("scenario", "base_data_present", "modified_files", "expected_header", "expected_detail"),
+    (
+        "scenario",
+        "base_data_present",
+        "modified_files",
+        "expected_header",
+        "expected_detail",
+    ),
     [
         (
             "touched_warning_base_none",
@@ -1620,11 +1797,14 @@ def test_fetch_base_scores_accepts_manifest_dialect_workers(tmp_path: Path) -> N
     manifest_file = tmp_path / "base_manifest.json"
     manifest_file.write_text("{}", encoding="utf-8")
 
-    with patch("tff.core.action.evaluate_project") as mock_eval, patch(
-        "tff.core.action.subprocess.run"
-    ) as mock_run:
+    with (
+        patch("tff.core.action.evaluate_project") as mock_eval,
+        patch("tff.core.action.subprocess.run") as mock_run,
+    ):
         mock_run.return_value = MagicMock(returncode=0, stdout=str(tmp_path))
-        (tmp_path / "fitness_functions.yaml").write_text("version: 1\n", encoding="utf-8")
+        (tmp_path / "fitness_functions.yaml").write_text(
+            "version: 1\n", encoding="utf-8"
+        )
 
         fetch_base_scores(
             tmp_path,
@@ -1666,9 +1846,11 @@ def test_execute_action_forwards_base_manifest(tmp_path: Path) -> None:
         json=True,
     )
 
-    with patch("tff.core.action.evaluate_project") as mock_eval, patch(
-        "tff.core.action.fetch_base_scores"
-    ) as mock_fetch, patch("tff.core.action.get_modified_files", return_value=set()):
+    with (
+        patch("tff.core.action.evaluate_project") as mock_eval,
+        patch("tff.core.action.fetch_base_scores") as mock_fetch,
+        patch("tff.core.action.get_modified_files", return_value=set()),
+    ):
         mock_eval.return_value = {
             "overall_score": 100.0,
             "findings": [],
@@ -1740,6 +1922,17 @@ def test_format_finding_row_types() -> None:
     row_dict = _format_finding_row(finding_dict)
     assert "`WRN`" in row_dict
     assert "`dim_users`" in row_dict
+
+    finding_newlines = _make_finding(
+        check="columnnames",
+        severity="warning",
+        message="Invalid\r\ncolumn\rwith\nwhitespace",
+        model="stg_orders",
+    )
+    row_newlines = _format_finding_row(finding_newlines)
+    assert "\r" not in row_newlines
+    assert "\n" not in row_newlines
+    assert "Invalid column with whitespace" in row_newlines
 
 
 def test_generate_pr_comment_collapsible_baseline_debt_truncation() -> None:
@@ -1897,9 +2090,13 @@ def test_execute_action_invokes_get_modified_files_once_and_sanitizes_git_env(
         "GIT_INDEX_FILE": "/fake/index",
         "GIT_COMMON_DIR": "/fake/common",
     }
-    with patch.dict(os.environ, leaked_env), patch("subprocess.run") as mock_subproc, patch(
-        "tff.core.action.get_modified_files", return_value={"README.md"}
-    ) as mock_get_modified:
+    with (
+        patch.dict(os.environ, leaked_env),
+        patch("subprocess.run") as mock_subproc,
+        patch(
+            "tff.core.action.get_modified_files", return_value={"README.md"}
+        ) as mock_get_modified,
+    ):
         mock_subproc.return_value = MagicMock(
             returncode=0, stdout=str(_REPO_ROOT) + "\n"
         )
@@ -1911,4 +2108,3 @@ def test_execute_action_invokes_get_modified_files_once_and_sanitizes_git_env(
         assert called_env is not None
         for var in leaked_env:
             assert var not in called_env
-

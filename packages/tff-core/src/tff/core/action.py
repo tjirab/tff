@@ -19,7 +19,11 @@ import urllib.request
 from tff.core.adapter import detect_provider, get_adapter, normalize_project_roots
 from tff.core.config import load_fitness_config
 from tff.core.formatters import emit_github_annotations
-from tff.core.health import _get_action_phrase, calculate_health_scores, render_health_report
+from tff.core.health import (
+    _get_action_phrase,
+    calculate_health_scores,
+    render_health_report,
+)
 from tff.core.registry import registry
 from tff.core.report import CONNASCENCE_CATEGORIES, LintFinding, _format_connascence_tag
 from tff.core.utils.paths import is_finding_in_files
@@ -34,10 +38,7 @@ AUTOFIXABLE_CHECKS = {
 }
 
 REMEDIATION_SNIPPET = (
-    "```bash\n"
-    "# Remediate autofixable violations locally:\n"
-    "tff lint --fix --staged\n"
-    "```"
+    "```bash\n# Remediate autofixable violations locally:\ntff lint --fix --staged\n```"
 )
 
 
@@ -56,7 +57,6 @@ def is_autofixable(finding: dict[str, Any] | LintFinding) -> bool:
         c.lower().replace("-", "").replace("_", "").replace(" ", "")
         for c in AUTOFIXABLE_CHECKS
     }
-
 
 
 def _format_check_cell(check_name: str) -> str:
@@ -100,10 +100,14 @@ def _format_finding_row(f: dict[str, Any] | LintFinding) -> str:
     sig = "!" if sev_raw == "error" else "*"
     chk = _format_check_cell(chk_raw)
     coup = f"`{_get_coupling_tag(chk_raw)}`"
-    msg = msg_raw.replace("\n", " ").replace("|", "\\|")
+    msg = (
+        msg_raw.replace("\r\n", " ")
+        .replace("\r", " ")
+        .replace("\n", " ")
+        .replace("|", "\\|")
+    )
     autofix_badge = " `[Autofixable]`" if is_autofixable(f) else ""
     return f"| {sev} | `{target}` | {chk} | {coup} | {sig} {msg}{autofix_badge} |"
-
 
 
 def parse_bool(val: Any) -> bool:
@@ -159,30 +163,26 @@ def compare_findings(
         if get_finding_fingerprint(f) not in base_fps
     ]
     resolved_findings = [
-        _to_dict(f)
-        for f in base_findings
-        if get_finding_fingerprint(f) not in curr_fps
+        _to_dict(f) for f in base_findings if get_finding_fingerprint(f) not in curr_fps
     ]
     return new_findings, resolved_findings
 
 
-_SANITIZED_GIT_ENV_VARS = frozenset({
-    "GIT_DIR",
-    "GIT_WORK_TREE",
-    "GIT_INDEX_FILE",
-    "GIT_COMMON_DIR",
-    "GIT_PREFIX",
-    "GIT_OBJECT_DIRECTORY",
-})
+_SANITIZED_GIT_ENV_VARS = frozenset(
+    {
+        "GIT_DIR",
+        "GIT_WORK_TREE",
+        "GIT_INDEX_FILE",
+        "GIT_COMMON_DIR",
+        "GIT_PREFIX",
+        "GIT_OBJECT_DIRECTORY",
+    }
+)
 
 
 def _git_clean_env() -> dict[str, str]:
     """Return a copy of os.environ with git override variables removed."""
-    return {
-        k: v
-        for k, v in os.environ.items()
-        if k not in _SANITIZED_GIT_ENV_VARS
-    }
+    return {k: v for k, v in os.environ.items() if k not in _SANITIZED_GIT_ENV_VARS}
 
 
 def get_modified_files(
@@ -520,9 +520,7 @@ def generate_pr_comment_markdown(
         for f in pre_existing:
             if _is_untouched(f):
                 untouched_pre_existing.append(f)
-        touched_findings = [
-            f for f in all_findings if f not in untouched_pre_existing
-        ]
+        touched_findings = [f for f in all_findings if f not in untouched_pre_existing]
     else:
         touched_findings = list(all_findings)
 
@@ -579,9 +577,7 @@ def generate_pr_comment_markdown(
         diff_summary_lines.append(
             f"- **Resolved Violations**: {len(resolved_violations)}"
         )
-        diff_summary_lines.append(
-            f"- **New Violations**: {len(new_violations)}"
-        )
+        diff_summary_lines.append(f"- **New Violations**: {len(new_violations)}")
 
     if only_changed:
         threshold_line = (
@@ -629,12 +625,14 @@ def generate_pr_comment_markdown(
             lines.append(REMEDIATION_SNIPPET)
             lines.append("")
 
-    lines.extend([
-        "| OVERALL HEALTH | STATUS | DEFECTS | ERRORS | WARNINGS |",
-        "| :---: | :---: | :---: | :---: | :---: |",
-        f"| {score_display} | {status_badge} | {total_violations} | {errors_count} | {warnings_count} |\n",
-        threshold_line,
-    ])
+    lines.extend(
+        [
+            "| OVERALL HEALTH | STATUS | DEFECTS | ERRORS | WARNINGS |",
+            "| :---: | :---: | :---: | :---: | :---: |",
+            f"| {score_display} | {status_badge} | {total_violations} | {errors_count} | {warnings_count} |\n",
+            threshold_line,
+        ]
+    )
 
     if diff_summary_lines:
         lines.extend(diff_summary_lines)
@@ -659,9 +657,7 @@ def generate_pr_comment_markdown(
 
     # Violations detail (touched findings or all findings if not diff-mode)
     detail_findings = (
-        touched_findings
-        if (base_data is not None or modified_files)
-        else all_findings
+        touched_findings if (base_data is not None or modified_files) else all_findings
     )
     if not detail_findings and not untouched_pre_existing:
         lines.append("### AUDIT LEDGER")
@@ -723,9 +719,7 @@ def generate_pr_comment_markdown(
                 f"> **ACTION**: {action_verb} to raise score above {target:.1f}%.\n"
             )
         else:
-            lines.append(
-                f"> **ACTION**: {action_verb} to improve project fitness.\n"
-            )
+            lines.append(f"> **ACTION**: {action_verb} to improve project fitness.\n")
     else:
         lines.append(
             "> **ACTION**: All fitness functions satisfied. Fitness score is optimal.\n"
@@ -899,7 +893,9 @@ def execute_action(args: argparse.Namespace) -> int:
         checks = [c.strip() for c in args.checks.split(",") if c.strip()]
 
     only_changed = parse_bool(getattr(args, "only_changed", False))
-    diff_base = getattr(args, "base_ref", None) or os.environ.get("GITHUB_BASE_REF") or "main"
+    diff_base = (
+        getattr(args, "base_ref", None) or os.environ.get("GITHUB_BASE_REF") or "main"
+    )
     try:
         res = subprocess.run(
             ["git", "rev-parse", "--show-toplevel"],
@@ -922,8 +918,16 @@ def execute_action(args: argparse.Namespace) -> int:
         from tff.core.adapter import get_adapter
 
         try:
-            adapter = get_adapter(args.provider if args.provider != "auto" else detect_provider(target_project_root))
-            loaded_models = adapter.load_models(target_project_root, dialect=getattr(args, "dialect", None), manifest_path=getattr(args, "manifest", None))
+            adapter = get_adapter(
+                args.provider
+                if args.provider != "auto"
+                else detect_provider(target_project_root)
+            )
+            loaded_models = adapter.load_models(
+                target_project_root,
+                dialect=getattr(args, "dialect", None),
+                manifest_path=getattr(args, "manifest", None),
+            )
             scoped_models = map_files_to_model_names(
                 models=loaded_models,
                 files=modified_files,
@@ -994,9 +998,7 @@ def execute_action(args: argparse.Namespace) -> int:
 
     # 4. Base branch diff calculation if requested
     base_data: dict[str, Any] | None = None
-    base_ref = getattr(args, "base_ref", None) or os.environ.get(
-        "GITHUB_BASE_REF"
-    )
+    base_ref = getattr(args, "base_ref", None) or os.environ.get("GITHUB_BASE_REF")
     base_manifest = getattr(args, "base_manifest", None)
     if getattr(args, "diff_against_base", True) and base_ref:
         base_data = fetch_base_scores(
@@ -1070,9 +1072,7 @@ def execute_action(args: argparse.Namespace) -> int:
             repo = repo or detected_repo
             pr_number = pr_number or detected_pr
 
-        token = getattr(args, "github_token", None) or os.environ.get(
-            "GITHUB_TOKEN"
-        )
+        token = getattr(args, "github_token", None) or os.environ.get("GITHUB_TOKEN")
         if repo and pr_number:
             comment_id = post_or_update_pr_comment(
                 token=token or "",
@@ -1102,9 +1102,7 @@ def execute_action(args: argparse.Namespace) -> int:
     write_github_output("errors-count", errors_count)
     write_github_output("warnings-count", warnings_count)
     write_github_output("passed", "true" if passed else "false")
-    write_github_output(
-        "comment-id", str(comment_id) if comment_id is not None else ""
-    )
+    write_github_output("comment-id", str(comment_id) if comment_id is not None else "")
 
     if not passed:
         if args.fail_under > 0.0 and overall_score < args.fail_under:

@@ -14,7 +14,6 @@ from tff.core.utils.paths import model_path_relative, get_layer_from_path
 COV_DOCS_URL = "https://tff.readthedocs.io/en/latest/rules_and_checks/#connascence-of-value-connascence_of_value"
 
 
-
 def get_literal_value(node: exp.Literal) -> str:
     val = node.this
     p = node.parent
@@ -23,6 +22,22 @@ def get_literal_value(node: exp.Literal) -> str:
     if isinstance(p, exp.Neg):
         return f"-{val}"
     return val
+
+
+def format_literal_display(val: str) -> str:
+    """Format a literal value safely for display in messages and reports.
+
+    Escapes newlines, carriage returns, and control characters to prevent breaking
+    markdown formatting, CLI output, or PR comment tables.
+    """
+    return (
+        val.replace("\r\n", "\\n")
+        .replace("\n", "\\n")
+        .replace("\r", "\\r")
+        .replace("\t", "\\t")
+        .replace("\f", "\\f")
+        .replace("\v", "\\v")
+    )
 
 
 def is_ignored_literal(node: exp.Literal) -> bool:
@@ -45,7 +60,9 @@ def is_ignored_literal(node: exp.Literal) -> bool:
         return False
 
     # 3. Round / Trunc precision/decimals argument, e.g. round(val, 2)
-    if isinstance(parent, (exp.Round, exp.Trunc)) and target == parent.args.get("decimals"):
+    if isinstance(parent, (exp.Round, exp.Trunc)) and target == parent.args.get(
+        "decimals"
+    ):
         return True
 
     # 4. SplitPart delimiter or part index, e.g. split_part(email, '@', 2)
@@ -55,7 +72,9 @@ def is_ignored_literal(node: exp.Literal) -> bool:
     # 5. Positional slicing/substring functions
     if isinstance(parent, exp.Substring) and target != parent.this:
         return True
-    if isinstance(parent, (exp.Left, exp.Right)) and target == parent.args.get("expression"):
+    if isinstance(parent, (exp.Left, exp.Right)) and target == parent.args.get(
+        "expression"
+    ):
         return True
 
     # 6. String concatenation operator (||)
@@ -67,7 +86,9 @@ def is_ignored_literal(node: exp.Literal) -> bool:
         return True
 
     # 8. Divisor in arithmetic division, e.g. amount / 100.00 (cents to dollars divisor)
-    if isinstance(parent, (exp.Div, exp.IntDiv)) and target == parent.args.get("expression"):
+    if isinstance(parent, (exp.Div, exp.IntDiv)) and target == parent.args.get(
+        "expression"
+    ):
         return True
 
     # 9. Key or index in subscript/bracket access, e.g. obj['status'], payload[0]
@@ -75,10 +96,14 @@ def is_ignored_literal(node: exp.Literal) -> bool:
         return True
 
     # 10. Semi-structured, struct, or JSON property extraction, e.g. GET(obj, 'status'), STRUCT_EXTRACT(data, 'status')
-    if (
-        isinstance(parent, (exp.StructExtract, exp.GetExtract, exp.JSONExtract, exp.JSONExtractScalar))
-        and target == parent.args.get("expression")
-    ):
+    if isinstance(
+        parent,
+        (exp.StructExtract, exp.GetExtract, exp.JSONExtract, exp.JSONExtractScalar),
+    ) and target == parent.args.get("expression"):
+        return True
+
+    # 11. Initcap delimiter argument (synthetically attached by sqlglot or explicit), e.g. initcap(name), initcap(name, ' -')
+    if isinstance(parent, exp.Initcap) and target != parent.this:
         return True
 
     return False
@@ -119,7 +144,11 @@ def collect_connascence_of_value_findings(
                 val = get_literal_value(node)
                 val_lower = val.lower()
 
-                if node.is_string and rule_config.min_length > 0 and len(val) < rule_config.min_length:
+                if (
+                    node.is_string
+                    and rule_config.min_length > 0
+                    and len(val) < rule_config.min_length
+                ):
                     continue
 
                 if val_lower in ignored_values_lower:
@@ -140,11 +169,13 @@ def collect_connascence_of_value_findings(
                     continue
                 seen_in_model.add(val_lower)
 
-                value_occurrences[val_lower].append({
-                    "model": model.name,
-                    "path": model.path,
-                    "val": val,
-                })
+                value_occurrences[val_lower].append(
+                    {
+                        "model": model.name,
+                        "path": model.path,
+                        "val": val,
+                    }
+                )
 
     findings: list[LintFinding] = []
     # Identify values that occur across at least min_occurrences unique models
@@ -152,19 +183,20 @@ def collect_connascence_of_value_findings(
         if len(occurrences) >= rule_config.min_occurrences:
             for i, occ in enumerate(occurrences):
                 other_occs = [
-                    f"model '{o['model']}'"
-                    for j, o in enumerate(occurrences)
-                    if j != i
+                    f"model '{o['model']}'" for j, o in enumerate(occurrences) if j != i
                 ]
                 if len(other_occs) <= 2:
                     others_str = " and ".join(other_occs)
                 else:
                     others_str = ", ".join(other_occs[:-1]) + f", and {other_occs[-1]}"
 
-                severity_type = "error" if rule_config.severity == "error" else "warning"
+                severity_type = (
+                    "error" if rule_config.severity == "error" else "warning"
+                )
 
+                display_val = format_literal_display(occ["val"])
                 message = (
-                    f"Literal '{occ['val']}' is duplicated in {others_str} (CoV). "
+                    f"Literal '{display_val}' is duplicated in {others_str} (CoV). "
                     f"Centralize via macro, seed, or upstream model. See {COV_DOCS_URL}"
                 )
 
