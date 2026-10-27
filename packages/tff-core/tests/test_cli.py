@@ -2735,6 +2735,8 @@ def test_format_provider_status_display(
     [
         ("tff-core", "tff-core", "1.2.3", "1.2.3"),
         ("tff-core", "tff_core", "1.2.3", "1.2.3"),
+        ("sqlmesh", "SQLMesh", "0.236.2", "0.236.2"),
+        ("tff-core", "TFF_CORE", "1.2.3", "1.2.3"),
         ("missing_pkg", "other_pkg", "1.0.0", "not installed"),
     ],
 )
@@ -2760,6 +2762,70 @@ def test_get_package_version_fallback_and_error() -> None:
 
     with patch("importlib.metadata.version", side_effect=Exception("not found")):
         assert _get_package_version("unknown-pkg") == "not installed"
+
+
+@pytest.mark.parametrize(
+    "has_spec,pkg_ver,expected",
+    [
+        (False, "not installed", (False, None)),
+        (True, "0.236.2", (True, "0.236.2")),
+        (True, "not installed", (True, None)),
+    ],
+)
+def test_get_sqlmesh_info(has_spec: bool, pkg_ver: str, expected: tuple[bool, str | None]) -> None:
+    from tff.core.cli import _get_sqlmesh_info
+
+    with (
+        patch("importlib.util.find_spec", return_value=MagicMock() if has_spec else None),
+        patch("tff.core.cli._get_package_version", return_value=pkg_ver),
+    ):
+        assert _get_sqlmesh_info() == expected
+
+
+def test_get_sqlmesh_info_find_spec_error() -> None:
+    from tff.core.cli import _get_sqlmesh_info
+
+    with patch("importlib.util.find_spec", side_effect=Exception("find_spec error")):
+        assert _get_sqlmesh_info() == (False, None)
+
+
+@pytest.mark.parametrize(
+    "has_sqlmesh,sqlmesh_ver,expected_text,expected_json_adapter",
+    [
+        (True, "0.236.2", "0.236.2", "0.236.2"),
+        (True, None, "(sqlmesh extra enabled)", "enabled"),
+        (False, None, "not enabled", "not enabled"),
+    ],
+)
+def test_info_all_adapters_sqlmesh_variations(
+    tmp_path: Path,
+    capsys,
+    has_sqlmesh: bool,
+    sqlmesh_ver: str | None,
+    expected_text: str,
+    expected_json_adapter: str,
+) -> None:
+    (tmp_path / "dbt_project.yml").touch()
+    (tmp_path / "fitness_functions.yaml").write_text("version: 1\n")
+
+    with (
+        patch("tff.core.cli._get_sqlmesh_info", return_value=(has_sqlmesh, sqlmesh_ver)),
+        patch("tff.core.cli._get_adapter") as mock_adapter,
+    ):
+        mock_adapter.return_value.get_diagnostic_files.return_value = []
+        mock_adapter.return_value.load_models.return_value = {}
+
+        # Test text output
+        code_text = main(["info", "-p", str(tmp_path), "--all-adapters"])
+        assert code_text == 0
+        out_text = capsys.readouterr().out
+        assert expected_text in out_text
+
+        # Test JSON output
+        code_json = main(["info", "-p", str(tmp_path), "--json", "--all-adapters"])
+        assert code_json == 0
+        payload = json.loads(capsys.readouterr().out)
+        assert payload["adapters"]["sqlmesh"] == expected_json_adapter
 
 
 

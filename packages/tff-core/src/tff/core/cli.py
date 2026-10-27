@@ -278,12 +278,11 @@ def _get_package_version(
 
     try:
         if target_site_packages:
+            pkg_norm = pkg.lower().replace("_", "-")
             dists = metadata.distributions(path=target_site_packages)
             for dist in dists:
                 name = dist.metadata.get("Name")
-                if name and (
-                    name == pkg or name.replace("_", "-") == pkg.replace("_", "-")
-                ):
+                if name and name.lower().replace("_", "-") == pkg_norm:
                     return dist.version
             return "not installed"
         return metadata.version(pkg)
@@ -291,21 +290,36 @@ def _get_package_version(
         return "not installed"
 
 
+def _get_sqlmesh_info(
+    target_site_packages: Sequence[str] | None = None,
+) -> tuple[bool, str | None]:
+    """Check if sqlmesh is available and return (is_available, version_or_none)."""
+    import importlib.util
+
+    try:
+        has_sqlmesh = importlib.util.find_spec("sqlmesh") is not None
+    except Exception:
+        has_sqlmesh = False
+
+    if not has_sqlmesh:
+        return False, None
+
+    ver = _get_package_version("sqlmesh", target_site_packages)
+    return True, ver if ver != "not installed" else None
+
+
 def _format_provider_status_display(
     provider: str,
     target_site_packages: Sequence[str] | None = None,
 ) -> str:
     """Return formatted status string for the provider (e.g. 'dbt (core)', 'sqlmesh (sqlmesh 0.236.2 enabled)')."""
-    import importlib.util
-
     if provider in ("dbt", "dataform"):
         return f"{provider} [dim](core)[/dim]"
     if provider == "sqlmesh":
-        has_sqlmesh = importlib.util.find_spec("sqlmesh") is not None
+        has_sqlmesh, sqlmesh_ver = _get_sqlmesh_info(target_site_packages)
         if has_sqlmesh:
-            ver = _get_package_version("sqlmesh", target_site_packages)
-            if ver != "not installed":
-                return f"sqlmesh [dim](sqlmesh {ver} enabled)[/dim]"
+            if sqlmesh_ver:
+                return f"sqlmesh [dim](sqlmesh {sqlmesh_ver} enabled)[/dim]"
             return "sqlmesh [dim](sqlmesh extra enabled)[/dim]"
         return "sqlmesh [dim red](not enabled - install 'tff-core[sqlmesh]')[/dim red]"
     return f"{provider} [dim](plugin)[/dim]"
@@ -1834,14 +1848,18 @@ def _main_impl(argv: list[str] | None = None) -> int:
             tff_ver_display = f"[bold blue]{tff_ver}[/bold blue]"
             ver_table.add_row("  [bold]tff-core[/bold]", tff_ver_display)
 
-            import importlib.util
-
-            has_sqlmesh = importlib.util.find_spec("sqlmesh") is not None
-            sqlmesh_status = (
-                f"{tff_ver_display} [dim](sqlmesh extra enabled)[/dim]"
-                if has_sqlmesh
-                else "[dim red]not enabled[/dim red] [dim](install using 'tff-core[sqlmesh]')[/dim]"
-            )
+            has_sqlmesh, sqlmesh_ver = _get_sqlmesh_info(target_site_packages)
+            if has_sqlmesh:
+                if sqlmesh_ver:
+                    sqlmesh_status = (
+                        f"[bold blue]{sqlmesh_ver}[/bold blue] [dim](sqlmesh extra enabled)[/dim]"
+                    )
+                else:
+                    sqlmesh_status = f"{tff_ver_display} [dim](sqlmesh extra enabled)[/dim]"
+            else:
+                sqlmesh_status = (
+                    "[dim red]not enabled[/dim red] [dim](install using 'tff-core[sqlmesh]')[/dim]"
+                )
             ver_table.add_row("  [bold]sqlmesh integration[/bold]", sqlmesh_status)
             ver_table.add_row(
                 "  [bold]dbt integration[/bold]", f"{tff_ver_display} [dim](core)[/dim]"
@@ -1894,16 +1912,18 @@ def _main_impl(argv: list[str] | None = None) -> int:
                 "external_sources": external_sources,
             }
             if show_all_adapters:
-                import importlib.util
-
-                has_sqlmesh = importlib.util.find_spec("sqlmesh") is not None
+                has_sqlmesh, sqlmesh_ver = _get_sqlmesh_info(target_site_packages)
                 from tff.core.adapter import get_available_providers
 
                 info_payload["adapters"] = {
                     "tff-core": tff_ver,
                     "dbt": "core",
                     "dataform": "core",
-                    "sqlmesh": "enabled" if has_sqlmesh else "not enabled",
+                    "sqlmesh": (
+                        sqlmesh_ver
+                        if sqlmesh_ver
+                        else ("enabled" if has_sqlmesh else "not enabled")
+                    ),
                     **{
                         p: "plugin"
                         for p in get_available_providers()
