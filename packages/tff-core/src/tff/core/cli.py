@@ -278,12 +278,11 @@ def _get_package_version(
 
     try:
         if target_site_packages:
+            pkg_norm = pkg.lower().replace("_", "-")
             dists = metadata.distributions(path=target_site_packages)
             for dist in dists:
                 name = dist.metadata.get("Name")
-                if name and (
-                    name == pkg or name.replace("_", "-") == pkg.replace("_", "-")
-                ):
+                if name and name.lower().replace("_", "-") == pkg_norm:
                     return dist.version
             return "not installed"
         return metadata.version(pkg)

@@ -2735,6 +2735,8 @@ def test_format_provider_status_display(
     [
         ("tff-core", "tff-core", "1.2.3", "1.2.3"),
         ("tff-core", "tff_core", "1.2.3", "1.2.3"),
+        ("sqlmesh", "SQLMesh", "0.236.2", "0.236.2"),
+        ("tff-core", "TFF_CORE", "1.2.3", "1.2.3"),
         ("missing_pkg", "other_pkg", "1.0.0", "not installed"),
     ],
 )
