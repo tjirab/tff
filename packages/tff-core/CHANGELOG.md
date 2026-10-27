@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.28.0](https://github.com/tjirab/tff/compare/tff-core-v0.27.0...tff-core-v0.28.0) (2026-10-27)
+
+
+### Features
+
+* **cli:** simplify tff info adapter display and add --all-adapters ([#440](https://github.com/tjirab/tff/issues/440)) ([58e91da](https://github.com/tjirab/tff/commit/58e91dae9ef1ab218dcbaa9465ff52023bc8e399))
+
+
+### Bug Fixes
+
+* **cli:** normalize package name casing in _get_package_version ([#449](https://github.com/tjirab/tff/issues/449)) ([0d4d5c9](https://github.com/tjirab/tff/commit/0d4d5c930a72738915edc0acb53c7819e9c66e68))
+* **complexity:** preserve default thresholds and handle unconfigured metrics in explain ([#445](https://github.com/tjirab/tff/issues/445)) ([dd069cb](https://github.com/tjirab/tff/commit/dd069cb1ead9c941bc7a9367ac81f07808e36a6f))
+* **core:** ignore initcap delimiters in cov and escape multiline literals ([#438](https://github.com/tjirab/tff/issues/438)) ([46adbc0](https://github.com/tjirab/tff/commit/46adbc0f69e5035958b5010acfc568239bf0e836))
+
 ## [0.27.0](https://github.com/tjirab/tff/compare/tff-core-v0.26.0...tff-core-v0.27.0) (2026-10-22)
 
 
