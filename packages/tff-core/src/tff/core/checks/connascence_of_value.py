@@ -24,13 +24,14 @@ def get_literal_value(node: exp.Literal) -> str:
     return val
 
 
-def format_literal_display(val: str) -> str:
+def format_literal_display(val: str, max_len: int = 80) -> str:
     """Format a literal value safely for display in messages and reports.
 
     Escapes newlines, carriage returns, and control characters to prevent breaking
-    markdown formatting, CLI output, or PR comment tables.
+    markdown formatting, CLI output, or PR comment tables. Truncates strings longer
+    than `max_len` to prevent table bloat and payload size issues.
     """
-    return (
+    escaped = (
         val.replace("\r\n", "\\n")
         .replace("\n", "\\n")
         .replace("\r", "\\r")
@@ -38,6 +39,9 @@ def format_literal_display(val: str) -> str:
         .replace("\f", "\\f")
         .replace("\v", "\\v")
     )
+    if max_len > 0 and len(escaped) > max_len:
+        return f"{escaped[:max_len]}..."
+    return escaped
 
 
 def is_ignored_literal(node: exp.Literal) -> bool:

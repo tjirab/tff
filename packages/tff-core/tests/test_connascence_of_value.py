@@ -757,3 +757,45 @@ def test_cov_multiline_literal_escaped_in_message():
         assert "\n" not in f.message
         assert "\r" not in f.message
         assert "Literal 'line1\\nline2\\r\\ttab'" in f.message
+
+
+def test_format_literal_display_truncation():
+    from tff.core.checks.connascence_of_value import format_literal_display
+
+    short_val = "short string"
+    assert format_literal_display(short_val) == "short string"
+
+    long_val = "A" * 100
+    formatted = format_literal_display(long_val, max_len=80)
+    assert len(formatted) == 83  # 80 chars + "..."
+    assert formatted == ("A" * 80) + "..."
+
+    # Zero or negative max_len disables truncation
+    assert format_literal_display(long_val, max_len=0) == long_val
+
+
+def test_cov_long_literal_truncated_in_finding_message():
+    config = FitnessFunctionsConfig()
+    config.checks.connascence_of_value.enabled = True
+    config.checks.connascence_of_value.min_occurrences = 2
+
+    long_str = "x" * 120
+    model1 = _make_model(
+        name="model1",
+        path="models/marts/model1.sql",
+        dialect="postgres",
+        query=f"SELECT * FROM {{{{ ref('stg_a') }}}} WHERE note = '{long_str}'",
+    )
+    model2 = _make_model(
+        name="model2",
+        path="models/marts/model2.sql",
+        dialect="postgres",
+        query=f"SELECT * FROM {{{{ ref('stg_b') }}}} WHERE note = '{long_str}'",
+    )
+    findings = collect_connascence_of_value_findings(
+        {"model1": model1, "model2": model2}, config
+    )
+    assert len(findings) == 2
+    expected_preview = ("x" * 80) + "..."
+    for f in findings:
+        assert f"Literal '{expected_preview}' is duplicated" in f.message
