@@ -523,6 +523,7 @@ def test_inspect_sql_complexity_where_boolean_branches_recommendation() -> None:
 
     insp = inspect_sql_complexity(sql, thresholds={"decision_points": [15, 25]})
     assert insp.metrics["decision_points"] >= 19
+    assert insp.thresholds["cte_count"] == [8, 12]
     assert any("boolean filter condition" in r for r in insp.recommendations)
     assert any(j.kind == "INNER" for j in insp.joins)
 

@@ -252,13 +252,9 @@ def inspect_sql_complexity(
     Tracks cyclomatic decision points (CASE, WHEN, IF, WHERE AND/OR), CTEs,
     and JOIN operations with line numbers and source snippets.
     """
-    if thresholds is None:
-        thresholds = {
-            "decision_points": [15, 25],
-            "cte_count": [8, 12],
-            "join_count": [8, 12],
-            "line_count": [250, 400],
-        }
+    from tff.core.config import DEFAULT_SQL_COMPLEXITY_THRESHOLDS
+
+    thresholds = {**DEFAULT_SQL_COMPLEXITY_THRESHOLDS, **(thresholds or {})}
 
     # If SQL has a MODEL (...) block, preserve line count with newlines
     preserved_sql = MODEL_BLOCK_PATTERN.sub(
@@ -377,10 +373,10 @@ def inspect_sql_complexity(
 
     # Recommendations
     recommendations: list[str] = []
-    dp_threshold = thresholds.get("decision_points", [15, 25])
-    cte_threshold = thresholds.get("cte_count", [8, 12])
-    join_threshold = thresholds.get("join_count", [8, 12])
-    line_threshold = thresholds.get("line_count", [250, 400])
+    dp_threshold = thresholds.get("decision_points", DEFAULT_SQL_COMPLEXITY_THRESHOLDS["decision_points"])
+    cte_threshold = thresholds.get("cte_count", DEFAULT_SQL_COMPLEXITY_THRESHOLDS["cte_count"])
+    join_threshold = thresholds.get("join_count", DEFAULT_SQL_COMPLEXITY_THRESHOLDS["join_count"])
+    line_threshold = thresholds.get("line_count", DEFAULT_SQL_COMPLEXITY_THRESHOLDS["line_count"])
 
     dp_count = int(metrics.get("decision_points", 0))
     if dp_count > dp_threshold[0]:

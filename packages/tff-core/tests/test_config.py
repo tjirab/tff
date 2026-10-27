@@ -1151,5 +1151,27 @@ def test_starter_config_yaml_contains_all_rules_and_checks() -> None:
     assert expected_rules.issubset(set(raw.get("rules", {}).keys()))
 
 
+@pytest.mark.parametrize(
+    ("input_thresholds", "expected_key", "expected_val"),
+    [
+        (None, "decision_points", [15, 25]),
+        (None, "cte_count", [8, 12]),
+        ({"cte_count": [10, 20]}, "cte_count", [10, 20]),
+        ({"cte_count": [10, 20]}, "decision_points", [15, 25]),
+        ({"line_count": [500, 1000]}, "line_count", [500, 1000]),
+        ({"line_count": [500, 1000]}, "join_count", [8, 12]),
+    ],
+)
+def test_sql_complexity_thresholds_partial_override_preserves_defaults(
+    input_thresholds: dict[str, list[int]] | None,
+    expected_key: str,
+    expected_val: list[int],
+) -> None:
+    payload = {"thresholds": input_thresholds} if input_thresholds is not None else {}
+    cfg = SqlComplexityRuleConfig.model_validate(payload)
+    assert cfg.thresholds[expected_key] == expected_val
+
+
+
 
 

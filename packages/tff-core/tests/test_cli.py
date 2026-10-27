@@ -2592,6 +2592,31 @@ def test_render_complexity_inspection_branches(capsys: pytest.CaptureFixture[str
     assert "FAIL" in captured.out
 
 
+def test_render_complexity_inspection_unconfigured_metric_does_not_fail(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    from tff.core.cli import _render_complexity_inspection
+    from tff.core.rules.sql_complexity import ComplexityInspection
+
+    inspection = ComplexityInspection(
+        model_name="unconfigured_model",
+        path=None,
+        dialect="duckdb",
+        metrics={"decision_points": 8, "cte_count": 2, "join_count": 1, "line_count": 100},
+        thresholds={"line_count": [250, 400]},
+        decision_points=[],
+        ctes=[],
+        joins=[],
+        nested_subquery=False,
+        recommendations=["Model is within all maintainability thresholds."],
+    )
+    _render_complexity_inspection(inspection)
+    captured = capsys.readouterr()
+    assert "FAIL" not in captured.out
+    assert "PASS" in captured.out
+    assert "—" in captured.out
+
+
 def test_handle_model_complexity_explain_adapter_error(capsys: pytest.CaptureFixture[str]) -> None:
     mock_adapter = MagicMock()
     mock_adapter.load_models.side_effect = RuntimeError("Adapter crash")

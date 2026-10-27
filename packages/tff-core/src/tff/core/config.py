@@ -464,14 +464,17 @@ class ClassificationMacrosRuleConfig(LayerFilterConfig):
     )
 
 
+DEFAULT_SQL_COMPLEXITY_THRESHOLDS: dict[str, list[int]] = {
+    "decision_points": [15, 25],
+    "cte_count": [8, 12],
+    "join_count": [8, 12],
+    "line_count": [250, 400],
+}
+
+
 class SqlComplexityRuleConfig(LayerFilterConfig):
     thresholds: dict[str, list[int]] = Field(
-        default_factory=lambda: {
-            "decision_points": [15, 25],
-            "cte_count": [8, 12],
-            "join_count": [8, 12],
-            "line_count": [250, 400],
-        }
+        default_factory=lambda: dict(DEFAULT_SQL_COMPLEXITY_THRESHOLDS)
     )
 
     @field_validator("thresholds", mode="before")
@@ -509,7 +512,7 @@ class SqlComplexityRuleConfig(LayerFilterConfig):
                     hint="Ensure the warning threshold is less than or equal to the fail threshold: [warn, fail].",
                     details={"rule": "sql_complexity", "metric": metric, "warn": warn, "fail": fail},
                 )
-        return v
+        return {**DEFAULT_SQL_COMPLEXITY_THRESHOLDS, **v}
 
     @model_validator(mode="before")
     @classmethod

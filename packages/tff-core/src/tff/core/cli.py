@@ -632,14 +632,21 @@ def _render_complexity_inspection(
 
     for key, label in metric_labels:
         val = int(inspection.metrics.get(key, 0))
-        warn, fail = inspection.thresholds.get(key, [0, 0])
-        if val > fail:
-            status = "[bold red]FAIL[/bold red]"
-        elif val > warn:
-            status = "[bold yellow]WARN[/bold yellow]"
+        if key in inspection.thresholds:
+            warn, fail = inspection.thresholds[key]
+            warn_str = str(warn)
+            fail_str = str(fail)
+            if val > fail:
+                status = "[bold red]FAIL[/bold red]"
+            elif val > warn:
+                status = "[bold yellow]WARN[/bold yellow]"
+            else:
+                status = "[bold green]PASS[/bold green]"
         else:
+            warn_str = "—"
+            fail_str = "—"
             status = "[bold green]PASS[/bold green]"
-        table.add_row(label, str(val), str(warn), str(fail), status)
+        table.add_row(label, str(val), warn_str, fail_str, status)
 
     sub_val = inspection.nested_subquery
     sub_status = "[bold yellow]WARN[/bold yellow]" if sub_val else "[bold green]PASS[/bold green]"
