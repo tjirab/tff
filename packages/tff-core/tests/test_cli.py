@@ -1181,7 +1181,7 @@ def test_cli_lint_github_annotations_flag(tmp_path: Path, capsys):
         assert exit_code == 0
         captured = capsys.readouterr()
         assert (
-            "::warning file=models/staging/stg_users.sql,line=1,title=WRN · Missing owner (Quality & Metadata)::* Missing model owner (https://tff.readthedocs.io/en/latest/rules_and_checks/#metadata-metadata)"
+            "::warning file=models/staging/stg_users.sql,line=1,title=WRN · Missing owner (Quality & Metadata)::* Missing model owner. See https://tff.readthedocs.io/en/latest/rules_and_checks/#metadata-metadata"
             in captured.out
         )
 
@@ -1271,7 +1271,7 @@ def test_cli_lint_format_github_with_findings(tmp_path: Path, capsys):
         # Only pure workflow command annotations in stdout, no rich summary table
         assert (
             captured.out.strip()
-            == "::error file=models/marts/fct_orders.sql,line=12,title=ERR · No SELECT * (Connascence of Name)::! SELECT * not permitted in marts (https://tff.readthedocs.io/en/latest/rules_and_checks/#ban-select-ban_select_star)"
+            == "::error file=models/marts/fct_orders.sql,line=12,title=ERR · No SELECT * (Connascence of Name)::! SELECT * not permitted in marts. See https://tff.readthedocs.io/en/latest/rules_and_checks/#ban-select-ban_select_star"
         )
         assert "LINT FAILED" not in captured.out
 
@@ -1312,7 +1312,7 @@ def test_cli_lint_structured_with_github_annotations(tmp_path: Path, capsys):
         assert data["version"] == "2.1.0"
         # annotations routed to stderr to prevent corrupting stdout
         assert (
-            "::warning file=models/staging/stg_customers.sql,line=1,title=WRN · Missing owner (Quality & Metadata)::* Missing owner attribute (https://tff.readthedocs.io/en/latest/rules_and_checks/#metadata-metadata)"
+            "::warning file=models/staging/stg_customers.sql,line=1,title=WRN · Missing owner (Quality & Metadata)::* Missing owner attribute. See https://tff.readthedocs.io/en/latest/rules_and_checks/#metadata-metadata"
             in captured.err
         )
 
@@ -1324,7 +1324,7 @@ def test_cli_lint_structured_with_github_annotations(tmp_path: Path, capsys):
         data_json = json.loads(captured_json.out)
         assert data_json["command"] == "lint"
         assert (
-            "::warning file=models/staging/stg_customers.sql,line=1,title=WRN · Missing owner (Quality & Metadata)::* Missing owner attribute (https://tff.readthedocs.io/en/latest/rules_and_checks/#metadata-metadata)"
+            "::warning file=models/staging/stg_customers.sql,line=1,title=WRN · Missing owner (Quality & Metadata)::* Missing owner attribute. See https://tff.readthedocs.io/en/latest/rules_and_checks/#metadata-metadata"
             in captured_json.err
         )
 

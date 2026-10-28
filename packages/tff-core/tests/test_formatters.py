@@ -79,7 +79,7 @@ def test_format_github_annotation_error_and_warning():
     res_err = format_github_annotation(f_err)
     assert (
         res_err
-        == "::error file=models/marts/fct_orders.sql,line=42,title=ERR · Duplicate CTEs (Connascence of Algorithm)::! Duplicate CTE found in model. (https://tff.readthedocs.io/en/latest/rules_and_checks/#duplicate-ctes-duplicate_ctes)"
+        == "::error file=models/marts/fct_orders.sql,line=42,title=ERR · Duplicate CTEs (Connascence of Algorithm)::! Duplicate CTE found in model. See https://tff.readthedocs.io/en/latest/rules_and_checks/#duplicate-ctes-duplicate_ctes"
     )
 
     f_warn = _make_finding(
@@ -93,7 +93,7 @@ def test_format_github_annotation_error_and_warning():
     # When line is not provided, it defaults to line 1
     assert (
         res_warn
-        == "::warning file=models/marts/bad_name.sql,line=1,title=WRN · Mart naming convention (Connascence of Name)::* Model in marts must start with fct_ or dim_. (https://tff.readthedocs.io/en/latest/rules_and_checks/#mart-naming-mart_naming)"
+        == "::warning file=models/marts/bad_name.sql,line=1,title=WRN · Mart naming convention (Connascence of Name)::* Model in marts must start with fct_ or dim_. See https://tff.readthedocs.io/en/latest/rules_and_checks/#mart-naming-mart_naming"
     )
 
 
@@ -106,8 +106,35 @@ def test_format_github_annotation_repo_level_no_path():
     res = format_github_annotation(f_repo)
     assert (
         res
-        == "::error title=ERR · Layer integrity (Dynamic Coupling & DAG Structure)::! Missing layers in config. (https://tff.readthedocs.io/en/latest/rules_and_checks/#layer-integrity-layer_integrity)"
+        == "::error title=ERR · Layer integrity (Dynamic Coupling & DAG Structure)::! Missing layers in config. See https://tff.readthedocs.io/en/latest/rules_and_checks/#layer-integrity-layer_integrity"
     )
+
+
+def test_format_github_annotation_uniform_docs_links_cov_and_con():
+    """Verify that both CoV and CoN inline annotations uniformly end with clickable 'See https://...' links."""
+    f_cov = _make_finding(
+        check="connascence_of_value",
+        severity="warning",
+        message="Literal 'active' is duplicated in models 'orders' and 'customers' (CoV). Centralize via macro, seed, or upstream model. See https://tff.readthedocs.io/en/latest/rules_and_checks/#connascence-of-value-connascence_of_value",
+        model="orders",
+        path="models/marts/orders.sql",
+        line=10,
+    )
+    res_cov = format_github_annotation(f_cov)
+    assert res_cov.endswith("See https://tff.readthedocs.io/en/latest/rules_and_checks/#connascence-of-value-connascence_of_value")
+    assert "(" not in res_cov.split("See ")[-1]
+
+    f_con = _make_finding(
+        check="ban_select_star",
+        severity="error",
+        message="SELECT * is prohibited. Explicitly name your columns to reduce coupling.",
+        model="orders",
+        path="models/marts/orders.sql",
+        line=10,
+    )
+    res_con = format_github_annotation(f_con)
+    assert res_con.endswith("See https://tff.readthedocs.io/en/latest/rules_and_checks/#ban-select-ban_select_star")
+    assert not res_con.endswith(")")
 
 
 def test_format_github_annotation_with_coordinates():
@@ -231,10 +258,10 @@ def test_emit_github_annotations_deduplication():
     # 3. (models/marts/customers.sql, ban_select_star) -> line 12
     # 4. (None, layer_integrity)
     assert len(lines) == 4
-    assert lines[0] == "::error file=models/marts/orders.sql,line=10,title=ERR · No SELECT * (Connascence of Name)::! SELECT * is prohibited (https://tff.readthedocs.io/en/latest/rules_and_checks/#ban-select-ban_select_star)"
-    assert lines[1] == "::error file=models/marts/orders.sql,line=5,title=ERR · Duplicate CTEs (Connascence of Algorithm)::! Duplicate CTE found (https://tff.readthedocs.io/en/latest/rules_and_checks/#duplicate-ctes-duplicate_ctes)"
-    assert lines[2] == "::error file=models/marts/customers.sql,line=12,title=ERR · No SELECT * (Connascence of Name)::! SELECT * is prohibited (https://tff.readthedocs.io/en/latest/rules_and_checks/#ban-select-ban_select_star)"
-    assert lines[3] == "::error title=ERR · Layer integrity (Dynamic Coupling & DAG Structure)::! Missing layers (https://tff.readthedocs.io/en/latest/rules_and_checks/#layer-integrity-layer_integrity)"
+    assert lines[0] == "::error file=models/marts/orders.sql,line=10,title=ERR · No SELECT * (Connascence of Name)::! SELECT * is prohibited. See https://tff.readthedocs.io/en/latest/rules_and_checks/#ban-select-ban_select_star"
+    assert lines[1] == "::error file=models/marts/orders.sql,line=5,title=ERR · Duplicate CTEs (Connascence of Algorithm)::! Duplicate CTE found. See https://tff.readthedocs.io/en/latest/rules_and_checks/#duplicate-ctes-duplicate_ctes"
+    assert lines[2] == "::error file=models/marts/customers.sql,line=12,title=ERR · No SELECT * (Connascence of Name)::! SELECT * is prohibited. See https://tff.readthedocs.io/en/latest/rules_and_checks/#ban-select-ban_select_star"
+    assert lines[3] == "::error title=ERR · Layer integrity (Dynamic Coupling & DAG Structure)::! Missing layers. See https://tff.readthedocs.io/en/latest/rules_and_checks/#layer-integrity-layer_integrity"
 
 
 def test_emit_github_annotations_prioritization_and_capping(tmp_path: Path):

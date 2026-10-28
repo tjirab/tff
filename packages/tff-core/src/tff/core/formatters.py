@@ -37,10 +37,11 @@ def format_github_annotation(
     from tff.core.registry import registry
 
     command = "error" if finding.severity == "error" else "warning"
-    raw_msg = format_message(finding.message)
+    raw_msg = format_message(finding.message).rstrip()
     docs_url = registry.get_docs_url(finding.check)
     if docs_url and docs_url not in raw_msg:
-        raw_msg = f"{raw_msg} ({docs_url})"
+        sep = " " if raw_msg.endswith((".", "!", "?")) else ". "
+        raw_msg = f"{raw_msg}{sep}See {docs_url}"
 
     sig = "!" if finding.severity == "error" else "*"
     msg = f"{sig} {raw_msg}"

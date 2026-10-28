@@ -186,13 +186,15 @@ def collect_connascence_of_value_findings(
     for val_lower, occurrences in value_occurrences.items():
         if len(occurrences) >= rule_config.min_occurrences:
             for i, occ in enumerate(occurrences):
-                other_occs = [
-                    f"model '{o['model']}'" for j, o in enumerate(occurrences) if j != i
+                other_models = [
+                    f"'{o['model']}'" for j, o in enumerate(occurrences) if j != i
                 ]
-                if len(other_occs) <= 2:
-                    others_str = " and ".join(other_occs)
+                if len(other_models) == 1:
+                    others_str = f"model {other_models[0]}"
+                elif len(other_models) == 2:
+                    others_str = f"models {other_models[0]} and {other_models[1]}"
                 else:
-                    others_str = ", ".join(other_occs[:-1]) + f", and {other_occs[-1]}"
+                    others_str = f"models {', '.join(other_models[:-1])}, and {other_models[-1]}"
 
                 severity_type = (
                     "error" if rule_config.severity == "error" else "warning"

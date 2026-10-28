@@ -253,9 +253,21 @@ def test_cov_multiple_other_occurrences():
     findings = collect_connascence_of_value_findings(models, config)
     assert len(findings) == 4
 
-    # Message should use oxford comma list
+    # Message should use oxford comma list with single 'models' prefix
     finding_m1 = [f for f in findings if f.model == "model1"][0]
-    assert "model 'model2', model 'model3', and model 'model4'" in finding_m1.message
+    assert "models 'model2', 'model3', and 'model4'" in finding_m1.message
+
+    # Test 3 models (2 other occurrences: 'models A and B')
+    models_3 = {k: models[k] for k in ["model1", "model2", "model3"]}
+    findings_3 = collect_connascence_of_value_findings(models_3, config)
+    f3_m1 = [f for f in findings_3 if f.model == "model1"][0]
+    assert "models 'model2' and 'model3'" in f3_m1.message
+
+    # Test 2 models (1 other occurrence: 'model A')
+    models_2 = {k: models[k] for k in ["model1", "model2"]}
+    findings_2 = collect_connascence_of_value_findings(models_2, config)
+    f2_m1 = [f for f in findings_2 if f.model == "model1"][0]
+    assert "model 'model2'" in f2_m1.message
 
 
 def test_cov_structural_sql_literals_ignored():
