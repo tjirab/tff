@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.28.1](https://github.com/tjirab/tff/compare/tff-core-v0.28.0...tff-core-v0.28.1) (2026-10-28)
+
+
+### Bug Fixes
+
+* **core:** unify inline docs url format and condense cov model listing ([#451](https://github.com/tjirab/tff/issues/451)) ([d82756a](https://github.com/tjirab/tff/commit/d82756a90c87b2f3997c70c0c50e441a16470a1b))
+
 ## [0.28.0](https://github.com/tjirab/tff/compare/tff-core-v0.27.0...tff-core-v0.28.0) (2026-10-27)
 
 
