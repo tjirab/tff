@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.29.0](https://github.com/tjirab/tff/compare/tff-core-v0.28.1...tff-core-v0.29.0) (2026-10-30)
+
+
+### Features
+
+* **cli:** report installed sqlmesh package version in --all-adapters and json output ([#450](https://github.com/tjirab/tff/issues/450)) ([2810b8a](https://github.com/tjirab/tff/commit/2810b8a4555e6725a3673b5f08a98441cf600a19))
+
 ## [0.28.1](https://github.com/tjirab/tff/compare/tff-core-v0.28.0...tff-core-v0.28.1) (2026-10-28)
 
 
