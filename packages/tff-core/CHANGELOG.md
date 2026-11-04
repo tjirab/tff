@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.29.0](https://github.com/tjirab/tff/compare/tff-core-v0.28.1...tff-core-v0.29.0) (2026-11-04)
+
+
+### Features
+
+* **cli:** report installed sqlmesh package version in --all-adapters and json output ([#450](https://github.com/tjirab/tff/issues/450)) ([2810b8a](https://github.com/tjirab/tff/commit/2810b8a4555e6725a3673b5f08a98441cf600a19))
+* **rules:** differentiate simple vs searched case in sqlcomplexity ([#454](https://github.com/tjirab/tff/issues/454)) ([31de674](https://github.com/tjirab/tff/commit/31de67464f89ee0edf1834009c68a0aa07d3a8de))
+
 ## [0.28.1](https://github.com/tjirab/tff/compare/tff-core-v0.28.0...tff-core-v0.28.1) (2026-10-28)
 
 
