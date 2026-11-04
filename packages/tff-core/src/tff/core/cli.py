@@ -682,6 +682,7 @@ def _render_complexity_inspection(
 
         kind_labels = {
             "case": "CASE",
+            "case_simple": "CASE (simple)",
             "when": "WHEN",
             "if": "IF",
             "where_and": "WHERE AND",

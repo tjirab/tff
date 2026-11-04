@@ -405,6 +405,12 @@ tff explain sqlcomplexity --model stg_orders --json
 | `--config`, `-c` | Path | (none) | Path to fitness functions config file (`tff.yaml`). |
 | `--dialect` | String | `duckdb` | SQL dialect for parsing (e.g. `duckdb`, `snowflake`, `bigquery`, `postgres`). |
 
+The decision points breakdown classifies each cyclomatic point by its kind:
+* `CASE (simple)`: A simple categorical value-mapping `CASE` statement (counts as 1 decision point regardless of branch count).
+* `WHEN`: An individual branching condition in a searched `CASE` expression.
+* `IF`: A standalone `IF(...)` conditional function.
+* `WHERE AND` / `WHERE OR`: Boolean compound filter operators inside a `WHERE` clause.
+
 
 ---
 
