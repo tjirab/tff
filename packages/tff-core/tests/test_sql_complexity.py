@@ -362,17 +362,17 @@ SELECT * FROM vip_users
     assert inspection.dialect == "duckdb"
     assert inspection.metrics["cte_count"] == 2
     assert inspection.metrics["join_count"] == 1
-    assert inspection.metrics["decision_points"] == 5
-    assert len(inspection.decision_points) == 5
+    assert inspection.metrics["decision_points"] == 3
+    assert len(inspection.decision_points) == 3
 
     # Check decision points kinds and line coordinates
     kinds = [dp.kind for dp in inspection.decision_points]
-    assert kinds == ["case", "when", "when", "where_and", "where_or"]
+    assert kinds == ["case_simple", "where_and", "where_or"]
 
     # Verify CTE scoping
     ctes = [dp.cte_name for dp in inspection.decision_points]
-    assert ctes[:4] == ["active_users", "active_users", "active_users", "active_users"]
-    assert ctes[4] == "vip_users"
+    assert ctes[:2] == ["active_users", "active_users"]
+    assert ctes[2] == "vip_users"
 
     # Verify line numbers are captured
     lines = [dp.line for dp in inspection.decision_points]
@@ -409,7 +409,7 @@ WHERE age > 18
   AND country = 'NL'
 """
     inspection = inspect_sql_complexity(sql, dialect="duckdb", model_name="analytics.customers")
-    assert inspection.metrics["decision_points"] == 3
+    assert inspection.metrics["decision_points"] == 2
 
     # Lines should account for the MODEL header (approx lines 9-16)
     dp_lines = [dp.line for dp in inspection.decision_points if dp.line is not None]
@@ -546,6 +546,143 @@ def test_extract_node_line_col_direct_and_none() -> None:
     line_none, col_none = _extract_node_line_col(node_empty)
     assert line_none is None
     assert col_none is None
+
+
+def test_simple_case_syntactic_counts_as_single_decision_point() -> None:
+    """CASE x WHEN 1 ... WHEN 2 ... is a simple CASE and should count as 1 decision point."""
+    import sqlglot
+    from tff.core.rules.sql_complexity import analyze_sql, count_decision_points, inspect_sql_complexity
+
+    sql = """
+    SELECT
+        id,
+        CASE status
+            WHEN 'placed' THEN 1
+            WHEN 'shipped' THEN 2
+            WHEN 'delivered' THEN 3
+            WHEN 'returned' THEN 4
+            ELSE 0
+        END AS status_code
+    FROM orders
+    """
+    parsed = sqlglot.parse_one(sql)
+    assert count_decision_points(parsed) == 1
+
+    metrics = analyze_sql(sql, dialect="duckdb")
+    assert metrics["decision_points"] == 1
+
+    insp = inspect_sql_complexity(sql, dialect="duckdb", model_name="orders")
+    assert insp.metrics["decision_points"] == 1
+    assert len(insp.decision_points) == 1
+    assert insp.decision_points[0].kind == "case_simple"
+
+
+def test_simple_case_searched_equality_counts_as_single_decision_point() -> None:
+    """CASE WHEN x = 1 ... WHEN x = 2 ... on same column is treated as simple value mapping."""
+    import sqlglot
+    from tff.core.rules.sql_complexity import count_decision_points, inspect_sql_complexity
+
+    sql = """
+    SELECT
+        id,
+        CASE
+            WHEN u.status = 'placed' THEN 1
+            WHEN u.status = 'shipped' THEN 2
+            WHEN u.status = 'completed' THEN 3
+            ELSE 0
+        END AS status_code
+    FROM orders u
+    """
+    parsed = sqlglot.parse_one(sql)
+    assert count_decision_points(parsed) == 1
+
+    insp = inspect_sql_complexity(sql, dialect="duckdb", model_name="orders")
+    assert insp.metrics["decision_points"] == 1
+    assert len(insp.decision_points) == 1
+    assert insp.decision_points[0].kind == "case_simple"
+
+
+def test_searched_case_multiple_predicates_counts_each_branch() -> None:
+    """Searched CASE with varying columns/predicates counts each WHEN branch without double-counting CASE."""
+    import sqlglot
+    from tff.core.rules.sql_complexity import count_decision_points, inspect_sql_complexity
+
+    sql = """
+    SELECT
+        id,
+        CASE
+            WHEN amount > 1000 THEN 'whale'
+            WHEN is_vip = true THEN 'vip'
+            WHEN country = 'NL' AND age >= 18 THEN 'local_adult'
+            ELSE 'regular'
+        END AS tier
+    FROM customers
+    """
+    parsed = sqlglot.parse_one(sql)
+    assert count_decision_points(parsed) == 3
+
+    insp = inspect_sql_complexity(sql, dialect="duckdb", model_name="customers")
+    # 3 WHEN branches, no enclosing CASE penalty
+    assert insp.metrics["decision_points"] == 3
+    assert len(insp.decision_points) == 3
+    assert all(dp.kind == "when" for dp in insp.decision_points)
+
+
+def test_dbt_macro_expansion_large_mapping_does_not_breach_threshold() -> None:
+    """Simulates a dbt macro that expands into a 25-value CASE statement."""
+    from tff.core.rules.sql_complexity import analyze_sql, format_violations
+
+    whens = "\n".join(f"WHEN 'code_{i}' THEN 'desc_{i}'" for i in range(25))
+    compiled_sql = f"SELECT id, CASE category {whens} ELSE 'unknown' END AS cat_desc FROM raw_data"
+
+    metrics = analyze_sql(compiled_sql, dialect="duckdb")
+    assert metrics["decision_points"] == 1
+
+    thresholds = {"decision_points": [15, 25]}
+    violations = format_violations(metrics, "mart_categories", thresholds)
+    assert violations == []  # Should not raise warning or fail
+
+
+def test_standalone_if_function() -> None:
+    """Standalone IF(condition, a, b) functions count as 1 decision point."""
+    import sqlglot
+    from tff.core.rules.sql_complexity import count_decision_points, inspect_sql_complexity
+
+    sql = "SELECT id, IF(score > 50, 'pass', 'fail') AS result FROM exam"
+    parsed = sqlglot.parse_one(sql)
+    assert count_decision_points(parsed) == 1
+
+    insp = inspect_sql_complexity(sql, dialect="duckdb", model_name="exam")
+    assert insp.metrics["decision_points"] == 1
+    assert len(insp.decision_points) == 1
+    assert insp.decision_points[0].kind == "if"
+
+
+def test_is_simple_case_helper_coverage() -> None:
+    import sqlglot
+    from sqlglot import exp
+    from tff.core.rules.sql_complexity import _get_comparison_column, is_simple_case
+
+    # Non-EQ condition
+    cond_gt = sqlglot.parse_one("x > 1")
+    assert _get_comparison_column(cond_gt) is None
+
+    # Literal = Literal (no columns)
+    cond_lit = sqlglot.parse_one("1 = 2")
+    assert _get_comparison_column(cond_lit) is None
+
+    # Literal = column (reversed equality)
+    cond_rev = sqlglot.parse_one("'NL' = country")
+    assert _get_comparison_column(cond_rev) == "country"
+
+    # Empty case
+    empty_case = exp.Case()
+    assert is_simple_case(empty_case) is False
+
+    # Different columns in searched case
+    diff_cols = sqlglot.parse_one("CASE WHEN a = 1 THEN 1 WHEN b = 2 THEN 2 END")
+    assert is_simple_case(diff_cols) is False
+
 
 
 

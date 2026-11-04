@@ -22,7 +22,7 @@ MODEL_BLOCK_PATTERN = re.compile(r"^MODEL\s*\(.*?\)\s*;", re.DOTALL | re.IGNOREC
 class DecisionPointDetail:
     """Detailed record of a single cyclomatic decision point."""
 
-    kind: str  # 'case', 'when', 'if', 'where_and', 'where_or'
+    kind: str  # 'case', 'case_simple', 'when', 'if', 'where_and', 'where_or'
     line: int | None
     col: int | None
     snippet: str
@@ -120,11 +120,54 @@ def _extract_node_line_col(node: exp.Expression) -> tuple[int | None, int | None
     return None, None
 
 
+def _get_comparison_column(cond: exp.Expression | None) -> str | None:
+    """Extract lowercased column identifier if condition is a simple equality check."""
+    if not isinstance(cond, exp.EQ):
+        return None
+    left, right = cond.left, cond.right
+    if isinstance(left, (exp.Column, exp.Identifier)):
+        return getattr(left, "name", left.sql()).lower()
+    if isinstance(right, (exp.Column, exp.Identifier)):
+        return getattr(right, "name", right.sql()).lower()
+    return None
+
+
+def is_simple_case(case: exp.Case) -> bool:
+    """Return True if the CASE expression is a simple (value-mapping) CASE expression.
+
+    A simple CASE expression either:
+    1. Evaluates a single operand against discrete values: `CASE <operand> WHEN <val> ... END`.
+    2. Or is a searched CASE where all WHEN branches are simple equality comparisons against the same column/expression.
+    """
+    if case.this is not None:
+        return True
+    ifs = case.args.get("ifs", [])
+    if not ifs:
+        return False
+    first_col: str | None = None
+    for if_node in ifs:
+        col = _get_comparison_column(if_node.this)
+        if col is None:
+            return False
+        if first_col is None:
+            first_col = col
+        elif first_col != col:
+            return False
+    return True
+
+
 def count_decision_points(expression: exp.Expression) -> int:
     count = 0
     for node in expression.walk():
-        if isinstance(node, (exp.Case, exp.If)):
-            count += 1
+        if isinstance(node, exp.Case):
+            if is_simple_case(node):
+                count += 1
+        elif isinstance(node, exp.If):
+            if isinstance(node.parent, exp.Case):
+                if not is_simple_case(node.parent):
+                    count += 1
+            else:
+                count += 1
         elif isinstance(node, exp.Where):
             count += _count_boolean_branches(node.this)
     return count
@@ -172,8 +215,15 @@ def _collect_ast_metrics(expression: exp.Expression) -> tuple[int, int, int]:
     cte_count = 0
     join_count = 0
     for node in expression.walk():
-        if isinstance(node, (exp.Case, exp.If)):
-            decision_points += 1
+        if isinstance(node, exp.Case):
+            if is_simple_case(node):
+                decision_points += 1
+        elif isinstance(node, exp.If):
+            if isinstance(node.parent, exp.Case):
+                if not is_simple_case(node.parent):
+                    decision_points += 1
+            else:
+                decision_points += 1
         elif isinstance(node, exp.Where):
             decision_points += _count_boolean_branches(node.this)
         elif isinstance(node, exp.CTE):
@@ -287,46 +337,64 @@ def inspect_sql_complexity(
             cte_name = cte_ancestor.alias_or_name if cte_ancestor else None
 
             if isinstance(node, exp.Case):
-                first_line, col = _extract_node_line_col(node)
-                case_line = first_line
-                if (
-                    first_line
-                    and first_line > 1
-                    and 0 < first_line - 1 <= len(sql_lines)
-                    and "case" in sql_lines[first_line - 2].lower()
-                ):
-                    case_line = first_line - 1
-                snip = (
-                    sql_lines[case_line - 1].strip()
-                    if case_line and 0 < case_line <= len(sql_lines)
-                    else node.sql()[:50]
-                )
-                decision_points.append(
-                    DecisionPointDetail(
-                        kind="case",
-                        line=case_line,
-                        col=col,
-                        snippet=snip,
-                        cte_name=cte_name,
+                if is_simple_case(node):
+                    first_line, col = _extract_node_line_col(node)
+                    case_line = first_line
+                    if (
+                        first_line
+                        and first_line > 1
+                        and 0 < first_line - 1 <= len(sql_lines)
+                        and "case" in sql_lines[first_line - 2].lower()
+                    ):
+                        case_line = first_line - 1
+                    snip = (
+                        sql_lines[case_line - 1].strip()
+                        if case_line and 0 < case_line <= len(sql_lines)
+                        else node.sql()[:50]
                     )
-                )
+                    decision_points.append(
+                        DecisionPointDetail(
+                            kind="case_simple",
+                            line=case_line,
+                            col=col,
+                            snippet=snip,
+                            cte_name=cte_name,
+                        )
+                    )
             elif isinstance(node, exp.If):
-                dp_line, dp_col = _extract_node_line_col(node)
-                kind = "when" if isinstance(node.parent, exp.Case) else "if"
-                snip = (
-                    sql_lines[dp_line - 1].strip()
-                    if dp_line and 0 < dp_line <= len(sql_lines)
-                    else node.sql()[:50]
-                )
-                decision_points.append(
-                    DecisionPointDetail(
-                        kind=kind,
-                        line=dp_line,
-                        col=dp_col,
-                        snippet=snip,
-                        cte_name=cte_name,
+                if isinstance(node.parent, exp.Case):
+                    if not is_simple_case(node.parent):
+                        dp_line, dp_col = _extract_node_line_col(node)
+                        snip = (
+                            sql_lines[dp_line - 1].strip()
+                            if dp_line and 0 < dp_line <= len(sql_lines)
+                            else node.sql()[:50]
+                        )
+                        decision_points.append(
+                            DecisionPointDetail(
+                                kind="when",
+                                line=dp_line,
+                                col=dp_col,
+                                snippet=snip,
+                                cte_name=cte_name,
+                            )
+                        )
+                else:
+                    dp_line, dp_col = _extract_node_line_col(node)
+                    snip = (
+                        sql_lines[dp_line - 1].strip()
+                        if dp_line and 0 < dp_line <= len(sql_lines)
+                        else node.sql()[:50]
                     )
-                )
+                    decision_points.append(
+                        DecisionPointDetail(
+                            kind="if",
+                            line=dp_line,
+                            col=dp_col,
+                            snippet=snip,
+                            cte_name=cte_name,
+                        )
+                    )
             elif isinstance(node, exp.Where):
                 for b in node.this.walk():
                     if isinstance(b, (exp.And, exp.Or)):
@@ -381,7 +449,7 @@ def inspect_sql_complexity(
     dp_count = int(metrics.get("decision_points", 0))
     if dp_count > dp_threshold[0]:
         case_when_count = sum(
-            1 for dp in decision_points if dp.kind in ("case", "when", "if")
+            1 for dp in decision_points if dp.kind in ("case", "case_simple", "when", "if")
         )
         where_count = sum(
             1 for dp in decision_points if dp.kind in ("where_and", "where_or")

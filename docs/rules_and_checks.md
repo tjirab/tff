@@ -584,8 +584,14 @@ For SQLMesh projects, these rules run dynamically inside SQLMesh (e.g., `sqlmesh
     * `cte_count`: Number of common table expressions.
     * `join_count`: Number of `JOIN` statements.
     * `line_count`: Total lines of code (ignoring empty lines and SQLMesh `MODEL` blocks).
-    * `decision_points`: Number of logical conditional statements (`CASE`, `IF` and boolean operators `AND`/`OR` in `WHERE` clauses).
+    * `decision_points`: Number of cyclomatic branching decision points (with differentiation between simple value-mappings and searched branching logic, plus boolean operators `AND`/`OR` in `WHERE` clauses).
     * `nested_subquery_in_final_select`: Warns if a subquery is nested in the final SELECT statement FROM or JOIN clauses.
+
+* **Decision Points Calculation**:
+  * **Simple CASE Expressions**: Either ANSI syntactic simple CASE (`CASE <operand> WHEN <val> ... END`) or searched CASE statements where all `WHEN` clauses perform 1-to-1 equality comparisons against the same column. These represent discrete categorical lookups or dictionary mappings and contribute **1 decision point** for the entire `CASE` block, regardless of how many `WHEN` branches exist. This prevents dbt macros expanding into multi-branch mappings from artificially inflating model complexity.
+  * **Searched CASE Expressions**: General `CASE WHEN <condition> THEN ... END` constructs evaluating arbitrary conditions or multiple columns. Each `WHEN` condition represents an independent decision branch and contributes **1 decision point**. The enclosing `CASE` keyword is not double-counted.
+  * **Standalone `IF(...)`**: Scalar conditional functions (e.g. DuckDB/BigQuery `IF(condition, true_val, false_val)`) contribute **1 decision point**.
+  * **WHERE Predicates**: Each `AND` or `OR` operator in `WHERE` filter clauses contributes **1 decision point**.
 * **How to configure**:
   Defined under `rules.sql_complexity` in `fitness_functions.yaml`.
   ```yaml
