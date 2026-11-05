@@ -323,6 +323,17 @@ def test_has_nested_subquery_in_final_select() -> None:
     q5 = sqlglot.parse_one("SELECT (SELECT 1) AS x FROM t")
     assert has_nested_subquery_in_final_select(q5) is False
 
+    # Subquery in JOIN ON condition (predicate) should NOT be flagged as nested subquery table target
+    q6 = sqlglot.parse_one("SELECT * FROM t JOIN other ON other.id IN (SELECT id FROM filter_tbl)")
+    assert has_nested_subquery_in_final_select(q6) is False
+
+    # Subquery in comma-separated FROM
+    q7 = sqlglot.parse_one("SELECT * FROM t, (SELECT 1) sub")
+    assert has_nested_subquery_in_final_select(q7) is True
+
+    # Non-Select expression
+    assert has_nested_subquery_in_final_select(sqlglot.parse_one("DROP TABLE t")) is False
+
 
 def test_inspect_sql_complexity_detailed_breakdown() -> None:
     from tff.core.rules.sql_complexity import inspect_sql_complexity
