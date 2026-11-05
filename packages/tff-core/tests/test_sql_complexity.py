@@ -523,7 +523,6 @@ def test_inspect_sql_complexity_where_boolean_branches_recommendation() -> None:
 
     insp = inspect_sql_complexity(sql, thresholds={"decision_points": [15, 25]})
     assert insp.metrics["decision_points"] >= 19
-    assert insp.thresholds["cte_count"] == [8, 12]
     assert any("boolean filter condition" in r for r in insp.recommendations)
     assert any(j.kind == "INNER" for j in insp.joins)
 
@@ -682,6 +681,37 @@ def test_is_simple_case_helper_coverage() -> None:
     # Different columns in searched case
     diff_cols = sqlglot.parse_one("CASE WHEN a = 1 THEN 1 WHEN b = 2 THEN 2 END")
     assert is_simple_case(diff_cols) is False
+
+
+def test_inspect_sql_complexity_default_thresholds_when_none() -> None:
+    from tff.core.rules.sql_complexity import inspect_sql_complexity
+
+    insp = inspect_sql_complexity("SELECT 1")
+    assert insp.thresholds["cte_count"] == [8, 12]
+    assert insp.thresholds["decision_points"] == [15, 25]
+    assert insp.thresholds["join_count"] == [8, 12]
+    assert insp.thresholds["line_count"] == [250, 400]
+
+
+def test_inspect_sql_complexity_disabled_metrics_omitted_from_thresholds() -> None:
+    from tff.core.rules.sql_complexity import inspect_sql_complexity
+
+    # Multi-line query exceeding default line_count and cte_count
+    long_sql = "\n".join(["WITH a AS (SELECT 1), b AS (SELECT 2)"] + [f"SELECT {i}" for i in range(300)])
+    # Disable line_count and cte_count via None and False and [None, None]
+    insp = inspect_sql_complexity(
+        long_sql,
+        thresholds={"line_count": None, "cte_count": False, "join_count": [None, None], "decision_points": [5, 10]},
+    )
+    assert "line_count" not in insp.thresholds
+    assert "cte_count" not in insp.thresholds
+    assert "join_count" not in insp.thresholds
+    assert insp.thresholds["decision_points"] == [5, 10]
+    # No recommendations should be generated for disabled metrics
+    assert not any("lines" in r for r in insp.recommendations)
+    assert not any("CTEs" in r for r in insp.recommendations)
+    assert not any("JOINs" in r for r in insp.recommendations)
+
 
 
 
