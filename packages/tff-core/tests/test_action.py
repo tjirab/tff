@@ -26,12 +26,14 @@ from tff.core.action import (
     execute_action,
     fetch_base_scores,
     generate_pr_comment_markdown,
+    get_comment_marker,
     get_finding_fingerprint,
     get_modified_files,
     is_autofixable,
     is_finding_in_files,
     parse_bool,
     post_or_update_pr_comment,
+    resolve_comment_tag,
     write_github_output,
     write_github_step_summary,
 )
@@ -393,6 +395,143 @@ def test_post_or_update_pr_comment_update_existing() -> None:
         assert "comments/202" in req2.full_url
 
 
+def test_post_or_update_pr_comment_scoped_matrix_comments() -> None:
+    mock_list_resp = MagicMock()
+    mock_list_resp.read.return_value = json.dumps(
+        [
+            {"id": 101, "body": "<!-- tff-pr-comment:analytics-dbt -->\nAnalytics report"},
+            {"id": 202, "body": "<!-- tff-pr-comment:marketing-dataform -->\nMarketing report"},
+        ]
+    ).encode("utf-8")
+    mock_list_resp.__enter__.return_value = mock_list_resp
+
+    mock_patch_resp = MagicMock()
+    mock_patch_resp.read.return_value = json.dumps({"id": 202}).encode("utf-8")
+    mock_patch_resp.__enter__.return_value = mock_patch_resp
+
+    # 1. Update specific scoped comment (marketing-dataform -> 202)
+    with patch(
+        "urllib.request.urlopen", side_effect=[mock_list_resp, mock_patch_resp]
+    ) as mock_open:
+        cid = post_or_update_pr_comment(
+            "fake_token",
+            "owner/repo",
+            42,
+            "Updated marketing report",
+            comment_marker="<!-- tff-pr-comment:marketing-dataform -->",
+        )
+        assert cid == 202
+        req2 = mock_open.call_args_list[1][0][0]
+        assert req2.method == "PATCH"
+        assert "comments/202" in req2.full_url
+
+    # 2. Automatically detect scoped marker in body when comment_marker not passed
+    mock_patch_resp_101 = MagicMock()
+    mock_patch_resp_101.read.return_value = json.dumps({"id": 101}).encode("utf-8")
+    mock_patch_resp_101.__enter__.return_value = mock_patch_resp_101
+
+    with patch(
+        "urllib.request.urlopen", side_effect=[mock_list_resp, mock_patch_resp_101]
+    ) as mock_open:
+        cid = post_or_update_pr_comment(
+            "fake_token",
+            "owner/repo",
+            42,
+            "<!-- tff-pr-comment:analytics-dbt -->\nNew analytics text",
+        )
+        assert cid == 101
+        req2 = mock_open.call_args_list[1][0][0]
+        assert req2.method == "PATCH"
+        assert "comments/101" in req2.full_url
+
+    # 3. Create a new third scoped comment (finance-sqlmesh)
+    mock_post_resp = MagicMock()
+    mock_post_resp.read.return_value = json.dumps({"id": 303}).encode("utf-8")
+    mock_post_resp.__enter__.return_value = mock_post_resp
+
+    with patch(
+        "urllib.request.urlopen", side_effect=[mock_list_resp, mock_post_resp]
+    ) as mock_open:
+        cid = post_or_update_pr_comment(
+            "fake_token",
+            "owner/repo",
+            42,
+            "<!-- tff-pr-comment:finance-sqlmesh -->\nFinance report",
+            comment_marker="<!-- tff-pr-comment:finance-sqlmesh -->",
+        )
+        assert cid == 303
+        req2 = mock_open.call_args_list[1][0][0]
+        assert req2.method == "POST"
+        assert "42/comments" in req2.full_url
+
+
+def test_resolve_comment_tag() -> None:
+    # Explicit tag overrides
+    assert resolve_comment_tag("analytics-dbt") == "analytics-dbt"
+    assert resolve_comment_tag("  custom-tag  ") == "custom-tag"
+    assert resolve_comment_tag(":::scoped-tag:::") == "scoped-tag"
+
+    # Project path resolution
+    assert resolve_comment_tag(None, "analytics/dbt") == "analytics-dbt"
+    assert resolve_comment_tag("", "packages/dataform/models") == "packages-dataform-models"
+    assert resolve_comment_tag(None, Path("finance/core")) == "finance-core"
+    assert resolve_comment_tag(None, ["analytics/dbt"]) == "analytics-dbt"
+    assert resolve_comment_tag(None, ["analytics/dbt", "marketing/dataform"]) == "analytics-dbt-marketing-dataform"
+    assert resolve_comment_tag(None, []) is None
+    assert resolve_comment_tag(None, [".", "./"]) is None
+    assert resolve_comment_tag(None, Path("/non/relative/path/somewhere")) == "non-relative-path-somewhere"
+
+    # Current working directory / dot returns None (unscoped)
+    assert resolve_comment_tag(None, ".") is None
+    assert resolve_comment_tag(None, "./") is None
+    assert resolve_comment_tag(None, "") is None
+    assert resolve_comment_tag(None, None) is None
+    assert resolve_comment_tag(None, Path.cwd()) is None
+
+
+def test_get_comment_marker() -> None:
+    assert get_comment_marker() == "<!-- tff-pr-comment -->"
+    assert get_comment_marker(None) == "<!-- tff-pr-comment -->"
+    assert get_comment_marker("") == "<!-- tff-pr-comment -->"
+    assert get_comment_marker("analytics-dbt") == "<!-- tff-pr-comment:analytics-dbt -->"
+    assert get_comment_marker("  team-core  ") == "<!-- tff-pr-comment:team-core -->"
+
+
+def test_generate_pr_comment_markdown_with_comment_tag() -> None:
+    # Clean run with tag
+    clean_data = {
+        "overall_score": 100.0,
+        "findings": [],
+        "errors_count": 0,
+        "warnings_count": 0,
+    }
+    md_clean = generate_pr_comment_markdown(
+        clean_data, comment_tag="analytics-dbt"
+    )
+    assert "<!-- tff-pr-comment:analytics-dbt -->" in md_clean
+    assert "**tff Quality Gate Passed** (`analytics-dbt`)" in md_clean
+
+    # Violation run with tag
+    violation_data = {
+        "overall_score": 75.0,
+        "findings": [
+            {
+                "check": "connascence_of_value",
+                "severity": "error",
+                "message": "Duplicated constant",
+                "model": "stg_orders",
+            }
+        ],
+        "errors_count": 1,
+        "warnings_count": 0,
+    }
+    md_violation = generate_pr_comment_markdown(
+        violation_data, comment_tag="marketing-dataform"
+    )
+    assert "<!-- tff-pr-comment:marketing-dataform -->" in md_violation
+    assert "## ■ ▲ ● TFF ARCHITECTURE AUDIT (`marketing-dataform`)" in md_violation
+
+
 def test_post_or_update_pr_comment_http_errors() -> None:
     err = urllib.error.HTTPError("url", 403, "Forbidden", {}, None)
     with patch("urllib.request.urlopen", side_effect=err):
@@ -608,6 +747,8 @@ def test_cli_action_subcommand(capsys: pytest.CaptureFixture[str]) -> None:
                 "0",
                 "--fail-level",
                 "error",
+                "--comment-tag",
+                "analytics-dbt",
             ]
         )
         == 0

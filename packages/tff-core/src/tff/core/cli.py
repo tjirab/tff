@@ -1506,6 +1506,11 @@ def _main_impl(argv: list[str] | None = None) -> int:
         help="Post or update PR summary comment with health score and violations ('true' or 'false', default: false)",
     )
     action_parser.add_argument(
+        "--comment-tag",
+        default=None,
+        help="Scoped identifier for PR comments in monorepos/matrix builds (default: derived from project path)",
+    )
+    action_parser.add_argument(
         "--github-token",
         default=None,
         help="GitHub token for PR comment creation/updating (default: GITHUB_TOKEN env var)",

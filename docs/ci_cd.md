@@ -55,6 +55,7 @@ jobs:
 | `fail-level` | Severity level that triggers step failure (`error`, `warning`) | `error` | No |
 | `only-changed` | Only gate and report violations for files/models modified in this PR | `false` | No |
 | `comment-pr` | Post or update interactive PR summary comment with score and violations | `false` | No |
+| `comment-tag` | Scoped PR comment marker tag for monorepos/matrix builds (e.g. `analytics-dbt`) | (derived from `project`) | No |
 | `github-token` | GitHub token for creating/updating PR comments | `${{ github.token }}` | No |
 | `config` | Path to `fitness_functions.yaml` (relative to project root) | `fitness_functions.yaml` | No |
 | `checks` | Comma-separated list of specific checks to run | (all enabled) | No |
@@ -205,7 +206,11 @@ The complete Markdown health report is automatically published to the GitHub Act
 
 ### Monorepo & Multi-Project Matrix Setups
 
-For repositories containing multiple transformation projects (e.g., separate dbt and Dataform projects):
+For repositories containing multiple transformation projects (e.g., separate dbt and Dataform projects), matrix builds can run in parallel.
+
+To prevent concurrent matrix jobs from overwriting each other's PR summary comments, `tjirab/tff@v1` automatically assigns **scoped PR comment markers** (`<!-- tff-pr-comment:{tag} -->`).
+
+By default, `{tag}` is derived from the project path (e.g., `analytics/dbt` becomes `analytics-dbt`), ensuring each matrix job upserts its own dedicated status card on the PR. You can also specify an explicit `comment-tag`:
 
 ```yaml
 jobs:
@@ -216,8 +221,10 @@ jobs:
         include:
           - project: "analytics/dbt"
             provider: "dbt"
+            tag: "analytics-dbt"
           - project: "marketing/dataform"
             provider: "dataform"
+            tag: "marketing-dataform"
     permissions:
       contents: read
       pull-requests: write
@@ -232,6 +239,7 @@ jobs:
           provider: ${{ matrix.provider }}
           fail-under: "80.0"
           comment-pr: "true"
+          comment-tag: ${{ matrix.tag }}
 ```
 
 ---
