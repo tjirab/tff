@@ -151,3 +151,12 @@ For full CLI options and flags, see the [CLI Reference](cli.md).
 - [API Reference - Adapters](api/adapters.md)
 - [API Reference - Rules & Checks](api/rules.md)
 - [Architecture & Contributor Guide](contributing.md)
+
+---
+
+## Security & Trust Model
+
+!!! warning "Run tff only against repositories you trust"
+    `tff` dynamically loads and executes custom Python linter rules from your project's `linter/` directory (in SQLMesh projects) or configured plugin paths, and reads filesystem paths declared in `fitness_functions.yaml` and related JSON files (such as schema contract groups or exclusion files).
+
+    Run this tool only against repositories you trust, the same as you would run `sqlmesh plan`, `dbt compile`, or `make test`. Do not run `tff check` or `tff lint` on untrusted repositories without first reviewing project Python scripts and configuration files.

@@ -104,6 +104,14 @@ Complete specifications, configuration guides, and architectural documentation a
 
 ---
 
+## Security & Trust Model
+
+> **Trust model:** `tff` dynamically loads and executes custom Python linter rules from your project's `linter/` directory (in SQLMesh projects) or configured plugin paths, and reads filesystem paths declared in `fitness_functions.yaml` and related JSON files (such as schema contract groups or exclusion files).
+>
+> **Run `tff` only against repositories you trust**, the same as you would run `sqlmesh plan`, `dbt compile`, or `make test`. Do not run `tff check` or `tff lint` on untrusted repositories without first reviewing project Python scripts and configuration files.
+
+---
+
 ## License
 
 Distributed under the [MIT License](LICENSE).
