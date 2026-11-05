@@ -140,12 +140,13 @@ def parse_sql_with_cache(
     cache_dir: Path | None = None,
     project_root: Path | None = None,
     enabled: bool = True,
+    config: FitnessFunctionsConfig | None = None,
 ) -> exp.Expression | None:
     """Parse SQL using SQLGlot, using disk cache if enabled and allowed by environment."""
     if not sql or not sql.strip():
         return None
 
-    if not enabled or not is_cache_enabled():
+    if not enabled or not is_cache_enabled(config=config):
         try:
             return sqlglot.parse_one(sql, read=dialect)
         except Exception:

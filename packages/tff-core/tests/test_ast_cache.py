@@ -267,6 +267,14 @@ def test_parse_sql_with_cache_empty_and_disabled(tmp_path: Path):
     # Verify no file written when disabled
     assert not cache_dir.exists()
 
+    # Disabled cache via config
+    cfg_disabled = FitnessFunctionsConfig(cache_ast=False)
+    parsed_cfg_disabled = parse_sql_with_cache(
+        sql, "duckdb", cache_dir=cache_dir, config=cfg_disabled
+    )
+    assert parsed_cfg_disabled is not None
+    assert not cache_dir.exists()
+
     # Invalid SQL with disabled cache
     assert parse_sql_with_cache("SELECT FROM WHERE", "duckdb", enabled=False) is None
 
