@@ -14,6 +14,7 @@ from tff.core.cli import (
     _render_rules_table,
     main,
     mask_sensitive_args,
+    positive_int,
 )
 from tff.core.registry import CheckDefinition
 
@@ -2193,6 +2194,34 @@ def test_cli_docs_and_action_chunk_size_flag(tmp_path: Path):
         assert exit_code == 0
         args_passed = mock_action.call_args[0][0]
         assert args_passed.chunk_size == 20
+
+
+def test_positive_int_validator():
+    import argparse
+
+    assert positive_int("1") == 1
+    assert positive_int("42") == 42
+    with pytest.raises(argparse.ArgumentTypeError, match="strictly positive integer"):
+        positive_int("0")
+    with pytest.raises(argparse.ArgumentTypeError, match="strictly positive integer"):
+        positive_int("-5")
+    with pytest.raises(argparse.ArgumentTypeError, match="Invalid integer value"):
+        positive_int("not_a_number")
+
+
+@pytest.mark.parametrize("subcommand", ["lint", "health", "docs", "action"])
+@pytest.mark.parametrize("flag", ["--workers", "--chunk-size"])
+@pytest.mark.parametrize("invalid_val", ["0", "-1", "abc"])
+def test_cli_rejects_non_positive_int_flags(subcommand: str, flag: str, invalid_val: str, capsys):
+    with pytest.raises(SystemExit) as excinfo:
+        main([subcommand, flag, invalid_val])
+    assert excinfo.value.code == 2
+    captured = capsys.readouterr()
+    assert (
+        "strictly positive integer" in captured.err
+        or "Invalid integer value" in captured.err
+        or "invalid positive_int value" in captured.err
+    )
 
 
 @pytest.mark.parametrize("flag", ["-p", "--project"])
