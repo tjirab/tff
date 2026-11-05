@@ -29,7 +29,9 @@ def main(argv: list[str] | None = None) -> int:
     )
     subparsers = parser.add_subparsers(dest="command", required=True)
 
-    lint_parser = subparsers.add_parser("lint", help="Run all enabled fitness checks")
+    lint_parser = subparsers.add_parser(
+        "lint", aliases=["check"], help="Run all enabled fitness checks"
+    )
     lint_parser.add_argument(
         "--project",
         type=Path,
@@ -68,7 +70,7 @@ def main(argv: list[str] | None = None) -> int:
 
     args = parser.parse_args(argv)
 
-    if args.command == "lint":
+    if args.command in ("lint", "check"):
         from tff.core.cli import _deprecated_provider_cli
         from tff.core.logs import is_debug_enabled, setup_cli_logging
 
