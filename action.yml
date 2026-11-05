@@ -26,6 +26,10 @@ inputs:
     description: "Post or update PR summary comment with health score and violations"
     required: false
     default: "false"
+  comment-tag:
+    description: "Scoped PR comment tag for monorepos and matrix builds (e.g. analytics-dbt)"
+    required: false
+    default: ""
   github-token:
     description: "GitHub Token for posting or updating PR comments"
     required: false
@@ -196,6 +200,7 @@ runs:
         INPUT_FAIL_UNDER: ${{ inputs.fail-under }}
         INPUT_FAIL_LEVEL: ${{ inputs.fail-level }}
         INPUT_COMMENT_PR: ${{ inputs.comment-pr }}
+        INPUT_COMMENT_TAG: ${{ inputs.comment-tag }}
         INPUT_CONFIG: ${{ inputs.config }}
         INPUT_CHECKS: ${{ inputs.checks }}
         INPUT_ANNOTATIONS: ${{ inputs.annotations }}
@@ -215,6 +220,9 @@ runs:
         )
         if [ -n "${INPUT_CHECKS}" ]; then
           ARGS+=("--checks" "${INPUT_CHECKS}")
+        fi
+        if [ -n "${INPUT_COMMENT_TAG}" ]; then
+          ARGS+=("--comment-tag" "${INPUT_COMMENT_TAG}")
         fi
         if [ "${INPUT_ANNOTATIONS}" = "false" ]; then
           ARGS+=("--no-annotations")

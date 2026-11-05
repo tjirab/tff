@@ -32,6 +32,60 @@ logger = logging.getLogger(__name__)
 
 PR_COMMENT_MARKER = "<!-- tff-pr-comment -->"
 
+
+def resolve_comment_tag(
+    comment_tag: str | None = None,
+    project_root: Path | str | Sequence[Path | str] | None = None,
+) -> str | None:
+    """Resolve the scoped PR comment tag from explicit input or normalized project directory path."""
+    if comment_tag:
+        clean = comment_tag.strip().strip(":").strip()
+        if clean:
+            return clean
+
+    if project_root is not None:
+        if isinstance(project_root, (list, tuple)):
+            if not project_root:
+                return None
+            if len(project_root) == 1:
+                project_root = project_root[0]
+            else:
+                sub_tags = [resolve_comment_tag(None, p) for p in project_root]
+                valid_tags = [t for t in sub_tags if t]
+                return "-".join(valid_tags) if valid_tags else None
+
+        p = Path(project_root)
+        p_str = str(p).strip()
+        if p_str in (".", "./", ""):
+            return None
+
+        cwd = Path.cwd().resolve()
+        p_resolved = p.resolve()
+        if p_resolved == cwd:
+            return None
+        try:
+            rel = p_resolved.relative_to(cwd)
+            slug = str(rel).replace("/", "-").replace("\\", "-").strip("-")
+            if slug and slug != ".":
+                return slug
+        except ValueError:
+            pass
+
+        parts = [part for part in p.parts if part not in (".", "/", "\\", "")]
+        if parts:
+            return "-".join(parts).replace("/", "-").replace("\\", "-").strip("-")
+
+    return None
+
+
+def get_comment_marker(tag: str | None = None) -> str:
+    """Return the scoped HTML comment marker used to identify tff PR comments."""
+    if tag:
+        clean = tag.strip().strip(":").strip()
+        if clean:
+            return f"<!-- tff-pr-comment:{clean} -->"
+    return PR_COMMENT_MARKER
+
 AUTOFIXABLE_CHECKS = {
     "filenameequalsmodelname",
     "filename_equals_modelname",
@@ -446,8 +500,12 @@ def generate_pr_comment_markdown(
     modified_files_count: int = 0,
     ignored_violations_count: int = 0,
     modified_files: set[str] | None = None,
+    comment_tag: str | None = None,
+    comment_marker: str | None = None,
 ) -> str:
     """Generate the GitHub PR markdown comment summarizing health score and violations."""
+    marker = comment_marker or get_comment_marker(comment_tag)
+    tag_suffix = f" (`{comment_tag}`)" if comment_tag else ""
     score = float(current_data.get("overall_score", 100.0))
     passed = evaluate_pass_fail(
         current_data, fail_under=fail_under, fail_level=fail_level
@@ -533,9 +591,9 @@ def generate_pr_comment_markdown(
         and (base_data is not None or not all_findings)
     ):
         score_val = f"{score:.1f}%"
-        card_line = f"**tff Quality Gate Passed** — Health Score: {score_val}{delta_compact_str}"
+        card_line = f"**tff Quality Gate Passed**{tag_suffix} — Health Score: {score_val}{delta_compact_str}"
         lines = [
-            PR_COMMENT_MARKER,
+            marker,
             card_line,
         ]
 
@@ -593,8 +651,8 @@ def generate_pr_comment_markdown(
         threshold_line = f"> **Threshold**: Minimum score: `{fail_under:.1f}%` · Severity threshold: `{fail_level}`\n"
 
     lines = [
-        PR_COMMENT_MARKER,
-        "## ■ ▲ ● TFF ARCHITECTURE AUDIT\n",
+        marker,
+        f"## ■ ▲ ● TFF ARCHITECTURE AUDIT{tag_suffix}\n",
     ]
 
     has_autofix = any(is_autofixable(f) for f in all_findings)
@@ -758,6 +816,13 @@ def post_or_update_pr_comment(
 
     base_url = f"https://api.github.com/repos/{repo}/issues"
     list_url = f"{base_url}/{pr_number}/comments?per_page=100"
+
+    if comment_marker == PR_COMMENT_MARKER:
+        import re
+
+        match = re.search(r"<!--\s*tff-pr-comment:[a-zA-Z0-9_\-\.]+\s*-->", body)
+        if match:
+            comment_marker = match.group(0)
 
     existing_comment_id: int | None = None
     try:
@@ -1013,6 +1078,12 @@ def execute_action(args: argparse.Namespace) -> int:
         )
 
     # 5. Generate PR Comment Markdown
+    resolved_tag = resolve_comment_tag(
+        getattr(args, "comment_tag", None) or os.environ.get("INPUT_COMMENT_TAG"),
+        target_project_root,
+    )
+    resolved_marker = get_comment_marker(resolved_tag)
+
     md_report = generate_pr_comment_markdown(
         current_data=current_data,
         base_data=base_data,
@@ -1023,6 +1094,8 @@ def execute_action(args: argparse.Namespace) -> int:
         modified_files_count=modified_files_count,
         ignored_violations_count=ignored_violations_count,
         modified_files=modified_files,
+        comment_tag=resolved_tag,
+        comment_marker=resolved_marker,
     )
 
     # 5. Output to terminal / console
@@ -1079,6 +1152,7 @@ def execute_action(args: argparse.Namespace) -> int:
                 repo=repo,
                 pr_number=pr_number,
                 body=md_report,
+                comment_marker=resolved_marker,
             )
         else:
             print(
