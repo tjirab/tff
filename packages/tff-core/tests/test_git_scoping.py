@@ -25,6 +25,12 @@ def test_get_git_root_inside_repo() -> None:
     assert (root / ".git").exists()
 
 
+def test_get_git_root_with_file_path() -> None:
+    root = get_git_root(Path(__file__))
+    assert root is not None
+    assert (root / ".git").exists()
+
+
 def test_get_git_root_outside_repo(tmp_path: Path) -> None:
     root = get_git_root(tmp_path)
     assert root is None
