@@ -2360,6 +2360,25 @@ def test_deprecated_provider_cli_tff_error(
 
 
 @pytest.mark.parametrize(
+    "cli_mod",
+    [
+        pytest.param("tff.dbt.cli", id="dbt"),
+        pytest.param("tff.dataform.cli", id="dataform"),
+        pytest.param("tff.sqlmesh.cli", id="sqlmesh"),
+    ],
+)
+def test_deprecated_provider_cli_check_alias(tmp_path: Path, cli_mod: str) -> None:
+    import importlib
+
+    mod = importlib.import_module(cli_mod)
+    with patch("tff.core.cli._deprecated_provider_cli", return_value=0) as mock_dep:
+        exit_code = mod.main(["check", "--project", str(tmp_path)])
+        assert exit_code == 0
+        mock_dep.assert_called_once()
+        assert mock_dep.call_args[0][1].command == "check"
+
+
+@pytest.mark.parametrize(
     ("query", "expected_match"),
     [
         ("analytics.orders", True),
