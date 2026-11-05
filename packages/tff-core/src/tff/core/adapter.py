@@ -6,7 +6,7 @@ import importlib
 import re
 from abc import ABC, abstractmethod
 from pathlib import Path
-from typing import TYPE_CHECKING, Callable, Sequence
+from typing import TYPE_CHECKING, Any, Callable, Sequence
 
 import yaml
 
@@ -70,6 +70,25 @@ class PipelineAdapter(ABC):
     ) -> list[tuple[str, str]]:
         """Return list of (file_label, display_status_str) for diagnostics."""
         return []
+
+
+def filter_supported_kwargs(fn: Callable[..., Any], **kwargs: Any) -> dict[str, Any]:
+    """Filter kwargs to only those accepted by fn, unless fn accepts **kwargs (VAR_KEYWORD)."""
+    import inspect
+
+    sig = inspect.signature(fn)
+    if any(p.kind == inspect.Parameter.VAR_KEYWORD for p in sig.parameters.values()):
+        return kwargs
+    return {k: v for k, v in kwargs.items() if k in sig.parameters}
+
+
+def call_adapter_run_checks(
+    adapter: PipelineAdapter,
+    **kwargs: Any,
+) -> tuple[list[LintFinding], int, list[str]]:
+    """Invoke adapter.run_checks forwarding supported kwargs for backward compatibility."""
+    filtered_kwargs = filter_supported_kwargs(adapter.run_checks, **kwargs)
+    return adapter.run_checks(**filtered_kwargs)
 
 
 ADAPTER_CLASSES: dict[str, tuple[str, str]] = {

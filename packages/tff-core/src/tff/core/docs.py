@@ -8,6 +8,7 @@ from datetime import date
 from pathlib import Path
 from typing import Any, Sequence
 
+from tff.core.adapter import call_adapter_run_checks
 from tff.core.config import load_fitness_config
 from tff.core.health import calculate_health_scores
 from tff.core.logs import collect_stats, get_health_json_data, save_log
@@ -78,15 +79,11 @@ def generate_docs_dashboard(
         "models": models,
     }
     if chunk_size is not None:
-        import inspect
+        run_kwargs["chunk_size"] = chunk_size
 
-        sig = inspect.signature(adapter.run_checks)
-        if "chunk_size" in sig.parameters or any(
-            p.kind == inspect.Parameter.VAR_KEYWORD for p in sig.parameters.values()
-        ):
-            run_kwargs["chunk_size"] = chunk_size
-
-    findings, models_checked, executed_checks = adapter.run_checks(**run_kwargs)
+    findings, models_checked, executed_checks = call_adapter_run_checks(
+        adapter, **run_kwargs
+    )
 
     # 5. Calculate scores and save health log
     scores = calculate_health_scores(findings, models_checked, config, provider)

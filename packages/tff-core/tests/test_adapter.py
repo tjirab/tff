@@ -1,6 +1,7 @@
 """Unit tests for PipelineAdapter interface, registries, and concrete adapters."""
 
 from pathlib import Path
+from typing import Any, Sequence
 from unittest.mock import MagicMock, patch
 import pytest
 
@@ -662,5 +663,86 @@ def test_dbt_runner_run_all_checks_multiple_roots(tmp_path: Path):
             max_workers=1,
             config=cfg,
         )
+
+
+def test_filter_supported_kwargs_explicit_parameters():
+    from tff.core.adapter import filter_supported_kwargs
+
+    def target(a: int, b: str = "def"):
+        return a, b
+
+    filtered = filter_supported_kwargs(target, a=1, b="custom", extra="ignored", chunk_size=10)
+    assert filtered == {"a": 1, "b": "custom"}
+
+
+def test_filter_supported_kwargs_var_keyword():
+    from tff.core.adapter import filter_supported_kwargs
+
+    def target_kwargs(a: int, **kwargs):
+        return a, kwargs
+
+    filtered = filter_supported_kwargs(target_kwargs, a=1, b=2, chunk_size=5)
+    assert filtered == {"a": 1, "b": 2, "chunk_size": 5}
+
+
+def test_call_adapter_run_checks_filters_unsupported_chunk_size():
+    from tff.core.adapter import PipelineAdapter, call_adapter_run_checks
+
+    class LegacyAdapter(PipelineAdapter):
+        @property
+        def provider_name(self) -> str:
+            return "legacy"
+
+        def is_applicable(self, project_root: Path) -> bool:
+            return False
+
+        def load_models(self, project_root: Path | Sequence[Path], dialect: str | None = None):
+            return {}
+
+        def run_checks(self, project_root: Path | Sequence[Path], config: Any, checks: list[str] | None = None):
+            return ([], 1, ["check1"])
+
+    adapter = LegacyAdapter()
+    findings, count, checks = call_adapter_run_checks(
+        adapter,
+        project_root=Path.cwd(),
+        config=MagicMock(),
+        checks=["check1"],
+        chunk_size=100,  # Legacy adapter does not accept chunk_size
+        extra_unknown="test",
+    )
+    assert count == 1
+    assert checks == ["check1"]
+
+
+def test_call_adapter_run_checks_forwards_to_modern_adapter():
+    from tff.core.adapter import PipelineAdapter, call_adapter_run_checks
+
+    mock_run = MagicMock(return_value=([], 5, ["check2"]))
+
+    class ModernAdapter(PipelineAdapter):
+        @property
+        def provider_name(self) -> str:
+            return "modern"
+
+        def is_applicable(self, project_root: Path) -> bool:
+            return True
+
+        def load_models(self, project_root: Path | Sequence[Path], dialect: str | None = None):
+            return {}
+
+        def run_checks(self, **kwargs):
+            return mock_run(**kwargs)
+
+    adapter = ModernAdapter()
+    call_adapter_run_checks(
+        adapter,
+        project_root=Path.cwd(),
+        config=MagicMock(),
+        chunk_size=50,
+    )
+    mock_run.assert_called_once()
+    assert mock_run.call_args.kwargs["chunk_size"] == 50
+
 
 

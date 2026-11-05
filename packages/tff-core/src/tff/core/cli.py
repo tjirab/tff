@@ -18,6 +18,7 @@ from rich.markup import escape
 
 from tff.core.adapter import (
     PipelineAdapter,
+    call_adapter_run_checks,
     detect_provider,
     get_adapter,
     normalize_project_roots,
@@ -2342,14 +2343,8 @@ def _main_impl(argv: list[str] | None = None) -> int:
                 call_kwargs["scoped_models"] = scoped_models
             chunk_size = getattr(args, "chunk_size", None)
             if chunk_size is not None:
-                import inspect
-
-                sig = inspect.signature(adapter.run_checks)
-                if "chunk_size" in sig.parameters or any(
-                    p.kind == inspect.Parameter.VAR_KEYWORD for p in sig.parameters.values()
-                ):
-                    call_kwargs["chunk_size"] = chunk_size
-            return adapter.run_checks(**call_kwargs)
+                call_kwargs["chunk_size"] = chunk_size
+            return call_adapter_run_checks(adapter, **call_kwargs)
 
         is_interactive = (
             sys.stderr.isatty()
