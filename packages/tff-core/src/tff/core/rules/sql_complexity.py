@@ -197,15 +197,24 @@ def has_nested_subquery_in_final_select(expression: exp.Expression) -> bool:
         final_select = expression.this
     if not isinstance(final_select, exp.Select):
         return False
-    for node in final_select.find_all(exp.Subquery):
-        parent = node.parent
-        while parent and parent is not final_select:
-            if (
-                isinstance(parent, (exp.From, exp.Join))
-                and parent.parent is final_select
+
+    from_clause = final_select.args.get("from_")
+    if from_clause:
+        targets = [from_clause.this] + list(from_clause.expressions or [])
+        for target in targets:
+            if target and (
+                isinstance(target, exp.Subquery)
+                or any(isinstance(node, exp.Subquery) for node in target.walk())
             ):
                 return True
-            parent = parent.parent
+
+    for join in final_select.args.get("joins") or []:
+        if join.this and (
+            isinstance(join.this, exp.Subquery)
+            or any(isinstance(node, exp.Subquery) for node in join.this.walk())
+        ):
+            return True
+
     return False
 
 
