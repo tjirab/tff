@@ -240,6 +240,19 @@ def _convert_to_dependency_error(
 
 
 
+def positive_int(value: str) -> int:
+    """Validate that an argparse CLI value is a strictly positive integer (> 0)."""
+    try:
+        val = int(value)
+    except (ValueError, TypeError):
+        raise argparse.ArgumentTypeError(f"Invalid integer value: {value!r}")
+    if val <= 0:
+        raise argparse.ArgumentTypeError(
+            f"Value must be a strictly positive integer (> 0), got {val}"
+        )
+    return val
+
+
 def _parse_checks(value: str | None) -> list[str] | None:
     if not value:
         return None
@@ -1132,13 +1145,13 @@ def _main_impl(argv: list[str] | None = None) -> int:
     )
     lint_parser.add_argument(
         "--workers",
-        type=int,
+        type=positive_int,
         default=None,
         help="Number of parallel worker processes for model loading and AST traversal",
     )
     lint_parser.add_argument(
         "--chunk-size",
-        type=int,
+        type=positive_int,
         default=None,
         help="Chunk size of models per thread worker during parallel rule execution",
     )
@@ -1236,13 +1249,13 @@ def _main_impl(argv: list[str] | None = None) -> int:
     )
     health_parser.add_argument(
         "--workers",
-        type=int,
+        type=positive_int,
         default=None,
         help="Number of parallel worker processes for model loading and AST traversal",
     )
     health_parser.add_argument(
         "--chunk-size",
-        type=int,
+        type=positive_int,
         default=None,
         help="Chunk size of models per thread worker during parallel rule execution",
     )
@@ -1400,13 +1413,13 @@ def _main_impl(argv: list[str] | None = None) -> int:
     )
     docs_parser.add_argument(
         "--workers",
-        type=int,
+        type=positive_int,
         default=None,
         help="Number of parallel worker processes for model loading and AST traversal",
     )
     docs_parser.add_argument(
         "--chunk-size",
-        type=int,
+        type=positive_int,
         default=None,
         help="Chunk size of models per thread worker during parallel rule execution",
     )
@@ -1566,13 +1579,13 @@ def _main_impl(argv: list[str] | None = None) -> int:
     )
     action_parser.add_argument(
         "--workers",
-        type=int,
+        type=positive_int,
         default=None,
         help="Number of parallel worker processes for model loading and AST traversal",
     )
     action_parser.add_argument(
         "--chunk-size",
-        type=int,
+        type=positive_int,
         default=None,
         help="Chunk size of models per thread worker during parallel rule execution",
     )
