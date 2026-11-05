@@ -20,6 +20,8 @@ logger = logging.getLogger(__name__)
 def get_git_root(path: Path | str | None = None) -> Path | None:
     """Return the git repository root for the given path, or None if not inside a git repository."""
     target = Path(path).resolve() if path is not None else Path.cwd().resolve()
+    if target.is_file():
+        target = target.parent
     clean_env = {
         k: v
         for k, v in os.environ.items()
