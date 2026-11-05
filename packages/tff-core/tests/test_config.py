@@ -1,7 +1,7 @@
 """Tests for fitness_functions.yaml loading and merging."""
 
 from pathlib import Path
-from typing import get_args
+from typing import Any, get_args
 
 import pytest
 from pydantic import ValidationError
@@ -1170,6 +1170,46 @@ def test_sql_complexity_thresholds_partial_override_preserves_defaults(
     payload = {"thresholds": input_thresholds} if input_thresholds is not None else {}
     cfg = SqlComplexityRuleConfig.model_validate(payload)
     assert cfg.thresholds[expected_key] == expected_val
+
+
+@pytest.mark.parametrize(
+    "disabled_val",
+    [None, False, [None, None], (None, None)],
+)
+def test_sql_complexity_thresholds_explicitly_disabled_omitted(disabled_val: Any) -> None:
+    payload = {
+        "thresholds": {
+            "line_count": disabled_val,
+            "decision_points": [10, 20],
+        }
+    }
+    cfg = SqlComplexityRuleConfig.model_validate(payload)
+    assert "line_count" not in cfg.thresholds
+    assert cfg.thresholds["decision_points"] == [10, 20]
+    assert cfg.thresholds["cte_count"] == [8, 12]
+    assert cfg.thresholds["join_count"] == [8, 12]
+
+
+def test_sql_complexity_thresholds_disable_all_metrics() -> None:
+    payload = {
+        "thresholds": {
+            "line_count": None,
+            "decision_points": False,
+            "cte_count": [None, None],
+            "join_count": None,
+        }
+    }
+    cfg = SqlComplexityRuleConfig.model_validate(payload)
+    assert cfg.thresholds == {}
+
+
+def test_sql_complexity_thresholds_invalid_values() -> None:
+    with pytest.raises(ValidationError, match="Expected dictionary for thresholds"):
+        SqlComplexityRuleConfig.model_validate({"thresholds": "not-a-dict"})
+
+    with pytest.raises(ValidationError, match="must be a pair \\[warn, fail\\]"):
+        SqlComplexityRuleConfig.model_validate({"thresholds": {"line_count": "string"}})
+
 
 
 

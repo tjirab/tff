@@ -2665,6 +2665,42 @@ def test_render_complexity_inspection_unconfigured_metric_does_not_fail(
     assert "—" in captured.out
 
 
+def test_handle_model_complexity_explain_with_disabled_metrics(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    sql_file = tmp_path / "long_model.sql"
+    sql_file.write_text("\n".join(["SELECT 1"] * 300), encoding="utf-8")
+
+    cfg_file = tmp_path / "fitness_functions.yaml"
+    cfg_file.write_text(
+        """
+rules:
+  sql_complexity:
+    thresholds:
+      line_count: null
+      decision_points: [15, 25]
+""",
+        encoding="utf-8",
+    )
+
+    exit_code = main([
+        "explain",
+        "sqlcomplexity",
+        "--model",
+        str(sql_file),
+        "--config",
+        str(cfg_file),
+        "--project",
+        str(tmp_path),
+    ])
+    assert exit_code == 0
+    captured = capsys.readouterr()
+    assert "Lines" in captured.out
+    assert "PASS" in captured.out
+    assert "—" in captured.out
+
+
+
 def test_handle_model_complexity_explain_adapter_error(capsys: pytest.CaptureFixture[str]) -> None:
     mock_adapter = MagicMock()
     mock_adapter.load_models.side_effect = RuntimeError("Adapter crash")

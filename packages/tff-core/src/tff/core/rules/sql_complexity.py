@@ -313,7 +313,16 @@ def inspect_sql_complexity(
     """
     from tff.core.config import DEFAULT_SQL_COMPLEXITY_THRESHOLDS
 
-    thresholds = {**DEFAULT_SQL_COMPLEXITY_THRESHOLDS, **(thresholds or {})}
+    if thresholds is None:
+        thresholds = dict(DEFAULT_SQL_COMPLEXITY_THRESHOLDS)
+    else:
+        thresholds = {
+            k: list(v)
+            for k, v in thresholds.items()
+            if v is not None
+            and v is not False
+            and not (isinstance(v, (list, tuple)) and len(v) == 2 and v[0] is None and v[1] is None)
+        }
 
     # If SQL has a MODEL (...) block, preserve line count with newlines
     preserved_sql = MODEL_BLOCK_PATTERN.sub(
@@ -450,13 +459,13 @@ def inspect_sql_complexity(
 
     # Recommendations
     recommendations: list[str] = []
-    dp_threshold = thresholds.get("decision_points", DEFAULT_SQL_COMPLEXITY_THRESHOLDS["decision_points"])
-    cte_threshold = thresholds.get("cte_count", DEFAULT_SQL_COMPLEXITY_THRESHOLDS["cte_count"])
-    join_threshold = thresholds.get("join_count", DEFAULT_SQL_COMPLEXITY_THRESHOLDS["join_count"])
-    line_threshold = thresholds.get("line_count", DEFAULT_SQL_COMPLEXITY_THRESHOLDS["line_count"])
+    dp_threshold = thresholds.get("decision_points")
+    cte_threshold = thresholds.get("cte_count")
+    join_threshold = thresholds.get("join_count")
+    line_threshold = thresholds.get("line_count")
 
     dp_count = int(metrics.get("decision_points", 0))
-    if dp_count > dp_threshold[0]:
+    if dp_threshold and dp_count > dp_threshold[0]:
         case_when_count = sum(
             1 for dp in decision_points if dp.kind in ("case", "case_simple", "when", "if")
         )
@@ -475,14 +484,14 @@ def inspect_sql_complexity(
             )
 
     cte_cnt = int(metrics.get("cte_count", 0))
-    if cte_cnt > cte_threshold[0]:
+    if cte_threshold and cte_cnt > cte_threshold[0]:
         recommendations.append(
             f"Model defines {cte_cnt} CTEs (warn>{cte_threshold[0]}, fail>{cte_threshold[1]}). "
             "Consider breaking down this complex transformation into multiple intermediate staging models."
         )
 
     join_cnt = int(metrics.get("join_count", 0))
-    if join_cnt > join_threshold[0]:
+    if join_threshold and join_cnt > join_threshold[0]:
         recommendations.append(
             f"Model executes {join_cnt} JOINs (warn>{join_threshold[0]}, fail>{join_threshold[1]}). "
             "Consider reviewing upstream marts or pre-joining relations in an intermediate layer."
@@ -494,7 +503,7 @@ def inspect_sql_complexity(
         )
 
     line_cnt = int(metrics.get("line_count", 0))
-    if line_cnt > line_threshold[0]:
+    if line_threshold and line_cnt > line_threshold[0]:
         recommendations.append(
             f"Model spans {line_cnt} lines (warn>{line_threshold[0]}, fail>{line_threshold[1]}). "
             "Consider modularizing into smaller, single-responsibility models."

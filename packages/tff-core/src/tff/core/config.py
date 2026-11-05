@@ -486,11 +486,24 @@ class SqlComplexityRuleConfig(LayerFilterConfig):
                 hint="Configure thresholds as a dictionary mapping metrics (e.g. 'decision_points', 'line_count') to [warn, fail] pairs.",
                 details={"rule": "sql_complexity", "field": "thresholds", "provided_type": type(v).__name__},
             )
+        result = dict(DEFAULT_SQL_COMPLEXITY_THRESHOLDS)
         for metric, val in v.items():
+            if (
+                val is None
+                or val is False
+                or (
+                    isinstance(val, (list, tuple))
+                    and len(val) == 2
+                    and val[0] is None
+                    and val[1] is None
+                )
+            ):
+                result.pop(metric, None)
+                continue
             if not isinstance(val, (list, tuple)) or len(val) != 2:
                 raise TffConfigError(
                     f"Threshold for metric '{metric}' in 'rules.sql_complexity' must be a pair [warn, fail], got {val}",
-                    hint="Provide a list of two non-negative integers [warn, fail] where warn <= fail.",
+                    hint="Provide a list of two non-negative integers [warn, fail] where warn <= fail, or null to disable.",
                     details={"rule": "sql_complexity", "metric": metric, "threshold": val},
                 )
             warn, fail = val
@@ -512,7 +525,8 @@ class SqlComplexityRuleConfig(LayerFilterConfig):
                     hint="Ensure the warning threshold is less than or equal to the fail threshold: [warn, fail].",
                     details={"rule": "sql_complexity", "metric": metric, "warn": warn, "fail": fail},
                 )
-        return {**DEFAULT_SQL_COMPLEXITY_THRESHOLDS, **v}
+            result[metric] = list(val)
+        return result
 
     @model_validator(mode="before")
     @classmethod
