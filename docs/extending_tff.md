@@ -40,6 +40,7 @@ class CompanyNamingRule(Rule):
     category = "Internal Standards"
     default_severity = "error"
     maturity = "stable"  # "experimental" | "stable" | "deprecated"
+    docs_url = "https://internal-docs.mycorp.net/data/rules/company-naming"
 
     def check_model(self, model: ModelRepresentation) -> RuleViolation | None:
         # Read custom configuration options
@@ -51,6 +52,28 @@ class CompanyNamingRule(Rule):
             return self.violation(f"Model '{model.name}' must start with required prefix '{prefix}'.")
         return None
 ```
+
+### Rule Class Attributes & Documentation Links
+
+Custom `Rule` classes support the following class-level attributes for configuration and metadata reporting:
+
+| Attribute | Type | Default | Description |
+| :--- | :--- | :--- | :--- |
+| `name` | `str` | `""` | Unique identifier for the rule (used in CLI filters, config keys, and findings). |
+| `category` | `str` | `"Custom Rules"` | High-level category grouping (e.g., `"Internal Standards"`, `"Query Performance"`). |
+| `default_severity` | `str` | `"error"` | Default severity when not overridden in config (`"error"` or `"warning"`). |
+| `maturity` | `str` | `"stable"` | Rule maturity lifecycle (`"stable"`, `"experimental"`, or `"deprecated"`). |
+| `docs_url` | `str \| None` | `None` | Direct documentation or remediation guide URL for this rule. |
+| `help_url` | `str \| None` | `None` | Fallback documentation URL (used if `docs_url` is not set). |
+| `aliases` | `tuple[str, ...]` | `()` | Alternative check names accepted in CLI `--checks` and configuration. |
+
+> [!TIP]
+> **Automatic Documentation Hyperlinking**
+>
+> Declaring `docs_url` (or fallback `help_url`) on your rule class or supplying `docs_url` during `CheckRegistry.register_rule()` automatically hyperlinks the rule in:
+> * **GitHub Actions PR Comments**: Links check names directly in the summary violation tables to your internal runbooks or guidelines.
+> * **SARIF Reports**: Fills the SARIF `helpUri` field so GitHub Code Scanning and IDE SARIF viewers provide a direct remediation link.
+> * **HTML Dashboard (`tff docs`)**: Enables one-click navigation from project findings and model sidebars to your documentation.
 
 ### Advanced Example: Inspecting the SQL AST
 
@@ -158,8 +181,18 @@ def register(registry: CheckRegistry) -> list[CheckDefinition]:
             scope="dag",
             default_severity="warning",
             collector_fn=collect_max_upstream_findings,
+            docs_url="https://internal-docs.mycorp.net/data/checks/max-upstream",
         )
     ]
+```
+
+Similarly, if programmatically registering a model rule via `register(registry)` hook or Python script:
+
+```python
+registry.register_rule(
+    CompanyNamingRule,
+    docs_url="https://internal-docs.mycorp.net/data/rules/company-naming",
+)
 ```
 
 ### Configuring in `fitness_functions.yaml`

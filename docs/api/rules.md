@@ -13,6 +13,24 @@ For a comprehensive tutorial on authoring extensions, see the [Extending tff Gui
 
 ---
 
+## Documentation URL Resolution
+
+Rules and checks can declare documentation URLs that are surfaced across reports and developer workflows:
+
+1. **Resolution Precedence**: When registering a rule or resolving a check's documentation URL:
+   * Explicit argument passed to `CheckRegistry.register_rule(..., docs_url="...")` or `CheckDefinition(..., docs_url="...")`.
+   * Rule class attribute `rule_cls.docs_url`.
+   * Fallback rule class attribute `rule_cls.help_url`.
+2. **Registry Lookup**:
+   * `CheckRegistry.get_docs_url(check_id)` resolves the URL by canonical check ID, finding check ID, or configured alias.
+   * `CheckRegistry.get_docs_urls()` returns a dictionary mapping of all check IDs to their documentation URLs.
+3. **Surfaced Outputs**:
+   * **GitHub Actions PR Comments**: Check names in summary violation tables are rendered as Markdown links.
+   * **SARIF Format**: Populates `rule.helpUri` for GitHub Code Scanning and IDE SARIF viewers.
+   * **HTML Documentation Dashboard**: Generates clickable documentation links for each finding in the dashboard.
+
+---
+
 ## Model Rule Classes
 
 ::: tff.core.rules.base.Rule
