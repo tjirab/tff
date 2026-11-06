@@ -4,6 +4,14 @@ from __future__ import annotations
 
 from rich._spinners import SPINNERS
 from rich.console import Console
+from rich.progress import (
+    BarColumn,
+    MofNCompleteColumn,
+    Progress,
+    SpinnerColumn,
+    TaskProgressColumn,
+    TextColumn,
+)
 from rich.status import Status
 
 TFF_SPINNER_NAME = "tff"
@@ -38,4 +46,22 @@ def get_status(
         spinner=TFF_SPINNER_NAME,
         speed=speed,
         refresh_per_second=refresh_per_second,
+    )
+
+
+def get_progress(
+    *,
+    console: Console | None = None,
+    transient: bool = True,
+) -> Progress:
+    """Create a Rich Progress bar using tff's signature symbols (■ ▲ ●)."""
+    register_tff_spinner()
+    return Progress(
+        SpinnerColumn(spinner_name=TFF_SPINNER_NAME),
+        TextColumn("[progress.description]{task.description}"),
+        BarColumn(),
+        MofNCompleteColumn(),
+        TaskProgressColumn(),
+        console=console or Console(stderr=True),
+        transient=transient,
     )
