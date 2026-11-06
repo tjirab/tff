@@ -811,3 +811,111 @@ def test_cov_long_literal_truncated_in_finding_message():
     expected_preview = ("x" * 80) + "..."
     for f in findings:
         assert f"Literal '{expected_preview}' is duplicated" in f.message
+
+
+def test_cov_split_delimiters_ignored():
+    config = FitnessFunctionsConfig()
+    config.checks.connascence_of_value.enabled = True
+    config.checks.connascence_of_value.min_occurrences = 2
+
+    model1 = _make_model(
+        name="model1",
+        path="models/marts/model1.sql",
+        dialect="duckdb",
+        query="SELECT SPLIT(first_name, ' - ') FROM {{ ref('stg_a') }}",
+    )
+    model2 = _make_model(
+        name="model2",
+        path="models/marts/model2.sql",
+        dialect="duckdb",
+        query="SELECT SPLIT(last_name, ' - ') FROM {{ ref('stg_b') }}",
+    )
+    findings = collect_connascence_of_value_findings(
+        {"model1": model1, "model2": model2}, config
+    )
+    assert len(findings) == 0
+
+    # Genuine string literal input target to SPLIT is still flagged
+    model3 = _make_model(
+        name="model3",
+        path="models/marts/model3.sql",
+        dialect="duckdb",
+        query="SELECT SPLIT('hardcoded_split_target', ' - ') FROM {{ ref('stg_a') }}",
+    )
+    model4 = _make_model(
+        name="model4",
+        path="models/marts/model4.sql",
+        dialect="duckdb",
+        query="SELECT SPLIT('hardcoded_split_target', ' - ') FROM {{ ref('stg_b') }}",
+    )
+    findings_target = collect_connascence_of_value_findings(
+        {"model3": model3, "model4": model4}, config
+    )
+    assert len(findings_target) == 2
+    assert all("Literal 'hardcoded_split_target'" in f.message for f in findings_target)
+
+
+def test_cov_array_to_string_delimiters_ignored():
+    config = FitnessFunctionsConfig()
+    config.checks.connascence_of_value.enabled = True
+    config.checks.connascence_of_value.min_occurrences = 2
+
+    model1 = _make_model(
+        name="model1",
+        path="models/marts/model1.sql",
+        dialect="snowflake",
+        query="SELECT ARRAY_TO_STRING(tags, ', ') FROM {{ ref('stg_a') }}",
+    )
+    model2 = _make_model(
+        name="model2",
+        path="models/marts/model2.sql",
+        dialect="snowflake",
+        query="SELECT ARRAY_TO_STRING(categories, ', ') FROM {{ ref('stg_b') }}",
+    )
+    findings = collect_connascence_of_value_findings(
+        {"model1": model1, "model2": model2}, config
+    )
+    assert len(findings) == 0
+
+
+def test_cov_group_concat_and_string_agg_separators_ignored():
+    config = FitnessFunctionsConfig()
+    config.checks.connascence_of_value.enabled = True
+    config.checks.connascence_of_value.min_occurrences = 2
+
+    # In Snowflake, LISTAGG / STRING_AGG / GROUP_CONCAT parse to exp.GroupConcat
+    model1 = _make_model(
+        name="model1",
+        path="models/marts/model1.sql",
+        dialect="snowflake",
+        query="SELECT LISTAGG(tag, ' | ') FROM {{ ref('stg_a') }}",
+    )
+    model2 = _make_model(
+        name="model2",
+        path="models/marts/model2.sql",
+        dialect="snowflake",
+        query="SELECT LISTAGG(role, ' | ') FROM {{ ref('stg_b') }}",
+    )
+    findings = collect_connascence_of_value_findings(
+        {"model1": model1, "model2": model2}, config
+    )
+    assert len(findings) == 0
+
+    # Genuine literal expression passed as aggregated target is still flagged
+    model3 = _make_model(
+        name="model3",
+        path="models/marts/model3.sql",
+        dialect="snowflake",
+        query="SELECT LISTAGG('hardcoded_literal_target', ' | ') FROM {{ ref('stg_a') }}",
+    )
+    model4 = _make_model(
+        name="model4",
+        path="models/marts/model4.sql",
+        dialect="snowflake",
+        query="SELECT LISTAGG('hardcoded_literal_target', ' | ') FROM {{ ref('stg_b') }}",
+    )
+    findings_target = collect_connascence_of_value_findings(
+        {"model3": model3, "model4": model4}, config
+    )
+    assert len(findings_target) == 2
+    assert all("Literal 'hardcoded_literal_target'" in f.message for f in findings_target)
