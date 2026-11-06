@@ -63,6 +63,7 @@ jobs:
 | `version` | Specific version of `tff-core` to install | (latest release) | No |
 | `annotations` | Emit GitHub Actions workflow annotations (`::error` / `::warning`) | `true` | No |
 | `diff-against-base` | Compute health score diff and violations diff vs target branch | `true` | No |
+| `base-manifest` | Path to precompiled baseline manifest for base branch comparison in dbt Slim CI | (none) | No |
 
 #### Outputs
 
@@ -168,7 +169,18 @@ dbt relies on Jinja macros, package dispatch (`dbt_utils`), and adapter configs 
 * **Base Branch (`main`)**: Because `target/` is gitignored by default, checking out `origin/main` in a temporary worktree creates a clean directory with no `target/manifest.json`.
   * **Default Behavior**: tff catches the missing manifest in `main` gracefully, logs a notice, and skips the baseline score delta. **The workflow does not fail**—the PR is still fully gated on health thresholds and violations in touched files.
 * **Enabling Baseline Score Diffing for dbt**:
-  * **Pattern A: Slim CI Artifact Cache (Recommended)**: Download the latest production `manifest.json` from your CI cache or cloud storage (e.g. S3, GCS) into your baseline directory, matching dbt Slim CI practices (`dbt --defer --state`).
+  * **Pattern A: Slim CI Artifact Cache (Recommended)**: Download the latest production `manifest.json` from your CI cache or cloud storage (e.g. S3, GCS) and pass it via `base-manifest`:
+    ```yaml
+    - name: Download Production dbt Manifest
+      run: aws s3 cp s3://my-bucket/artifacts/prod_manifest.json ./target-prod/manifest.json
+
+    - name: Run tff with Production Baseline Manifest
+      uses: tjirab/tff@v1
+      with:
+        provider: "dbt"
+        comment-pr: "true"
+        base-manifest: "./target-prod/manifest.json"
+    ```
   * **Pattern B: Pre-compile `main` in Runner**: If warehouse credentials are available in the CI runner:
     ```yaml
     - name: Compile Base Branch
