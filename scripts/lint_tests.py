@@ -235,6 +235,51 @@ def get_diff_modified_files_and_lines(
     return results
 
 
+def check_diff_loc_skew(
+    repo_root: Path,
+    compare_branch: str = "origin/main",
+    max_ratio: float = 3.0,
+) -> LintViolation | None:
+    """Check whether added test diff lines excessively exceed implementation diff lines."""
+    try:
+        cmd = ["git", "diff", "--numstat", compare_branch]
+        proc = subprocess.run(cmd, cwd=repo_root, capture_output=True, text=True, check=True)
+    except (subprocess.CalledProcessError, FileNotFoundError):
+        return None
+
+    impl_added = 0
+    test_added = 0
+
+    for line in proc.stdout.splitlines():
+        parts = line.strip().split("\t")
+        if len(parts) < 3:
+            continue
+        added_str, _, rel_path = parts[0], parts[1], parts[2]
+        if not added_str.isdigit():
+            continue
+        added = int(added_str)
+        p = Path(rel_path)
+        if "tests" in p.parts and rel_path.endswith(".py"):
+            test_added += added
+        elif "src" in p.parts and rel_path.endswith(".py"):
+            impl_added += added
+
+    if impl_added > 0 and test_added > (max_ratio * impl_added):
+        return LintViolation(
+            path=Path("tests"),
+            line=1,
+            col=1,
+            code="TB004",
+            message=(
+                f"Test diff LOC skew detected: added test lines ({test_added}) exceed "
+                f"{max_ratio:.1f}x implementation lines ({impl_added}). "
+                "Ensure tests are concise and avoid unnecessary boilerplate."
+            ),
+            severity="warning",
+        )
+    return None
+
+
 def find_test_files(repo_root: Path) -> list[Path]:
     """Find all test files in the repository."""
     test_files: list[Path] = []
@@ -268,13 +313,20 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument(
         "--strict",
         action="store_true",
-        help="Treat warnings (e.g. TB003) as errors.",
+        help="Treat warnings (e.g. TB003, TB004) as errors.",
+    )
+    parser.add_argument(
+        "--max-test-ratio",
+        type=float,
+        default=3.0,
+        help="Maximum allowed ratio of test added LOC to implementation added LOC in diff mode (default: 3.0).",
     )
 
     args = parser.parse_args(argv)
     repo_root = Path.cwd()
 
     files_to_check: list[tuple[Path, set[int] | None]] = []
+    all_violations: list[LintViolation] = []
 
     if args.files:
         for f in args.files:
@@ -286,15 +338,19 @@ def main(argv: Sequence[str] | None = None) -> int:
     else:
         # Default mode: check modified lines from git diff against compare-branch
         diff_files = get_diff_modified_files_and_lines(repo_root, args.compare_branch)
+        skew_violation = check_diff_loc_skew(
+            repo_root, args.compare_branch, max_ratio=args.max_test_ratio
+        )
+        if skew_violation is not None:
+            all_violations.append(skew_violation)
+
         if diff_files:
             for path, lines in diff_files.items():
                 if path.exists():
                     files_to_check.append((path, lines))
-        else:
+        elif not all_violations:
             print(f"PASS — No modified test files in diff against '{args.compare_branch}'.")
             return 0
-
-    all_violations: list[LintViolation] = []
 
     for path, allowed_lines in files_to_check:
         violations = check_test_file(path, allowed_lines=allowed_lines)
