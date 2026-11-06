@@ -11,7 +11,7 @@ import re
 import shutil
 import tempfile
 from collections import defaultdict
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -252,6 +252,7 @@ def apply_autofixes(
     findings: list[LintFinding],
     models: dict[str, ModelRepresentation],
     config: FitnessFunctionsConfig | None = None,
+    on_progress: Callable[[Path, int, int], None] | None = None,
 ) -> list[str]:
     """Identify auto-fixable violations from findings and apply modifications to source files."""
     from tff.core.adapter import get_adapter, normalize_project_roots
@@ -280,8 +281,15 @@ def apply_autofixes(
             grouped[abs_path].append(f)
 
     applied_logs = []
+    total_files = len(grouped)
 
-    for abs_path, file_findings in grouped.items():
+    for idx, (abs_path, file_findings) in enumerate(grouped.items(), start=1):
+        if on_progress:
+            try:
+                on_progress(abs_path, idx, total_files)
+            except Exception:
+                pass
+
         if not abs_path.exists():
             continue
 

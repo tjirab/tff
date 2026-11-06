@@ -408,3 +408,57 @@ def test_apply_autofixes_multi_project_roots(tmp_path: Path):
     assert len(logs) == 1
     assert "Synchronized model name to 'item' in item.sql" in logs[0]
     assert "name item" in file2.read_text(encoding="utf-8")
+
+
+def test_apply_autofixes_on_progress_callback(tmp_path: Path):
+    f1 = tmp_path / "models" / "m1.sql"
+    f2 = tmp_path / "models" / "m2.sql"
+    f1.parent.mkdir(parents=True, exist_ok=True)
+    f1.write_text("MODEL (\n  name old1\n);\nSELECT 1", encoding="utf-8")
+    f2.write_text("MODEL (\n  name old2\n);\nSELECT 2", encoding="utf-8")
+
+    finding1 = _make_finding(
+        model="old1",
+        check="filenameequalsmodelname",
+        severity="error",
+        message="Mismatch",
+        path="models/m1.sql",
+    )
+    finding2 = _make_finding(
+        model="old2",
+        check="filenameequalsmodelname",
+        severity="error",
+        message="Mismatch",
+        path="models/m2.sql",
+    )
+
+    progress_calls: list[tuple[str, int, int]] = []
+
+    def progress_tracker(path: Path, current: int, total: int) -> None:
+        progress_calls.append((path.name, current, total))
+
+    logs = apply_autofixes(
+        project_root=tmp_path,
+        provider="sqlmesh",
+        findings=[finding1, finding2],
+        models={},
+        on_progress=progress_tracker,
+    )
+
+    assert len(logs) == 2
+    assert len(progress_calls) == 2
+    assert progress_calls[0] == ("m1.sql", 1, 2)
+    assert progress_calls[1] == ("m2.sql", 2, 2)
+
+    # Error handling in on_progress callback
+    def faulty_tracker(path: Path, current: int, total: int) -> None:
+        raise RuntimeError("Callback crashed")
+
+    logs_faulty = apply_autofixes(
+        project_root=tmp_path,
+        provider="sqlmesh",
+        findings=[finding1],
+        models={},
+        on_progress=faulty_tracker,
+    )
+    assert isinstance(logs_faulty, list)
