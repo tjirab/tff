@@ -1430,6 +1430,19 @@ def _main_impl(argv: list[str] | None = None) -> int:
         help="Disable disk-based AST caching",
     )
     docs_parser.add_argument(
+        "--offline",
+        "--standalone",
+        action="store_true",
+        dest="offline",
+        help="Generate a self-contained offline dashboard with inlined assets (no external CDN requests)",
+    )
+    docs_parser.add_argument(
+        "--assets-dir",
+        type=Path,
+        default=None,
+        help="Directory containing custom vendor assets to inline for offline mode",
+    )
+    docs_parser.add_argument(
         "--clear-cache",
         action="store_true",
         help="Clear persistent AST disk cache before execution",
@@ -2127,6 +2140,10 @@ def _main_impl(argv: list[str] | None = None) -> int:
             docs_kwargs["workers"] = args.workers
         if getattr(args, "chunk_size", None) is not None:
             docs_kwargs["chunk_size"] = args.chunk_size
+        if getattr(args, "offline", False):
+            docs_kwargs["offline"] = True
+        if getattr(args, "assets_dir", None) is not None:
+            docs_kwargs["assets_dir"] = args.assets_dir
         if getattr(args, "no_cache", False):
             os.environ["TFF_NO_CACHE"] = "1"
             logger.debug("AST caching disabled via --no-cache")

@@ -375,5 +375,107 @@ def test_dashboard_template_resource_loading() -> None:
     assert "tff Health & Documentation Dashboard" in loaded
 
 
+def test_generate_docs_dashboard_offline_mode(tmp_path: Path):
+    r = tmp_path / "repo"
+    r.mkdir()
+    (r / "dbt_project.yml").touch()
+    (r / "fitness_functions.yaml").touch()
+    (r / "target").mkdir()
+    (r / "target" / "manifest.json").write_text(
+        '{"metadata": {"adapter_type": "duckdb"}, "nodes": {}, "sources": {}}',
+        encoding="utf-8",
+    )
+
+    out_file = r / "offline_report.html"
+    res = generate_docs_dashboard(r, output_path=out_file, offline=True, no_log=True)
+    assert res.exists()
+    content = res.read_text(encoding="utf-8")
+
+    # Verify no CDN script tags
+    assert '<script src="https://cdn.tailwindcss.com"></script>' not in content
+    assert '<script type="text/javascript" src="https://unpkg.com/vis-network/standalone/umd/vis-network.min.js"></script>' not in content
+    assert '<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>' not in content
+
+    # Verify inlined script content exists
+    assert "tailwind" in content or "tailwindcss" in content
+    assert "vis" in content or "Chart" in content
+
+
+def test_generate_docs_dashboard_offline_custom_assets_dir(tmp_path: Path):
+    r = tmp_path / "repo"
+    r.mkdir()
+    (r / "dbt_project.yml").touch()
+    (r / "fitness_functions.yaml").touch()
+    (r / "target").mkdir()
+    (r / "target" / "manifest.json").write_text(
+        '{"metadata": {"adapter_type": "duckdb"}, "nodes": {}, "sources": {}}',
+        encoding="utf-8",
+    )
+
+    custom_assets = tmp_path / "custom_vendor"
+    custom_assets.mkdir()
+    (custom_assets / "tailwind.js").write_text("console.log('custom-tailwind');", encoding="utf-8")
+    (custom_assets / "vis-network.min.js").write_text("console.log('custom-vis');", encoding="utf-8")
+    (custom_assets / "chart.min.js").write_text("console.log('custom-chart');", encoding="utf-8")
+
+    out_file = r / "custom_offline_report.html"
+    res = generate_docs_dashboard(r, output_path=out_file, offline=True, assets_dir=custom_assets, no_log=True)
+    assert res.exists()
+    content = res.read_text(encoding="utf-8")
+
+    assert "custom-tailwind" in content
+    assert "custom-vis" in content
+    assert "custom-chart" in content
+
+
+def test_docs_cli_offline_flag(tmp_path: Path, monkeypatch, capsys):
+    r = tmp_path / "repo"
+    r.mkdir()
+    (r / "dbt_project.yml").touch()
+    (r / "fitness_functions.yaml").touch()
+    (r / "target").mkdir()
+    (r / "target" / "manifest.json").write_text(
+        '{"metadata": {"adapter_type": "duckdb"}, "nodes": {}, "sources": {}}',
+        encoding="utf-8",
+    )
+
+    exit_code = main(["docs", "--project", str(r), "--offline", "--no-log"])
+    assert exit_code == 0
+    out = capsys.readouterr().out
+    assert "Successfully generated HTML dashboard at:" in out
+    generated_file = r / "tff_report.html"
+    assert generated_file.exists()
+    content = generated_file.read_text(encoding="utf-8")
+    assert '<script src="https://cdn.tailwindcss.com"></script>' not in content
+
+
+def test_docs_cli_assets_dir_flag(tmp_path: Path, capsys):
+    r = tmp_path / "repo"
+    r.mkdir()
+    (r / "dbt_project.yml").touch()
+    (r / "fitness_functions.yaml").touch()
+    (r / "target").mkdir()
+    (r / "target" / "manifest.json").write_text(
+        '{"metadata": {"adapter_type": "duckdb"}, "nodes": {}, "sources": {}}',
+        encoding="utf-8",
+    )
+    custom_dir = tmp_path / "custom"
+    custom_dir.mkdir()
+    (custom_dir / "tailwind.js").write_text("/* custom tailwind */", encoding="utf-8")
+
+    exit_code = main(["docs", "--project", str(r), "--offline", "--assets-dir", str(custom_dir), "--no-log"])
+    assert exit_code == 0
+    content = (r / "tff_report.html").read_text(encoding="utf-8")
+    assert "/* custom tailwind */" in content
+
+
+def test_load_vendor_asset_missing():
+    from tff.core.docs import _load_vendor_asset
+
+    assert _load_vendor_asset("non_existent_file.xyz") == ""
+
+
+
+
 
 
