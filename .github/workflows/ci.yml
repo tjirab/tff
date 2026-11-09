@@ -8,6 +8,9 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.12", "3.13"]
     steps:
       - uses: actions/checkout@v7
         with:
@@ -15,7 +18,8 @@ jobs:
       - uses: astral-sh/setup-uv@v7
         with:
           enable-cache: true
-      - run: uv sync --all-extras --frozen
+          python-version: ${{ matrix.python-version }}
+      - run: uv sync --all-extras --frozen --python ${{ matrix.python-version }}
       - name: Run dependency audit
         run: uv run python scripts/audit.py --min-severity HIGH
       - run: uv run ruff check .

@@ -225,6 +225,8 @@ tff docs [options]
 | `--workers NUM` | Integer | (auto / CPU count) | Number of worker processes for parallel model loading and AST parsing. |
 | `--chunk-size NUM` | Integer | (dynamic / `TFF_CHUNK_SIZE`) | Chunk size of models per thread worker during parallel rule execution. |
 | `--no-log` | Flag | `false` | Disable writing execution logs. |
+| `--offline`, `--standalone` | Flag | `false` | Generate self-contained HTML report with inlined vendor assets (no external CDN requests) for air-gapped/offline environments. |
+| `--assets-dir PATH` | Directory Path | (bundled templates) | Directory containing custom vendor assets to inline for offline mode. |
 | `--debug` | Flag | `false` | Enable verbose debug logging output to stderr. |
 
 ### Examples

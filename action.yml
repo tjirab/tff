@@ -58,6 +58,10 @@ inputs:
     description: "Compute and display health score difference against base branch in PR comments"
     required: false
     default: "true"
+  base-manifest:
+    description: "Path to precompiled baseline manifest for base branch comparison in dbt Slim CI"
+    required: false
+    default: ""
   only-changed:
     description: "Only gate and report violations for models/files modified in this pull request"
     required: false
@@ -205,6 +209,7 @@ runs:
         INPUT_CHECKS: ${{ inputs.checks }}
         INPUT_ANNOTATIONS: ${{ inputs.annotations }}
         INPUT_DIFF_AGAINST_BASE: ${{ inputs.diff-against-base }}
+        INPUT_BASE_MANIFEST: ${{ inputs.base-manifest }}
         INPUT_ONLY_CHANGED: ${{ inputs.only-changed }}
       run: |
         ARGS=()
@@ -229,6 +234,9 @@ runs:
         fi
         if [ "${INPUT_DIFF_AGAINST_BASE}" = "false" ]; then
           ARGS+=("--no-diff-against-base")
+        fi
+        if [ -n "${INPUT_BASE_MANIFEST}" ]; then
+          ARGS+=("--base-manifest" "${INPUT_BASE_MANIFEST}")
         fi
         if [ "${INPUT_ONLY_CHANGED}" = "true" ]; then
           ARGS+=("--only-changed")

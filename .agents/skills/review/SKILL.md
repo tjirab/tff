@@ -74,8 +74,10 @@ uv run python scripts/audit.py --min-severity HIGH
 - **Error Handling**: Are custom exceptions caught gracefully, printing meaningful error messages to `stderr` and returning appropriate non-zero exit codes?
 - **Documentation**: Are `README.md`, `docs/cli.md`, or relevant user guides updated?
 
-#### D. Test Coverage
+#### D. Test Coverage & Quality
 - **Edge Cases & Failure Paths**: Are error conditions, invalid arguments, missing config files, and environment variable overrides explicitly tested?
+- **Presentation Coupling**: Are domain rules and checks tested via pure data structures rather than terminal string scraping (`export_text()`, `Console(record=True)`)?
+- **Test-to-Implementation LOC Skew**: Do test diff lines excessively exceed implementation lines (>3x) with copy-paste boilerplate rather than parameterized tests (`@pytest.mark.parametrize`)?
 
 ---
 

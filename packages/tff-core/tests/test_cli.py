@@ -1950,11 +1950,17 @@ def test_cli_lint_autofix_interactive_spinner(tmp_path: Path):
     ]
     mock_adapter.load_models.return_value = {"user_model": model}
 
+    def mock_autofix(*args, **kwargs):
+        on_prog = kwargs.get("on_progress")
+        if on_prog:
+            on_prog(Path("user_model.sql"), 1, 1)
+        return ["Synchronized model name to 'user_model' in user_model.sql"]
+
     with patch("tff.core.cli._get_adapter", return_value=mock_adapter), \
          patch("tff.core.cli._detect_provider", return_value="dbt"), \
          patch("sys.stderr.isatty", return_value=True), \
          patch.dict(os.environ, {"TERM": "xterm-256color", "CI": ""}, clear=False), \
-         patch("tff.core.autofix.apply_autofixes", return_value=["Synchronized model name to 'user_model' in user_model.sql"]), \
+         patch("tff.core.autofix.apply_autofixes", side_effect=mock_autofix), \
          patch("tff.core.cli.render_lint_report", return_value=True) as mock_render:
         exit_code = main(["lint", "--project", str(tmp_path), "--fix"])
         assert exit_code == 0

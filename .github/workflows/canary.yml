@@ -1,0 +1,50 @@
+name: Upstream Canary
+
+on:
+  schedule:
+    - cron: '0 3 * * *'
+  workflow_dispatch:
+
+jobs:
+  canary:
+    name: Upstream Compatibility Canary
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+
+      - name: Install base project dependencies
+        run: uv sync --all-extras --frozen
+
+      - name: Install latest upstream dependencies
+        run: |
+          uv pip install --upgrade --pre sqlglot sqlmesh dbt-core
+
+      - name: Log installed dependency versions
+        run: |
+          uv run python -c "import sqlglot, sqlmesh; print(f'sqlglot: {sqlglot.__version__}\nsqlmesh: {sqlmesh.__version__}')"
+
+      - name: Run test suite against upstream
+        id: test_run
+        run: uv run pytest -n auto
+
+      - name: Report Canary Failure
+        if: failure() && github.event_name == 'schedule'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh issue create \
+            --repo ${{ github.repository }} \
+            --title "ci(canary): upstream regression detected against latest dependencies" \
+            --label "ci" \
+            --body "The scheduled upstream canary workflow encountered failures when running the test suite against upstream releases of \`sqlglot\`, \`sqlmesh\`, and \`dbt-core\`.
+
+Run details: [View workflow run](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})"

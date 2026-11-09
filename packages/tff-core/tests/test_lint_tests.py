@@ -12,6 +12,7 @@ if str(REPO_ROOT) not in sys.path:  # pragma: no cover
 
 from scripts.lint_tests import (  # noqa: E402
     LintViolation,
+    check_diff_loc_skew,
     check_test_file,
     find_test_files,
     get_diff_modified_files_and_lines,
@@ -248,3 +249,61 @@ def test_get_diff_modified_files_and_lines_mocked(tmp_path: Path, monkeypatch) -
     assert res[test_a] == {11, 12, 13}
     assert test_new in res
     assert res[test_new] is None
+
+
+def test_check_diff_loc_skew_no_skew(tmp_path: Path, monkeypatch) -> None:
+    numstat = "10\t2\tpackages/tff-core/src/tff/core/model.py\n20\t1\tpackages/tff-core/tests/test_model.py\n"
+
+    def mock_run(*args, **kwargs):
+        class MockProc:
+            stdout = numstat
+        return MockProc()
+
+    monkeypatch.setattr("subprocess.run", mock_run)
+    # Ratio is 20/10 = 2.0 <= 3.0 -> None
+    assert check_diff_loc_skew(tmp_path, max_ratio=3.0) is None
+
+
+def test_check_diff_loc_skew_detects_skew(tmp_path: Path, monkeypatch) -> None:
+    numstat = "5\t0\tpackages/tff-core/src/tff/core/model.py\n50\t0\tpackages/tff-core/tests/test_model.py\n-\t-\tbinary.dat\ninvalid_line\n"
+
+    def mock_run(*args, **kwargs):
+        class MockProc:
+            stdout = numstat
+        return MockProc()
+
+    monkeypatch.setattr("subprocess.run", mock_run)
+    # Ratio is 50/5 = 10.0 > 3.0 -> LintViolation
+    v = check_diff_loc_skew(tmp_path, max_ratio=3.0)
+    assert v is not None
+    assert v.code == "TB004"
+    assert v.severity == "warning"
+    assert "added test lines (50) exceed 3.0x implementation lines (5)" in v.message
+
+
+def test_check_diff_loc_skew_git_error_handled(tmp_path: Path, monkeypatch) -> None:
+    def mock_run(*args, **kwargs):
+        raise FileNotFoundError("git not found")
+
+    monkeypatch.setattr("subprocess.run", mock_run)
+    assert check_diff_loc_skew(tmp_path) is None
+
+
+def test_main_cli_diff_mode_with_skew_warning(monkeypatch, capsys) -> None:
+    monkeypatch.setattr("scripts.lint_tests.get_diff_modified_files_and_lines", lambda *args, **kwargs: {})
+    skew_violation = LintViolation(
+        path=Path("tests"),
+        line=1,
+        col=1,
+        code="TB004",
+        message="LOC skew warning",
+        severity="warning",
+    )
+    monkeypatch.setattr("scripts.lint_tests.check_diff_loc_skew", lambda *args, **kwargs: skew_violation)
+
+    exit_code = main([])
+    assert exit_code == 0
+    out = capsys.readouterr().out
+    assert "[TB004] (warning) LOC skew warning" in out
+    assert "PASS (with warnings)" in out
+
