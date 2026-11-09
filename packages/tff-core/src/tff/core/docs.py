@@ -25,6 +25,23 @@ def _load_dashboard_template() -> str:
     )
 
 
+def _load_vendor_asset(filename: str, assets_dir: Path | None = None) -> str:
+    """Load a vendor static script either from custom assets_dir or bundled vendor templates."""
+    if assets_dir is not None:
+        custom_file = Path(assets_dir) / filename
+        if custom_file.exists():
+            return custom_file.read_text(encoding="utf-8")
+
+    try:
+        return (
+            importlib.resources.files("tff.core.templates.vendor")
+            .joinpath(filename)
+            .read_text(encoding="utf-8")
+        )
+    except Exception:
+        return ""
+
+
 HTML_TEMPLATE: str = _load_dashboard_template()
 _HTML_TEMPLATE: str = HTML_TEMPLATE
 
@@ -39,6 +56,8 @@ def generate_docs_dashboard(
     no_log: bool = False,
     workers: int | None = None,
     chunk_size: int | None = None,
+    offline: bool = False,
+    assets_dir: Path | str | None = None,
 ) -> Path:
     """Run checks, compile, and output a standalone interactive HTML dashboard."""
     from tff.core.adapter import normalize_project_roots
@@ -174,6 +193,28 @@ def generate_docs_dashboard(
     html_content = HTML_TEMPLATE.replace(
         "<!-- INSERT_TFF_DATA_HERE -->", f"const TFF_DATA = {embedded_json};"
     )
+
+    if offline:
+        resolved_assets_dir = Path(assets_dir) if assets_dir is not None else None
+        tailwind_js = _load_vendor_asset("tailwind.js", resolved_assets_dir)
+        vis_js = _load_vendor_asset("vis-network.min.js", resolved_assets_dir)
+        chart_js = _load_vendor_asset("chart.min.js", resolved_assets_dir)
+
+        if tailwind_js:
+            html_content = html_content.replace(
+                '<script src="https://cdn.tailwindcss.com"></script>',
+                f"<script>\n{tailwind_js}\n</script>",
+            )
+        if vis_js:
+            html_content = html_content.replace(
+                '<script type="text/javascript" src="https://unpkg.com/vis-network/standalone/umd/vis-network.min.js"></script>',
+                f'<script type="text/javascript">\n{vis_js}\n</script>',
+            )
+        if chart_js:
+            html_content = html_content.replace(
+                '<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>',
+                f"<script>\n{chart_js}\n</script>",
+            )
 
     if output_path is None:
         output_path = primary_root / "tff_report.html"
