@@ -4,12 +4,14 @@ from __future__ import annotations
 
 from rich._spinners import SPINNERS
 from rich.console import Console
+from rich.progress import Progress, SpinnerColumn
 from rich.status import Status
 
 from tff.core.spinner import (
     TFF_SPINNER_FRAMES,
     TFF_SPINNER_INTERVAL,
     TFF_SPINNER_NAME,
+    get_progress,
     get_status,
     register_tff_spinner,
 )
@@ -62,3 +64,21 @@ def test_tff_spinner_animation_renders_symbols() -> None:
     c2.print(renderable_2)
     out2 = c2.export_text()
     assert "●" in out2
+
+
+def test_get_progress_creates_tff_progress() -> None:
+    """Verify that get_progress configures a Progress bar using the tff spinner."""
+    console = Console(record=True, stderr=True)
+    progress = get_progress(console=console)
+
+    assert isinstance(progress, Progress)
+    spinner_cols = [c for c in progress.columns if isinstance(c, SpinnerColumn)]
+    assert len(spinner_cols) == 1
+    assert spinner_cols[0].spinner.name == "tff"
+
+    with progress:
+        task_id = progress.add_task("Fixing...", total=10)
+        progress.update(task_id, advance=5, description="Halfway...")
+        task = progress.tasks[0]
+        assert task.completed == 5
+        assert task.description == "Halfway..."

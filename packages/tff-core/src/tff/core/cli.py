@@ -2415,11 +2415,24 @@ def _main_impl(argv: list[str] | None = None) -> int:
         if args.command in ("lint", "check") and getattr(args, "fix", False) and findings:
             if models is None:
                 try:
-                    models = adapter.load_models(
-                        project_root=project_roots,
-                        dialect=args.dialect,
-                        manifest_path=manifest_path,
-                    )
+                    if is_interactive:
+                        from tff.core.spinner import get_status
+
+                        with get_status(
+                            f"Loading models for autofix with {adapter.provider_name}...",
+                            console=Console(stderr=True),
+                        ):
+                            models = adapter.load_models(
+                                project_root=project_roots,
+                                dialect=args.dialect,
+                                manifest_path=manifest_path,
+                            )
+                    else:
+                        models = adapter.load_models(
+                            project_root=project_roots,
+                            dialect=args.dialect,
+                            manifest_path=manifest_path,
+                        )
                 except Exception as e:
                     models = {}
                     print(
@@ -2429,7 +2442,30 @@ def _main_impl(argv: list[str] | None = None) -> int:
             if models:
                 from tff.core.autofix import apply_autofixes
 
-                fix_logs = apply_autofixes(project_roots, adapter, findings, models, config=config)
+                if is_interactive:
+                    from tff.core.spinner import get_progress
+
+                    with get_progress(console=Console(stderr=True)) as progress:
+                        task = progress.add_task("Applying auto-fixes...", total=None)
+
+                        def _on_fix_progress(abs_path: Path, current: int, total: int) -> None:
+                            progress.update(
+                                task,
+                                total=total,
+                                completed=current,
+                                description=f"Applying auto-fixes ({abs_path.name})...",
+                            )
+
+                        fix_logs = apply_autofixes(
+                            project_roots,
+                            adapter,
+                            findings,
+                            models,
+                            config=config,
+                            on_progress=_on_fix_progress,
+                        )
+                else:
+                    fix_logs = apply_autofixes(project_roots, adapter, findings, models, config=config)
                 if fix_logs:
                     if not args.json:
                         console = Console(stderr=True)
