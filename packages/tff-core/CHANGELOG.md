@@ -1,5 +1,23 @@
 # Changelog
 
+## [0.30.0](https://github.com/tjirab/tff/compare/tff-core-v0.29.0...tff-core-v0.30.0) (2026-11-09)
+
+
+### Features
+
+* **action:** support scoped PR comment markers for multi-project monorepos and matrix builds ([#465](https://github.com/tjirab/tff/issues/465)) ([2df9061](https://github.com/tjirab/tff/commit/2df90615ba29fa03eaabdd2fd963a39a2df7134b))
+* **cli:** enforce positive integer validation for --chunk-size and --workers CLI options ([#459](https://github.com/tjirab/tff/issues/459)) ([20f2cbe](https://github.com/tjirab/tff/commit/20f2cbe4be15c368c068a8944d725d3c993af2ef))
+* **cli:** provide visual progress and status feedback during autofix ([#466](https://github.com/tjirab/tff/issues/466)) ([75874cc](https://github.com/tjirab/tff/commit/75874cc6c2d824ad8fcb33ee81ff8a7631de29a5))
+* **core:** add check alias to standalone provider CLIs ([#457](https://github.com/tjirab/tff/issues/457)) ([af5cb99](https://github.com/tjirab/tff/commit/af5cb999aaa4cf2f7f7520d95b15641d9e26cf3e))
+* **docs:** support offline and air-gapped environments for HTML dashboard ([#471](https://github.com/tjirab/tff/issues/471)) ([118b007](https://github.com/tjirab/tff/commit/118b0076e51ac976198ddfdbeec56972c51d16b7))
+* **rules:** support explicitly disabling individual sql_complexity metrics in thresholds ([#461](https://github.com/tjirab/tff/issues/461)) ([d1b2275](https://github.com/tjirab/tff/commit/d1b22758ba2d21b3e8082c27b1aceaf5b3964761))
+
+
+### Documentation
+
+* document untrusted repository security warning and trust model ([#462](https://github.com/tjirab/tff/issues/462)) ([2d39a36](https://github.com/tjirab/tff/commit/2d39a3682a3c4844dbe98cdf943b9199f37d24b2))
+* **extending:** document custom rule docs_url attribute and registry parameter ([#464](https://github.com/tjirab/tff/issues/464)) ([8c174bd](https://github.com/tjirab/tff/commit/8c174bd34d391448c58a34a0eb367380f3516cbe))
+
 ## [0.29.0](https://github.com/tjirab/tff/compare/tff-core-v0.28.1...tff-core-v0.29.0) (2026-11-04)
 
 
