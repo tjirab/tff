@@ -3,7 +3,6 @@ requires-python = ">=3.12"
 
 [manifest]
 members = [
-    "sqlmesh-ff",
     "tff-core",
 ]
 requirements = [
@@ -1694,17 +1693,6 @@ wheels = [
 ]
 
 [[package]]
-name = "sqlmesh-ff"
-version = "0.2.0"
-source = { editable = "packages/sqlmesh-ff" }
-dependencies = [
-    { name = "tff-core", extra = ["sqlmesh"] },
-]
-
-[package.metadata]
-requires-dist = [{ name = "tff-core", extras = ["sqlmesh"], editable = "packages/tff-core" }]
-
-[[package]]
 name = "stack-data"
 version = "0.6.3"
 source = { registry = "https://pypi.org/simple" }
@@ -1729,7 +1717,7 @@ wheels = [
 
 [[package]]
 name = "tff-core"
-version = "0.29.0"
+version = "0.30.0"
 source = { editable = "packages/tff-core" }
 dependencies = [
     { name = "pydantic" },
