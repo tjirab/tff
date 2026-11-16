@@ -25,7 +25,6 @@ dbt:
 sqlmesh:
   - changed-files:
       - any-glob-to-any-file:
-          - "packages/sqlmesh-ff/**"
           - "packages/tff-core/src/tff/sqlmesh/**"
 
 tests:

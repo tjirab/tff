@@ -82,8 +82,7 @@ flowchart TD
 ├── pyproject.toml              # Root workspace settings
 ├── release-please-config.json  # Release Please configurations
 ├── packages/
-│   ├── tff-core/               # Unified codebase (core, dbt, sqlmesh)
-│   └── sqlmesh-ff/             # Deprecated backward compatibility wrapper
+│   └── tff-core/               # Unified codebase (core, dbt, sqlmesh)
 ```
 
 ---

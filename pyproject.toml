@@ -27,7 +27,6 @@ filterwarnings = [
 [tool.coverage.run]
 source = [
     "packages/tff-core/src/tff",
-    "packages/sqlmesh-ff/src/sqlmesh_ff",
 ]
 omit = [
     "*/tests/*",
@@ -46,7 +45,6 @@ exclude_lines = [
 [tool.ty.src]
 include = [
     "packages/tff-core/src",
-    "packages/sqlmesh-ff/src",
 ]
 
 [tool.ty.rules]
