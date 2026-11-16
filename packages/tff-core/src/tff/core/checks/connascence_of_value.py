@@ -69,8 +69,8 @@ def is_ignored_literal(node: exp.Literal) -> bool:
     ):
         return True
 
-    # 4. SplitPart delimiter or part index, e.g. split_part(email, '@', 2)
-    if isinstance(parent, exp.SplitPart) and target != parent.this:
+    # 4. Split / SplitPart delimiter or part index, e.g. split_part(email, '@', 2), split(email, '@')
+    if isinstance(parent, (exp.Split, exp.SplitPart)) and target != parent.this:
         return True
 
     # 5. Positional slicing/substring functions
@@ -108,6 +108,14 @@ def is_ignored_literal(node: exp.Literal) -> bool:
 
     # 11. Initcap delimiter argument (synthetically attached by sqlglot or explicit), e.g. initcap(name), initcap(name, ' -')
     if isinstance(parent, exp.Initcap) and target != parent.this:
+        return True
+
+    # 12. ArrayToString delimiter argument, e.g. array_to_string(arr, ', ')
+    if isinstance(parent, exp.ArrayToString) and target != parent.this:
+        return True
+
+    # 13. GroupConcat / StringAgg / Listagg separator argument, e.g. string_agg(col, ', '), group_concat(col, ', ')
+    if isinstance(parent, exp.GroupConcat) and target == parent.args.get("separator"):
         return True
 
     return False

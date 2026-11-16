@@ -198,6 +198,7 @@ def test_main_cli_strict_mode_warnings(tmp_path: Path, capsys) -> None:
 def test_main_cli_diff_mode_clean(monkeypatch, capsys) -> None:
     # When diff returns no modified files
     monkeypatch.setattr("scripts.lint_tests.get_diff_modified_files_and_lines", lambda *args, **kwargs: {})
+    monkeypatch.setattr("scripts.lint_tests.check_diff_loc_skew", lambda *args, **kwargs: None)
     exit_code = main([])
     assert exit_code == 0
     out = capsys.readouterr().out
