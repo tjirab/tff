@@ -135,6 +135,11 @@ rules:
     grain: true
     not_null: true
     unique_values: true
+    # table:
+    #   priority: true
+    # column:
+    #   tag:
+    #     allowed_values: [pii, not_pii]
 
   # Monitor SQL complexity (cyclomatic decision points, join count, line count)
   sql_complexity:
@@ -583,12 +588,147 @@ class ColumnTypesRuleConfig(LayerFilterConfig):
     )
 
 
+class MetadataAttributeRequirement(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    required: bool = True
+    allowed_values: list[Any] | None = None
+    pattern: str | None = None
+    column_pattern: str | None = None
+    skip_columns: list[str] = Field(default_factory=list)
+    description: str | None = None
+
+
+def _normalize_metadata_attributes(raw: Any) -> dict[str, MetadataAttributeRequirement]:
+    if raw is None:
+        return {}
+    if isinstance(raw, list):
+        result: dict[str, MetadataAttributeRequirement] = {}
+        for item in raw:
+            if isinstance(item, dict):
+                attr_name = item.get("name") or item.get("attribute")
+                if not attr_name:
+                    raise TffConfigError(
+                        "Metadata requirement entry in list must specify 'name' or 'attribute'.",
+                        hint="Specify 'name: <attribute_name>' for each metadata requirement.",
+                        details={"item": item},
+                    )
+                opts = {k: v for k, v in item.items() if k not in ("name", "attribute")}
+                if "value" in opts and "allowed_values" not in opts:
+                    val = opts.pop("value")
+                    if isinstance(val, (list, tuple)):
+                        opts["allowed_values"] = list(val)
+                    elif isinstance(val, bool):
+                        opts["required"] = val
+                    elif isinstance(val, (str, int, float)):
+                        opts["allowed_values"] = [val]
+                result[str(attr_name)] = MetadataAttributeRequirement.model_validate(opts)
+            elif isinstance(item, str):
+                result[item] = MetadataAttributeRequirement(required=True)
+            else:
+                raise TffConfigError(
+                    f"Invalid metadata requirement item: expected dict or str, got {type(item).__name__}",
+                    hint="Provide a list of metadata attribute names or objects.",
+                    details={"item": item},
+                )
+        return result
+    if isinstance(raw, dict):
+        result = {}
+        for key, val in raw.items():
+            if isinstance(val, bool):
+                if val:
+                    result[key] = MetadataAttributeRequirement(required=True)
+            elif isinstance(val, (list, tuple)):
+                result[key] = MetadataAttributeRequirement(
+                    required=True, allowed_values=list(val)
+                )
+            elif isinstance(val, (str, int, float)):
+                result[key] = MetadataAttributeRequirement(
+                    required=True, allowed_values=[val]
+                )
+            elif isinstance(val, dict):
+                result[key] = MetadataAttributeRequirement.model_validate(val)
+            elif isinstance(val, MetadataAttributeRequirement):
+                result[key] = val
+            else:
+                raise TffConfigError(
+                    f"Invalid configuration for metadata attribute '{key}': unexpected type {type(val).__name__}",
+                    hint="Configure attribute with boolean, list of allowed values, or a dictionary of options.",
+                    details={"attribute": key, "value": val},
+                )
+        return result
+    raise TffConfigError(
+        f"Expected dictionary or list for metadata requirements, got {type(raw).__name__}",
+        hint="Define metadata requirements as a key-value mapping.",
+        details={"provided_type": type(raw).__name__},
+    )
+
+
 class MetadataRuleConfig(LayerFilterConfig):
+    model_config = ConfigDict(extra="forbid", validate_assignment=True)
     owner: bool = True
     description: bool = True
     grain: bool = True
     not_null: bool = True
     unique_values: bool = True
+    table: dict[str, MetadataAttributeRequirement] = Field(default_factory=dict)
+    column: dict[str, MetadataAttributeRequirement] = Field(default_factory=dict)
+
+    @model_validator(mode="before")
+    @classmethod
+    def _normalize_metadata_config(cls, data: Any) -> Any:
+        if not isinstance(data, dict):
+            return data
+
+        d = dict(data)
+
+        if "tables" in d:
+            tables_val = d.pop("tables")
+            if "table" not in d:
+                d["table"] = tables_val
+            elif isinstance(d["table"], dict) and isinstance(tables_val, dict):
+                d["table"] = {**tables_val, **d["table"]}
+
+        if "columns" in d:
+            cols_val = d.pop("columns")
+            if "column" not in d:
+                d["column"] = cols_val
+            elif isinstance(d["column"], dict) and isinstance(cols_val, dict):
+                d["column"] = {**cols_val, **d["column"]}
+
+        known_keys = {
+            "enabled",
+            "severity",
+            "skip_layers",
+            "only_layers",
+            "owner",
+            "description",
+            "grain",
+            "not_null",
+            "unique_values",
+            "table",
+            "column",
+        }
+
+        extra_keys = [k for k in d if k not in known_keys]
+        if extra_keys:
+            current_table = d.get("table", {})
+            if isinstance(current_table, dict):
+                current_table = dict(current_table)
+                for k in extra_keys:
+                    current_table[k] = d.pop(k)
+                d["table"] = current_table
+            elif isinstance(current_table, list):
+                current_table = list(current_table)
+                for k in extra_keys:
+                    current_table.append({"name": k, "value": d.pop(k)})
+                d["table"] = current_table
+
+        return d
+
+    @field_validator("table", "column", mode="before")
+    @classmethod
+    def _validate_attributes(cls, v: Any) -> dict[str, MetadataAttributeRequirement]:
+        return _normalize_metadata_attributes(v)
 
     @field_validator("grain", mode="before")
     @classmethod

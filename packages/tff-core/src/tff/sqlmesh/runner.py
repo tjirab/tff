@@ -260,6 +260,10 @@ def get_executed_checks(
                     executed.append("nomissingnotnull")
                 if config.rules.metadata.unique_values:
                     executed.append("nomissinguniquevalues")
+                if config.rules.metadata.table:
+                    executed.append("nomissingtablemetadata")
+                if config.rules.metadata.column:
+                    executed.append("nomissingcolumnmetadata")
             for check_def in CheckRegistry.get_default().get_all_checks():
                 if (
                     check_def.rule_cls is not None

@@ -16,14 +16,25 @@ from sqlmesh.utils import UniqueKeyDict
 from sqlmesh.utils.metaprogramming import import_python_file
 
 from tff.core.config import FitnessFunctionsConfig, load_fitness_config
-from tff.core.model import ModelRepresentation
+from tff.core.model import ColumnRepresentation, ModelRepresentation
 from tff.core.registry import CheckRegistry
 from tff.core.rules import ALL_RULES as CORE_RULES
 
 
 def map_sqlmesh_model(model: SqlMeshModel) -> ModelRepresentation:
+    column_descriptions = getattr(model, "column_descriptions", {}) or {}
     columns_to_types = {
         name: str(dtype)
+        for name, dtype in (model.columns_to_types or {}).items()
+    }
+    columns = {
+        name.lower(): ColumnRepresentation(
+            name=name,
+            data_type=str(dtype).lower(),
+            description=column_descriptions.get(name),
+            tags=[],
+            meta={},
+        )
         for name, dtype in (model.columns_to_types or {}).items()
     }
     
@@ -50,6 +61,7 @@ def map_sqlmesh_model(model: SqlMeshModel) -> ModelRepresentation:
         is_symbolic=bool(model.kind.is_symbolic),
         is_external=bool(model.kind.name == "EXTERNAL"),
         columns_to_types=columns_to_types,
+        columns=columns,
         depends_on={str(dep) for dep in model.depends_on},
         description=model.description,
         owner=model.owner,

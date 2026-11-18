@@ -329,6 +329,8 @@ SHORT_CHECK_LABELS: dict[str, str] = {
     "nomissingowner": "owner",
     "nomissingdescription": "desc",
     "nomissinggrain": "grain",
+    "nomissingtablemetadata": "table_meta",
+    "nomissingcolumnmetadata": "col_meta",
     "join_type_parity": "join_parity",
     "classificationmacros": "macro",
     "classification_macros": "macro",
@@ -357,7 +359,7 @@ def _get_action_phrase(check: str, count: int) -> str:
         return f"Fix {count} layer integrity violation{'s' if count != 1 else ''}"
     if check in ("banselectstar", "ban_select_star"):
         return f"Replace {count} wildcard SELECT * {'query' if count == 1 else 'queries'}"
-    if check in ("nomissingowner", "nomissingdescription", "nomissinggrain"):
+    if check in ("nomissingowner", "nomissingdescription", "nomissinggrain", "nomissingtablemetadata", "nomissingcolumnmetadata"):
         return f"Add missing contract metadata to {count} model{'s' if count != 1 else ''}"
     if check == "join_type_parity":
         return f"Align data types across {count} JOIN condition{'s' if count != 1 else ''}"

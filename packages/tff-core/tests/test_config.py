@@ -1211,6 +1211,116 @@ def test_sql_complexity_thresholds_invalid_values() -> None:
         SqlComplexityRuleConfig.model_validate({"thresholds": {"line_count": "string"}})
 
 
+@pytest.mark.parametrize(
+    ("payload", "expected_table_attr", "expected_req", "expected_allowed"),
+    [
+        ({"table": {"priority": True}}, "priority", True, None),
+        ({"table": {"priority": ["high", "low"]}}, "priority", True, ["high", "low"]),
+        ({"table": {"priority": "critical"}}, "priority", True, ["critical"]),
+        ({"tables": {"priority": {"required": True, "allowed_values": ["p1", "p2"]}}}, "priority", True, ["p1", "p2"]),
+        ({"table": [{"name": "priority", "value": ["high", "low"]}]}, "priority", True, ["high", "low"]),
+        ({"table": ["priority"]}, "priority", True, None),
+        # Custom attribute directly under metadata
+        ({"priority": True}, "priority", True, None),
+        ({"priority": ["high", "medium"]}, "priority", True, ["high", "medium"]),
+    ],
+)
+def test_metadata_rule_config_table_normalization(payload, expected_table_attr, expected_req, expected_allowed):
+    cfg = MetadataRuleConfig.model_validate(payload)
+    assert expected_table_attr in cfg.table
+    attr_spec = cfg.table[expected_table_attr]
+    assert attr_spec.required == expected_req
+    assert attr_spec.allowed_values == expected_allowed
+
+
+@pytest.mark.parametrize(
+    ("payload", "expected_col_attr", "expected_allowed"),
+    [
+        ({"column": {"tag": ["pii", "not_pii"]}}, "tag", ["pii", "not_pii"]),
+        ({"columns": {"tag": ["pii", "not_pii"]}}, "tag", ["pii", "not_pii"]),
+        ({"column": [{"name": "tag", "allowed_values": ["pii", "not_pii"]}]}, "tag", ["pii", "not_pii"]),
+        ({"column": {"classification": "public"}}, "classification", ["public"]),
+    ],
+)
+def test_metadata_rule_config_column_normalization(payload, expected_col_attr, expected_allowed):
+    cfg = MetadataRuleConfig.model_validate(payload)
+    assert expected_col_attr in cfg.column
+    assert cfg.column[expected_col_attr].allowed_values == expected_allowed
+
+
+def test_metadata_rule_config_invalid_spec() -> None:
+    # Invalid type for table attribute
+    with pytest.raises(ValidationError) as exc_info:
+        MetadataRuleConfig.model_validate({"table": {"priority": object()}})
+    err = exc_info.value.errors()[0]["ctx"]["error"]
+    assert isinstance(err, TffConfigError)
+    assert "Invalid configuration for metadata attribute 'priority'" in err.message
+
+    # List without name
+    with pytest.raises(ValidationError) as exc_info:
+        MetadataRuleConfig.model_validate({"table": [{"foo": "bar"}]})
+    err = exc_info.value.errors()[0]["ctx"]["error"]
+    assert isinstance(err, TffConfigError)
+    assert "must specify 'name' or 'attribute'" in err.message
+
+    # Invalid list item
+    with pytest.raises(ValidationError) as exc_info:
+        MetadataRuleConfig.model_validate({"table": [123]})
+    err = exc_info.value.errors()[0]["ctx"]["error"]
+    assert isinstance(err, TffConfigError)
+    assert "Invalid metadata requirement item" in err.message
+
+    # Invalid top-level type for table
+    with pytest.raises(ValidationError) as exc_info:
+        MetadataRuleConfig.model_validate({"table": "invalid_string"})
+    err = exc_info.value.errors()[0]["ctx"]["error"]
+    assert isinstance(err, TffConfigError)
+    assert "Expected dictionary or list for metadata requirements" in err.message
+
+
+def test_metadata_rule_config_edge_cases() -> None:
+    from tff.core.config import MetadataAttributeRequirement, _normalize_metadata_attributes
+
+    assert _normalize_metadata_attributes(None) == {}
+
+    # List with boolean and scalar values
+    normalized = _normalize_metadata_attributes(
+        [
+            {"name": "req_bool", "value": True},
+            {"name": "req_scalar", "value": "val"},
+        ]
+    )
+    assert normalized["req_bool"].required is True
+    assert normalized["req_scalar"].allowed_values == ["val"]
+
+    # Passing existing MetadataAttributeRequirement object
+    existing = MetadataAttributeRequirement(required=True, allowed_values=["a"])
+    assert _normalize_metadata_attributes({"p": existing})["p"] is existing
+
+    # Non-dict passed to _normalize_metadata_config
+    assert MetadataRuleConfig._normalize_metadata_config(123) == 123
+
+    # Merging both table and tables
+    merged_tables = MetadataRuleConfig.model_validate(
+        {"table": {"a": True}, "tables": {"b": True}}
+    )
+    assert "a" in merged_tables.table and "b" in merged_tables.table
+
+    # Merging both column and columns
+    merged_cols = MetadataRuleConfig.model_validate(
+        {"column": {"x": True}, "columns": {"y": True}}
+    )
+    assert "x" in merged_cols.column and "y" in merged_cols.column
+
+    # Extra key when table is a list
+    list_table_extra = MetadataRuleConfig.model_validate(
+        {"table": [{"name": "a", "required": True}], "extra_prio": "high"}
+    )
+    assert "extra_prio" in list_table_extra.table
+    assert list_table_extra.table["extra_prio"].allowed_values == ["high"]
+
+
+
 
 
 

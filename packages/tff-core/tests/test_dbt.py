@@ -179,6 +179,7 @@ def test_run_all_checks(tmp_path: Path):
 
     # 1. Test passing config explicitly
     config = FitnessFunctionsConfig()
+    config.rules.mart_naming.enabled = False
     config.rules.metadata.enabled = True
     config.rules.metadata.owner = True
     config.rules.metadata.description = True  # will violate
@@ -423,6 +424,7 @@ def test_dbt_metadata_checks_coverage(tmp_path: Path):
 
     # Load fitness config with all metadata rules enabled
     config = FitnessFunctionsConfig()
+    config.rules.mart_naming.enabled = False
     config.rules.metadata.enabled = True
     config.rules.metadata.owner = True
     config.rules.metadata.description = True
@@ -455,6 +457,84 @@ def test_dbt_metadata_checks_coverage(tmp_path: Path):
     assert findings_by_model["model_missing_grain"] == ["nomissinggrain"]
     assert findings_by_model["model_missing_not_null"] == ["nomissingnotnull"]
     assert findings_by_model["model_missing_unique"] == ["nomissinguniquevalues"]
+
+
+def test_dbt_custom_table_and_column_metadata_coverage(tmp_path: Path):
+    target_dir = tmp_path / "target"
+    target_dir.mkdir(parents=True, exist_ok=True)
+    manifest_file = target_dir / "manifest.json"
+
+    models_data = {
+        "model.my_project.model_valid": {
+            "resource_type": "model",
+            "name": "model_valid",
+            "original_file_path": "models/marts/model_valid.sql",
+            "config": {"materialized": "table"},
+            "meta": {"priority": "high"},
+            "columns": {
+                "id": {"data_type": "integer", "tags": ["not_pii"]},
+                "email": {"data_type": "varchar", "tags": ["pii"]},
+            },
+        },
+        "model.my_project.model_missing_priority": {
+            "resource_type": "model",
+            "name": "model_missing_priority",
+            "original_file_path": "models/marts/model_missing_priority.sql",
+            "config": {"materialized": "table"},
+            "meta": {},
+            "columns": {
+                "id": {"data_type": "integer", "tags": ["not_pii"]},
+            },
+        },
+        "model.my_project.model_invalid_column_tag": {
+            "resource_type": "model",
+            "name": "model_invalid_column_tag",
+            "original_file_path": "models/marts/model_invalid_column_tag.sql",
+            "config": {"materialized": "table"},
+            "meta": {"priority": "low"},
+            "columns": {
+                "id": {"data_type": "integer", "tags": ["not_pii"]},
+                "email": {"data_type": "varchar", "tags": []},
+            },
+        },
+    }
+
+    manifest_data = {
+        "nodes": models_data,
+        "sources": {},
+        "metadata": {"adapter_type": "duckdb"},
+    }
+    manifest_file.write_text(json.dumps(manifest_data), encoding="utf-8")
+
+    for val in models_data.values():
+        sql_file = tmp_path / val["original_file_path"]
+        sql_file.parent.mkdir(parents=True, exist_ok=True)
+        sql_file.write_text("select 1", encoding="utf-8")
+
+    config = FitnessFunctionsConfig()
+    config.rules.mart_naming.enabled = False
+    config.rules.metadata.enabled = True
+    config.rules.metadata.owner = False
+    config.rules.metadata.description = False
+    config.rules.metadata.grain = False
+    config.rules.metadata.not_null = False
+    config.rules.metadata.unique_values = False
+    config.rules.metadata.table = {"priority": True}
+    config.rules.metadata.column = {"tag": ["pii", "not_pii"]}
+
+    findings, models_checked, _ = run_all_checks(
+        project_root=tmp_path,
+        config=config,
+    )
+    assert models_checked == 3
+
+    findings_by_model: dict[str, list[str]] = {}
+    for f in findings:
+        findings_by_model.setdefault(f.model, []).append(f.check)
+
+    assert "model_valid" not in findings_by_model
+    assert findings_by_model["model_missing_priority"] == ["nomissingtablemetadata"]
+    assert findings_by_model["model_invalid_column_tag"] == ["nomissingcolumnmetadata"]
 
 
 def test_example_minimal_dbt_project_zero_config():

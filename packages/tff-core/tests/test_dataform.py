@@ -403,6 +403,9 @@ def test_load_dataform_models_direct_sqlx(tmp_path: Path):
     assert user_model.grains == ["id"]
     assert "raw.raw_users" in user_model.depends_on
     assert len(user_model.audits) >= 2
+    assert "id" in user_model.columns
+    assert user_model.columns["id"].description == "ID"
+    assert user_model.columns["id"].data_type == "int64"
 
 
 def test_cli_compile_fallback(tmp_path: Path):

@@ -884,6 +884,8 @@ def test_cli_health_verbose_flag(tmp_path, monkeypatch) -> None:
         ("join_type_parity", 3, "Align data types across 3 JOIN conditions"),
         ("nomissingowner", 1, "Add missing contract metadata to 1 model"),
         ("nomissingowner", 2, "Add missing contract metadata to 2 models"),
+        ("nomissingtablemetadata", 1, "Add missing contract metadata to 1 model"),
+        ("nomissingcolumnmetadata", 2, "Add missing contract metadata to 2 models"),
         ("banselectstar", 1, "Replace 1 wildcard SELECT * query"),
         ("banselectstar", 2, "Replace 2 wildcard SELECT * queries"),
         ("layer_integrity", 1, "Fix 1 layer integrity violation"),

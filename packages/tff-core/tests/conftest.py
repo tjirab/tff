@@ -5,8 +5,25 @@ from __future__ import annotations
 from typing import Any
 import pytest
 
-from tff.core.model import ModelRepresentation
+from tff.core.model import ColumnRepresentation, ModelRepresentation
 from tff.core.report import LintFinding, Severity
+
+
+def _make_column(
+    name: str = "id",
+    data_type: str = "integer",
+    description: str | None = None,
+    tags: list[str] | None = None,
+    meta: dict[str, Any] | None = None,
+) -> ColumnRepresentation:
+    """Lightweight factory for ColumnRepresentation with sensible defaults."""
+    return ColumnRepresentation(
+        name=name,
+        data_type=data_type,
+        description=description,
+        tags=tags if tags is not None else [],
+        meta=meta if meta is not None else {},
+    )
 
 
 def _make_finding(
@@ -68,3 +85,9 @@ def make_finding():
 def make_model():
     """Pytest fixture providing the _make_model factory function."""
     return _make_model
+
+
+@pytest.fixture
+def make_column():
+    """Pytest fixture providing the _make_column factory function."""
+    return _make_column

@@ -685,6 +685,8 @@ For SQLMesh projects, these rules run dynamically inside SQLMesh (e.g., `sqlmesh
     * **`grain`**: Validates that grains (primary key/grain definition) are specified.
     * **`not_null`**: Validates that the model has a `not_null` audit (SQLMesh) or test (dbt).
     * **`unique_values`**: Validates that the model has a `unique_values` audit (SQLMesh) or `unique` test (dbt).
+    * **`table`** (or **`tables`**): Validates custom table-level metadata attributes, presence, allowed values, or regex patterns (e.g., requiring tables to specify `priority: <value>`).
+    * **`column`** (or **`columns`**): Validates column-level metadata attributes or tags across model columns (e.g., requiring every column to be tagged either `'pii'` or `'not_pii'`).
 * **How to configure**:
   Defined under `rules.metadata` in `fitness_functions.yaml`.
   ```yaml
@@ -696,13 +698,29 @@ For SQLMesh projects, these rules run dynamically inside SQLMesh (e.g., `sqlmesh
       grain: true
       not_null: true
       unique_values: true
+
+      # Custom table-level metadata requirements:
+      table:
+        priority: true                         # Requires 'priority' to exist in model meta or tags
+        tier: ["tier1", "tier2", "tier3"]      # Requires 'tier' with one of the allowed values
+
+      # Custom column-level metadata requirements:
+      column:
+        tag:
+          allowed_values: ["pii", "not_pii"]   # Requires every column to be tagged 'pii' or 'not_pii'
+        classification:
+          required: false                      # Optional, but if present must match allowed values
+          allowed_values: ["public", "internal", "confidential"]
   ```
-  * **SQLMesh Rule Names**: Runs as five separate rules:
+  * Custom table attributes can also be declared directly at the top level of `rules.metadata` (e.g. `priority: true`).
+  * **Rule Finding IDs**: Runs as separate checks:
     * `nomissingowner`
     * `nomissingdescription`
     * `nomissinggrain`
     * `nomissingnotnull`
     * `nomissinguniquevalues`
+    * `nomissingtablemetadata` (alias: `tablemetadata`)
+    * `nomissingcolumnmetadata` (alias: `columnmetadata`)
 
 ---
 
