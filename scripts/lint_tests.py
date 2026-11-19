@@ -36,6 +36,7 @@ DOMAIN_RULE_TEST_PATTERNS: tuple[str, ...] = (
     "test_custom_exclusions",
     "test_layer_filtering",
     "test_join_type_parity",
+    "test_no_subqueries",
 )
 
 

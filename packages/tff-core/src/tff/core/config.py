@@ -107,6 +107,11 @@ rules:
     enabled: true
     skip_layers: [sources]
 
+  # Prohibit inline subqueries; enforce CTEs or upstream models
+  no_subqueries:
+    enabled: false
+    skip_layers: [sources]
+
   # Require explicit column names instead of positional references in GROUP BY
   no_positional_group_by:
     enabled: true
@@ -752,6 +757,11 @@ class BanSelectStarRuleConfig(LayerFilterConfig):
     skip_layers: list[str] = Field(default_factory=lambda: ["sources"])
 
 
+class NoSubqueriesRuleConfig(LayerFilterConfig):
+    enabled: bool = False
+    skip_layers: list[str] = Field(default_factory=lambda: ["sources"])
+
+
 class NoPositionalGroupByRuleConfig(LayerFilterConfig):
     skip_layers: list[str] = Field(default_factory=lambda: ["sources"])
 
@@ -789,6 +799,9 @@ class RulesConfig(BaseModel):
     )
     ban_select_star: BanSelectStarRuleConfig = Field(
         default_factory=BanSelectStarRuleConfig
+    )
+    no_subqueries: NoSubqueriesRuleConfig = Field(
+        default_factory=NoSubqueriesRuleConfig
     )
     no_positional_group_by: NoPositionalGroupByRuleConfig = Field(
         default_factory=NoPositionalGroupByRuleConfig

@@ -223,6 +223,8 @@ def get_executed_checks(
         if name == "sqlmesh":
             if config.rules.ban_select_star.enabled:
                 executed.append("banselectstar")
+            if config.rules.no_subqueries.enabled:
+                executed.append("nosubqueries")
             if config.rules.filename_equals_modelname.enabled:
                 executed.append("filenameequalsmodelname")
             if config.rules.mart_naming.enabled:

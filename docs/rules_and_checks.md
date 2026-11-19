@@ -504,6 +504,29 @@ For SQLMesh projects, these rules run dynamically inside SQLMesh (e.g., `sqlmesh
 
 ---
 
+### No Subqueries (`no_subqueries`) <a id="no-subqueries-no_subqueries"></a>
+
+* **What it checks**:
+  * Disallows inline subqueries in model queries. Requires query transformations to be structured cleanly using Common Table Expressions (CTEs) or modular upstream models.
+  * Inspects all subquery forms across the query AST:
+    * Inline subqueries / derived tables in `FROM` or `JOIN` clauses.
+    * Scalar subqueries in `SELECT` projections.
+    * Predicate subqueries in `WHERE` or `HAVING` filters (e.g. `IN (SELECT ...)`, comparison predicates).
+    * Existential subqueries (`EXISTS (SELECT ...)`).
+    * Nested subqueries inside CTE definitions.
+* **How to configure**:
+  Defined under `rules.no_subqueries` in `fitness_functions.yaml`.
+  ```yaml
+  rules:
+    no_subqueries:
+      enabled: true
+      skip_layers: [sources]
+  ```
+  * **SQLMesh Rule Name**: `nosubqueries`
+  * Default `skip_layers`: `["sources"]`
+
+---
+
 ### No Positional GROUP BY/ORDER BY (`no_positional_group_by_or_order_by`) <a id="no-positional-group-byorder-by-no_positional_group_by_or_order_by"></a>
 
 * **What it checks**:

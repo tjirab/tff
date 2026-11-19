@@ -827,6 +827,8 @@ def test_format_connascence_tag_helper(category: str, expected_tag: str) -> None
         ("sqlcomplexity", "too many CTEs", False),
         ("banselectstar", "select *", False),
         ("ban_select_star", "select *", False),
+        ("nosubqueries", "subqueries found", False),
+        ("no_subqueries", "subqueries found", False),
         ("jointypeparity", "type mismatch", False),
     ],
 )
