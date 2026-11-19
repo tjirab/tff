@@ -64,6 +64,7 @@ def _make_config(
         "no_positional_group_by",
         "no_positional_order_by",
         "no_positional_group_by_or_order_by",
+        "no_subqueries",
     ]
     checks_dict = {c: {"enabled": c in (enabled_checks or [])} for c in all_checks}
     rules_dict = {r: {"enabled": r in (enabled_rules or [])} for r in all_rules}
@@ -894,6 +895,8 @@ def test_cli_health_verbose_flag(tmp_path, monkeypatch) -> None:
         ("nopositionalgroupby", 2, "Replace 2 positional GROUP BY references"),
         ("nopositionalorderby", 1, "Replace 1 positional ORDER BY reference"),
         ("nopositionalorderby", 2, "Replace 2 positional ORDER BY references"),
+        ("nosubqueries", 1, "Replace 1 inline subquery with CTEs"),
+        ("nosubqueries", 2, "Replace 2 inline subqueries with CTEs"),
     ],
 )
 def test_get_action_phrase(check: str, count: int, expected: str) -> None:

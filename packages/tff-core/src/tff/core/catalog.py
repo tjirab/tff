@@ -552,6 +552,24 @@ def get_builtin_checks() -> tuple[CheckDefinition, ...]:
             providers=("dbt", "sqlmesh", "dataform"),
             is_fixable=False,
         ),
+        CheckDefinition(
+            id="no_subqueries",
+            label="No subqueries",
+            category="Quality & Metadata (Non-Connascence)",
+            scope="model",
+            aliases=("nosubqueries", "ban_subqueries", "bansubqueries", "disallow_subqueries", "no_subquery"),
+            finding_check_id="nosubqueries",
+            rule_module="tff.core.rules.no_subqueries",
+            rule_class_name="NoSubqueries",
+            is_enabled_fn=lambda cfg, p: bool(cfg.rules.no_subqueries.enabled),
+            docs_url=f"{docs_base}no-subqueries-no_subqueries",
+            description="Disallows inline subqueries in model queries. Requires queries to use Common Table Expressions (CTEs) or modular upstream models.",
+            why_it_matters="Inline subqueries obscure transformation logic, complicate debugging, and hinder query modularity and reusability.",
+            how_to_fix="Refactor inline subqueries into named CTEs or extract them into dedicated upstream intermediate models.",
+            configuration_example="rules:\n  no_subqueries:\n    enabled: true\n    skip_layers: [sources]",
+            providers=("dbt", "sqlmesh", "dataform"),
+            is_fixable=False,
+        ),
     )
 
 

@@ -348,6 +348,8 @@ SHORT_CHECK_LABELS: dict[str, str] = {
     "connascence_of_value": "value",
     "filenameequalsmodelname": "filename",
     "filename_equals_modelname": "filename",
+    "nosubqueries": "subquery",
+    "no_subqueries": "subquery",
 }
 
 
@@ -367,6 +369,8 @@ def _get_action_phrase(check: str, count: int) -> str:
         return f"Replace {count} positional GROUP BY reference{'s' if count != 1 else ''}"
     if check in ("nopositionalorderby", "no_positional_order_by"):
         return f"Replace {count} positional ORDER BY reference{'s' if count != 1 else ''}"
+    if check in ("nosubqueries", "no_subqueries"):
+        return f"Replace {count} inline subquer{'y' if count == 1 else 'ies'} with CTEs"
     return f"Resolve {count} {CHECK_LABELS.get(check, check)} defect{'s' if count != 1 else ''}"
 
 

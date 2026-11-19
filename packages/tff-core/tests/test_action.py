@@ -1577,6 +1577,8 @@ def test_execute_action_project_as_list_and_fallback_cwd() -> None:
     [
         ("banselectstar", "SELECT * is prohibited", False),
         ("ban_select_star", "SELECT * is prohibited", False),
+        ("nosubqueries", "Subqueries are prohibited", False),
+        ("no_subqueries", "Subqueries are prohibited", False),
         ("nopositionalgroupby", "Positional GROUP BY prohibited", False),
         ("nopositionalorderby", "Positional ORDER BY prohibited", False),
         ("nopositionalgroupbyororderby", "Positional GROUP BY prohibited", False),
