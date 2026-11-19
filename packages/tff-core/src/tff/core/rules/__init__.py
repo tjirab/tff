@@ -6,10 +6,12 @@ from tff.core.rules.column_types import ColumnTypes
 from tff.core.rules.filename_equals_modelname import FilenameEqualsModelname
 from tff.core.rules.mart_naming import MartModelNamingConvention
 from tff.core.rules.metadata import (
+    NoMissingColumnMetadata,
     NoMissingDescription,
     NoMissingGrain,
     NoMissingNotNull,
     NoMissingOwner,
+    NoMissingTableMetadata,
     NoMissingUniqueValues,
 )
 from tff.core.rules.no_positional_group_by import NoPositionalGroupBy
@@ -32,6 +34,8 @@ ALL_RULES = [
     NoMissingGrain,
     NoMissingNotNull,
     NoMissingUniqueValues,
+    NoMissingTableMetadata,
+    NoMissingColumnMetadata,
     FilenameEqualsModelname,
     BanSelectStar,
     NoPositionalGroupBy,
@@ -52,6 +56,8 @@ __all__ = [
     "NoMissingGrain",
     "NoMissingNotNull",
     "NoMissingUniqueValues",
+    "NoMissingTableMetadata",
+    "NoMissingColumnMetadata",
     "FilenameEqualsModelname",
     "BanSelectStar",
     "NoPositionalGroupBy",

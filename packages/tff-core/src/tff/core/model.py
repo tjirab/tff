@@ -149,6 +149,15 @@ def read_model_sql(
 
 
 @dataclass
+class ColumnRepresentation:
+    name: str
+    data_type: str = "unknown"
+    description: str | None = None
+    tags: list[str] = field(default_factory=list)
+    meta: dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass
 class ModelRepresentation:
     name: str
     path: str
@@ -156,6 +165,7 @@ class ModelRepresentation:
     is_symbolic: bool = False
     is_external: bool = False
     columns_to_types: dict[str, str] = field(default_factory=dict)
+    columns: dict[str, ColumnRepresentation] = field(default_factory=dict)
     depends_on: set[str] = field(default_factory=set)
     description: str | None = None
     owner: str | None = None
@@ -171,6 +181,16 @@ class ModelRepresentation:
     provider: str | None = None
     _ast_parse_attempted: bool = field(default=False, repr=False, compare=False)
     _raw_ast: sqlglot.expressions.Expression | None = field(default=None, repr=False, compare=False)
+
+    def __post_init__(self) -> None:
+        if self.columns:
+            for name, col in self.columns.items():
+                if name not in self.columns_to_types:
+                    self.columns_to_types[name] = col.data_type
+        if self.columns_to_types:
+            for name, dtype in self.columns_to_types.items():
+                if name not in self.columns:
+                    self.columns[name] = ColumnRepresentation(name=name, data_type=dtype)
 
     def get_sql(
         self,

@@ -13,7 +13,7 @@ from typing import TYPE_CHECKING, Any, Sequence
 
 import yaml
 
-from tff.core.model import ModelRepresentation
+from tff.core.model import ColumnRepresentation, ModelRepresentation
 
 if TYPE_CHECKING:
     from tff.core.config import FitnessFunctionsConfig
@@ -250,11 +250,21 @@ def _parse_compiled_graph(
         # Columns and types
         action_desc = table.get("actionDescriptor", {}) or {}
         columns_to_types: dict[str, str] = {}
+        columns: dict[str, ColumnRepresentation] = {}
         for col in action_desc.get("columns", []):
             path_parts = col.get("path", [])
             if path_parts:
-                col_name = path_parts[0].lower()
-                columns_to_types[col_name] = col.get("type", "unknown").lower()
+                col_name = path_parts[0]
+                col_name_norm = col_name.lower()
+                col_type = col.get("type", "unknown").lower()
+                columns_to_types[col_name_norm] = col_type
+                columns[col_name_norm] = ColumnRepresentation(
+                    name=col_name,
+                    data_type=col_type,
+                    description=col.get("description"),
+                    tags=col.get("tags") or [],
+                    meta=col.get("meta") or {},
+                )
 
         # Labels / Owner / Tags
         bigquery_config = table.get("bigquery", {}) or {}
@@ -301,6 +311,7 @@ def _parse_compiled_graph(
             is_symbolic=is_symbolic,
             is_external=False,
             columns_to_types=columns_to_types,
+            columns=columns,
             depends_on=depends_on,
             description=action_desc.get("description"),
             owner=owner,
@@ -490,11 +501,27 @@ def _load_models_from_sources(
 
         # Columns
         columns_to_types = {}
+        columns = {}
         for col_name, col_info in (config.get("columns") or {}).items():
+            col_name_norm = col_name.lower()
             col_type = "unknown"
+            col_desc = None
+            col_tags = []
+            col_meta = {}
             if isinstance(col_info, dict):
                 col_type = col_info.get("type", "unknown")
-            columns_to_types[col_name.lower()] = str(col_type).lower()
+                col_desc = col_info.get("description")
+                col_tags = col_info.get("tags") or []
+                col_meta = col_info.get("meta") or {}
+            col_type_norm = str(col_type).lower()
+            columns_to_types[col_name_norm] = col_type_norm
+            columns[col_name_norm] = ColumnRepresentation(
+                name=col_name,
+                data_type=col_type_norm,
+                description=col_desc,
+                tags=col_tags,
+                meta=col_meta,
+            )
 
         # Grains and Audits
         assertions = config.get("assertions") or {}
@@ -519,6 +546,7 @@ def _load_models_from_sources(
             is_symbolic=is_symbolic,
             is_external=is_external,
             columns_to_types=columns_to_types,
+            columns=columns,
             depends_on=depends_on,
             description=description,
             owner=owner,

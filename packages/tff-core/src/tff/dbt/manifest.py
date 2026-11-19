@@ -9,7 +9,7 @@ import subprocess
 from typing import TYPE_CHECKING, Any, Sequence
 
 from tff.core.adapter import normalize_project_roots
-from tff.core.model import ModelRepresentation
+from tff.core.model import ColumnRepresentation, ModelRepresentation
 from tff.core.parallel import precompute_model_asts
 
 if TYPE_CHECKING:
@@ -246,11 +246,20 @@ def load_dbt_models(
 
             name = node.get("name", "")
 
-            # Map column types
+            # Map column types and representations
             columns_to_types = {}
+            columns = {}
             for col_name, col_meta in node.get("columns", {}).items():
-                col_type = col_meta.get("data_type") or "unknown"
-                columns_to_types[col_name.lower()] = col_type.lower()
+                col_name_norm = col_name.lower()
+                col_type = (col_meta.get("data_type") or "unknown").lower()
+                columns_to_types[col_name_norm] = col_type
+                columns[col_name_norm] = ColumnRepresentation(
+                    name=col_name,
+                    data_type=col_type,
+                    description=col_meta.get("description"),
+                    tags=col_meta.get("tags") or [],
+                    meta=col_meta.get("meta") or {},
+                )
 
             # Metadata parsing
             meta = node.get("meta", {})
@@ -309,6 +318,7 @@ def load_dbt_models(
                 is_symbolic=is_symbolic,
                 is_external=False,
                 columns_to_types=columns_to_types,
+                columns=columns,
                 depends_on=depends_on,
                 description=node.get("description"),
                 owner=owner,
