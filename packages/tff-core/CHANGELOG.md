@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.31.0](https://github.com/tjirab/tff/compare/tff-core-v0.30.0...tff-core-v0.31.0) (2026-11-19)
+
+
+### Features
+
+* **rules:** support custom table and column metadata validation ([#473](https://github.com/tjirab/tff/issues/473)) ([0868d31](https://github.com/tjirab/tff/commit/0868d3109df5847851823554acad69970ac85cb8))
+
 ## [0.30.0](https://github.com/tjirab/tff/compare/tff-core-v0.29.0...tff-core-v0.30.0) (2026-11-09)
 
 
