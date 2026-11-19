@@ -21,8 +21,10 @@ from tff.core.rules.no_subqueries import NoSubqueries, find_subqueries
         # Compliant models
         ("models/marts/compliant_simple.sql", "SELECT id, name FROM users", False, False),
         ("models/marts/compliant_cte.sql", "WITH a AS (SELECT 1 AS id), b AS (SELECT 2 AS id) SELECT a.id, b.id FROM a JOIN b ON a.id = b.id", False, False),
+        ("models/marts/compliant_paren_cte.sql", "WITH a AS ((SELECT 1 AS id)) SELECT * FROM a", False, False),
         ("models/marts/compliant_union.sql", "SELECT 1 AS id UNION ALL SELECT 2 AS id", False, False),
         ("models/marts/compliant_paren_union.sql", "(SELECT 1 AS id) UNION ALL (SELECT 2 AS id)", False, False),
+        ("models/marts/compliant_triple_union.sql", "(SELECT 1 AS id) UNION ALL (SELECT 2 AS id) UNION ALL (SELECT 3 AS id)", False, False),
         ("models/marts/compliant_cte_union.sql", "WITH a AS (SELECT 1 AS id UNION ALL SELECT 2 AS id) SELECT * FROM a", False, False),
         ("models/marts/compliant_cte_paren_union.sql", "WITH a AS ((SELECT 1 AS id) UNION ALL (SELECT 2 AS id)) SELECT * FROM a", False, False),
         ("models/marts/compliant_intersect.sql", "(SELECT 1 AS id) INTERSECT (SELECT 2 AS id)", False, False),
