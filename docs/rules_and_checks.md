@@ -67,17 +67,38 @@ When evaluating model-level rules across large repositories (>1,000 models), cre
 
 ---
 
-## Shared Layer Filtering Configuration
+## Shared Layer Filtering & Severity Configuration
 
-Most checks and rules inherit a common layer filtering schema. This allows you to apply guardrails selectively based on the pipeline layer a model belongs to:
+Most checks and rules inherit a common schema for layer filtering and severity overrides in `fitness_functions.yaml`:
 
 ```yaml
 rules:
   some_rule:
     enabled: true             # Toggle the rule on or off (default: true)
+    severity: warning         # Optional: 'error' or 'warning'
     skip_layers: [staging]    # List of layers where this rule should NOT run
     only_layers: [marts]      # If specified, the rule ONLY runs on these layers
 ```
+
+### Severity Levels (`error` | `warning`)
+
+Every built-in and custom check (`checks.<name>`) and rule (`rules.<name>`) supports configuring `severity` to either `error` or `warning` (case-insensitive):
+
+| Value | Behavior |
+| :--- | :--- |
+| `error` | Emits `ERR` findings that fail CI runs under the default `--fail-level error`. |
+| `warning` | Emits `WRN` findings that are reported without failing CI unless `--fail-level warning` is specified. |
+
+* **Default severities**: Most checks and rules default to `error`. `duplicate_ctes` and `connascence_of_value` default to `warning`.
+* **Threshold-based checks & rules** (`dependency_graph`, `materialization_depth`, `sql_complexity`):
+  * When `severity` is **omitted**, findings follow the configured warn/fail thresholds (`warning` when exceeding the warn threshold, `error` when exceeding the fail threshold).
+  * When `severity` is **explicitly set** to `warning` or `error`, all findings emitted by that check or rule use the configured severity.
+* **Metadata sub-rules** (`rules.metadata`):
+  * Set `rules.metadata.severity` as the group default for all metadata checks (`owner`, `description`, `grain`, `not_null`, `unique_values`, `table`, `column`).
+  * Override individual sub-rules inline (e.g. `owner: { enabled: true, severity: warning }`) or at the top level (`rules.no_missing_owner: { severity: warning }`).
+  * Precedence: top-level rule (`rules.no_missing_<field>.severity`) > inline field (`rules.metadata.<field>.severity`) > group default (`rules.metadata.severity`) > built-in default (`error`).
+* **Custom plugin checks & rules**: Both model-level plugin rules and DAG-level plugin checks honor `severity` configured under `rules.<id>` or `checks.<id>`.
+* **Execution errors**: `rule_execution_error` diagnostics always remain `error` and are never downgraded by a check's `severity` setting.
 
 ---
 
@@ -629,7 +650,7 @@ For SQLMesh projects, these rules run dynamically inside SQLMesh (e.g., `sqlmesh
   ```
   * **SQLMesh Rule Name**: `sqlcomplexity`
   * `thresholds`: Map of metric to `[warn_threshold, fail_threshold]` integer pairs. Exceeding `warn_threshold` raises a warning; exceeding `fail_threshold` raises an error. Unconfigured metrics inherit standard default thresholds. Individual metrics can be explicitly disabled by setting their threshold to `null` (or `false`).
-  * `severity` (string, optional, default: `"error"`): Overall rule severity override (`"warning"` or `"error"`). Set to `"warning"` if you want all complexity breaches to be emitted as warnings only and never fail the run.
+  * `severity` (string, optional): Explicit severity override (`"warning"` or `"error"`). When omitted, breaches follow the `[warn_threshold, fail_threshold]` pairs. When set to `"warning"`, all complexity breaches emit as warnings; when set to `"error"`, all complexity breaches (including warn-threshold breaches) emit as errors.
   * *Note*: The legacy `warn_only` setting is deprecated and no longer supported; use `severity: warning` or threshold pairs instead.
 
 ---
@@ -716,8 +737,11 @@ For SQLMesh projects, these rules run dynamically inside SQLMesh (e.g., `sqlmesh
   rules:
     metadata:
       enabled: true
-      owner: true
-      description: true
+      severity: warning                        # Optional group default ('error' or 'warning')
+      owner: true                              # Boolean or { enabled: true, severity: error }
+      description:
+        enabled: true
+        severity: warning
       grain: true
       not_null: true
       unique_values: true

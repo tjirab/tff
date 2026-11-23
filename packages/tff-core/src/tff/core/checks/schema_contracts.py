@@ -234,10 +234,11 @@ def collect_schema_contract_findings(
     if not contract_config:
         return []
 
+    severity = config.checks.schema_contracts.severity or "error"
     return [
         LintFinding(
             check="schema_contracts",
-            severity="error",
+            severity=severity,
             message=error,
         )
         for error in _schema_contract_errors(project_root, contract_config, models=models)

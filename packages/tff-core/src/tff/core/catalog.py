@@ -388,7 +388,7 @@ def get_builtin_checks() -> tuple[CheckDefinition, ...]:
             rule_module="tff.core.rules.metadata",
             rule_class_name="NoMissingOwner",
             is_enabled_fn=lambda cfg, p: bool(
-                cfg.rules.metadata.enabled and cfg.rules.metadata.owner
+                cfg.rules.metadata.enabled and cfg.rules.metadata.is_field_enabled("owner")
             ),
             docs_url=f"{docs_base}metadata-metadata",
             description="Validates that every model has an assigned owner in its configuration or metadata.",
@@ -408,7 +408,7 @@ def get_builtin_checks() -> tuple[CheckDefinition, ...]:
             rule_module="tff.core.rules.metadata",
             rule_class_name="NoMissingDescription",
             is_enabled_fn=lambda cfg, p: bool(
-                cfg.rules.metadata.enabled and cfg.rules.metadata.description
+                cfg.rules.metadata.enabled and cfg.rules.metadata.is_field_enabled("description")
             ),
             docs_url=f"{docs_base}metadata-metadata",
             description="Validates that every model has a non-empty description documented in its metadata.",
@@ -428,7 +428,7 @@ def get_builtin_checks() -> tuple[CheckDefinition, ...]:
             rule_module="tff.core.rules.metadata",
             rule_class_name="NoMissingGrain",
             is_enabled_fn=lambda cfg, p: bool(
-                cfg.rules.metadata.enabled and cfg.rules.metadata.grain
+                cfg.rules.metadata.enabled and cfg.rules.metadata.is_field_enabled("grain")
             ),
             docs_url=f"{docs_base}metadata-metadata",
             description="Validates that model primary keys / grains are explicitly documented in metadata.",
@@ -448,7 +448,7 @@ def get_builtin_checks() -> tuple[CheckDefinition, ...]:
             rule_module="tff.core.rules.metadata",
             rule_class_name="NoMissingNotNull",
             is_enabled_fn=lambda cfg, p: bool(
-                cfg.rules.metadata.enabled and cfg.rules.metadata.not_null
+                cfg.rules.metadata.enabled and cfg.rules.metadata.is_field_enabled("not_null")
             ),
             docs_url=f"{docs_base}metadata-metadata",
             description="Validates that the model has not_null tests or audits defined on critical columns.",
@@ -468,7 +468,7 @@ def get_builtin_checks() -> tuple[CheckDefinition, ...]:
             rule_module="tff.core.rules.metadata",
             rule_class_name="NoMissingUniqueValues",
             is_enabled_fn=lambda cfg, p: bool(
-                cfg.rules.metadata.enabled and cfg.rules.metadata.unique_values
+                cfg.rules.metadata.enabled and cfg.rules.metadata.is_field_enabled("unique_values")
             ),
             docs_url=f"{docs_base}metadata-metadata",
             description="Validates that the model has unique tests or unique_values audits defined on its primary key columns.",

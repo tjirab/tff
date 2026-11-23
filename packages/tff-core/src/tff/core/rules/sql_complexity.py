@@ -531,6 +531,7 @@ def split_complexity_message(
     message: str,
     base_severity: Severity | str = "error",
     model_name: str | None = None,
+    severity_override: Severity | None = None,
 ) -> list[tuple[str, Severity]]:
     """Split a semicolon-delimited complexity violation message into (part, severity) pairs."""
     if model_name:
@@ -545,8 +546,10 @@ def split_complexity_message(
     parts = [p.strip() for p in message.split(";") if p.strip()]
     findings: list[tuple[str, Severity]] = []
     for part in parts:
-        if part.startswith("WARN:"):
-            part_severity: Severity = "warning"
+        if severity_override is not None:
+            part_severity: Severity = severity_override
+        elif part.startswith("WARN:"):
+            part_severity = "warning"
         elif part.startswith("FAIL:"):
             part_severity = "error" if base_severity == "error" else "warning"
         else:

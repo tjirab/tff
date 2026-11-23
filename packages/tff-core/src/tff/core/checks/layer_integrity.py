@@ -28,6 +28,7 @@ def collect_layer_integrity_findings(
     findings: list[LintFinding] = []
     layer_order = config.layers.order
     marts_layer = config.rules.mart_naming.layer_name
+    severity = config.checks.layer_integrity.severity or "error"
 
     for model_name, model in models.items():
         if model.is_external or model.is_symbolic:
@@ -58,7 +59,7 @@ def collect_layer_integrity_findings(
                 findings.append(
                     LintFinding(
                         check="layer_integrity",
-                        severity="error",
+                        severity=severity,
                         model=str(model.name),
                         path=model_path_relative(model),
                         message=(
@@ -77,7 +78,7 @@ def collect_layer_integrity_findings(
                     findings.append(
                         LintFinding(
                             check="layer_integrity",
-                            severity="error",
+                            severity=severity,
                             model=str(model.name),
                             path=model_path_relative(model),
                             message=(

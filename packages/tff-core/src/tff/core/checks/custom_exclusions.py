@@ -245,6 +245,7 @@ def collect_custom_exclusion_findings(
         if p.exists():
             exclusions_path = p
     checker = CustomExclusionsChecker(models, exclusions_path, config=config)
+    severity = config.checks.custom_exclusions.severity or "error"
     findings: list[LintFinding] = []
 
     for model_name, model in models.items():
@@ -256,7 +257,7 @@ def collect_custom_exclusion_findings(
                 findings.append(
                     LintFinding(
                         check="custom_exclusions",
-                        severity="error",
+                        severity=severity,
                         model=str(model.name),
                         path=model_path_relative(model),
                         message=message.removeprefix(f"Model '{model.name}' ").strip(),

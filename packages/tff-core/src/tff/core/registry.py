@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from functools import lru_cache
 from typing import TYPE_CHECKING, Any, Callable, Literal
 
@@ -60,6 +60,37 @@ def is_rule_enabled_in_config(config: FitnessFunctionsConfig, *names: str) -> bo
     return True
 
 
+
+
+METADATA_SUBRULE_FIELDS: dict[str, str] = {
+    "nomissingowner": "owner",
+    "nomissingdescription": "description",
+    "nomissinggrain": "grain",
+    "nomissingnotnull": "not_null",
+    "nomissinguniquevalues": "unique_values",
+}
+METADATA_GROUP_SUBRULES: frozenset[str] = frozenset(
+    {
+        "nomissingaudits",
+        "nomissingtablemetadata",
+        "nomissingcolumnmetadata",
+    }
+)
+
+
+def apply_severity_override(
+    findings: list[LintFinding],
+    severity_override: Severity | None,
+) -> list[LintFinding]:
+    """Override severity on all non-execution-error findings when explicitly configured."""
+    if severity_override is None:
+        return findings
+    return [
+        replace(f, severity=severity_override)
+        if f.check != "rule_execution_error" and f.severity != severity_override
+        else f
+        for f in findings
+    ]
 
 
 def run_model_rule(
@@ -157,24 +188,46 @@ class CheckDefinition:
             return fn
         return None
 
+    def get_configured_severity(
+        self, config: FitnessFunctionsConfig | None = None
+    ) -> Severity | None:
+        """Return the explicitly configured severity override, or None if unset."""
+        if config is None:
+            return None
+
+        candidates = [self.id, self.finding_id, *self.aliases]
+        norm_candidates = {normalize_check_name(c) for c in candidates if c}
+        for section_name in ("rules", "checks"):
+            cfg_section = getattr(config, section_name, None)
+            if cfg_section is not None:
+                entries = dict(getattr(cfg_section, "__dict__", {}))
+                if hasattr(cfg_section, "model_extra") and cfg_section.model_extra:
+                    entries.update(cfg_section.model_extra)
+                for attr, val in entries.items():
+                    if normalize_check_name(attr) in norm_candidates:
+                        sev = (
+                            getattr(val, "severity", None)
+                            if not isinstance(val, dict)
+                            else val.get("severity")
+                        )
+                        if sev and str(sev).lower() in ("error", "warning"):
+                            return str(sev).lower()  # type: ignore[return-value]
+
+        rules_cfg = getattr(config, "rules", None)
+        meta_cfg = getattr(rules_cfg, "metadata", None) if rules_cfg is not None else None
+        if meta_cfg is not None:
+            for norm in norm_candidates:
+                if norm in METADATA_SUBRULE_FIELDS:
+                    return meta_cfg.get_field_severity(METADATA_SUBRULE_FIELDS[norm])
+            if norm_candidates & METADATA_GROUP_SUBRULES:
+                return getattr(meta_cfg, "severity", None)
+
+        return None
+
     def get_severity(self, config: FitnessFunctionsConfig | None = None) -> Severity:
         """Resolve severity from configuration override or fall back to default_severity."""
-        if config is not None:
-            candidates = [self.id, self.finding_id, *self.aliases]
-            norm_candidates = {normalize_check_name(c) for c in candidates if c}
-            for section_name in ("rules", "checks"):
-                cfg_section = getattr(config, section_name, None)
-                if cfg_section is not None:
-                    entries = dict(getattr(cfg_section, "__dict__", {}))
-                    if hasattr(cfg_section, "model_extra") and cfg_section.model_extra:
-                        entries.update(cfg_section.model_extra)
-                    for attr, val in entries.items():
-                        if normalize_check_name(attr) in norm_candidates:
-                            sev = getattr(val, "severity", None) if not isinstance(val, dict) else val.get("severity")
-                            if sev and str(sev).lower() in ("error", "warning"):
-                                return str(sev).lower()  # type: ignore[return-value]
-
-        return self.default_severity
+        configured = self.get_configured_severity(config)
+        return configured if configured is not None else self.default_severity
 
     def is_enabled(self, config: FitnessFunctionsConfig, provider: str = "dbt") -> bool:
         if self.is_enabled_fn is not None:
@@ -220,6 +273,10 @@ class CheckDefinition:
                     findings = collector(models, config, max_workers=max_workers)
                 else:
                     findings = collector(models, config)
+
+                findings = apply_severity_override(
+                    findings, self.get_configured_severity(config)
+                )
 
                 if scoped_models is not None:
                     from tff.core.report import normalize_model_name
