@@ -389,6 +389,7 @@ def test_default_layer_hierarchy(tmp_path: Path):
 
     # Check core rules enabled by default
     assert config.rules.ban_select_star.enabled is True
+    assert config.rules.no_subqueries.enabled is False
     assert config.checks.layer_integrity.enabled is True
     assert config.checks.duplicate_ctes.enabled is True
     assert config.rules.no_positional_group_by_or_order_by.enabled is True
@@ -422,6 +423,7 @@ def test_init_fitness_config_success(tmp_path: Path):
     assert loaded_config.layers.order == ["staging", "intermediate", "core", "marts"]
     assert loaded_config.checks.layer_integrity.enabled is True
     assert loaded_config.rules.ban_select_star.enabled is True
+    assert loaded_config.rules.no_subqueries.enabled is False
     assert loaded_config.rules.no_positional_group_by_or_order_by.enabled is True
     assert loaded_config.rules.environment_agnostic_references.enabled is True
 

@@ -299,11 +299,13 @@ def test_get_executed_checks_includes_all_rules_and_plugins() -> None:
             ColumnTypeRuleEntry(name="id_text", pattern="_id$", data_type="text")
         ]
         cfg.rules.classification_macros.enabled = True
+        cfg.rules.no_subqueries.enabled = True
 
         executed = get_executed_checks(cfg)
         assert "columnnames" in executed
         assert "columntypes" in executed
         assert "classificationmacros" in executed
+        assert "nosubqueries" in executed
         assert "custom_sqlmesh_plugin" in executed
         assert "layer_integrity" in executed
 

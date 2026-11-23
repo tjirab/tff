@@ -20,6 +20,7 @@ from tff.core.rules.no_positional_group_by_or_order_by import (
     NoPositionalGroupByOrOrderBy,
 )
 from tff.core.rules.ban_select_star import BanSelectStar
+from tff.core.rules.no_subqueries import NoSubqueries
 from tff.core.rules.sql_complexity import SqlComplexity
 from tff.core.rules.environment_agnostic_references import EnvironmentAgnosticReferences
 
@@ -38,6 +39,7 @@ ALL_RULES = [
     NoMissingColumnMetadata,
     FilenameEqualsModelname,
     BanSelectStar,
+    NoSubqueries,
     NoPositionalGroupBy,
     NoPositionalOrderBy,
     NoPositionalGroupByOrOrderBy,
@@ -60,6 +62,7 @@ __all__ = [
     "NoMissingColumnMetadata",
     "FilenameEqualsModelname",
     "BanSelectStar",
+    "NoSubqueries",
     "NoPositionalGroupBy",
     "NoPositionalOrderBy",
     "NoPositionalGroupByOrOrderBy",
