@@ -50,6 +50,7 @@ layers:
     - marts
 
 # Project-level architectural and DAG checks
+# Every check supports `severity: error` or `severity: warning` (optional).
 checks:
   # Enforce unidirectional dependencies between layers and domain boundaries in marts
   layer_integrity:
@@ -101,6 +102,7 @@ checks:
     dimension_parity_groups: []
 
 # Model-level SQL rules
+# Every rule supports `severity: error` or `severity: warning` (optional).
 rules:
   # Prohibit 'SELECT *' to avoid silent breakage from upstream schema drift
   ban_select_star:
@@ -670,13 +672,25 @@ def _normalize_metadata_attributes(raw: Any) -> dict[str, MetadataAttributeRequi
 
 class MetadataRuleConfig(LayerFilterConfig):
     model_config = ConfigDict(extra="forbid", validate_assignment=True)
-    owner: bool = True
-    description: bool = True
-    grain: bool = True
-    not_null: bool = True
-    unique_values: bool = True
+    owner: bool | CheckEnabled = True
+    description: bool | CheckEnabled = True
+    grain: bool | CheckEnabled = True
+    not_null: bool | CheckEnabled = True
+    unique_values: bool | CheckEnabled = True
     table: dict[str, MetadataAttributeRequirement] = Field(default_factory=dict)
     column: dict[str, MetadataAttributeRequirement] = Field(default_factory=dict)
+
+    def is_field_enabled(self, field: str) -> bool:
+        val = getattr(self, field)
+        if isinstance(val, CheckEnabled):
+            return bool(val.enabled)
+        return bool(val)
+
+    def get_field_severity(self, field: str) -> Severity | None:
+        val = getattr(self, field)
+        if isinstance(val, CheckEnabled) and val.severity is not None:
+            return val.severity
+        return self.severity
 
     @model_validator(mode="before")
     @classmethod
@@ -737,13 +751,15 @@ class MetadataRuleConfig(LayerFilterConfig):
 
     @field_validator("grain", mode="before")
     @classmethod
-    def validate_model_grain(cls, v: Any) -> bool:
-        if isinstance(v, bool):
+    def validate_model_grain(cls, v: Any) -> bool | CheckEnabled:
+        if isinstance(v, (bool, CheckEnabled)):
             return v
+        if isinstance(v, dict):
+            return CheckEnabled.model_validate(v)
         if isinstance(v, str) and v.lower() in ("true", "false", "1", "0"):
             return v.lower() in ("true", "1")
         raise TffConfigError(
-            f"Invalid configuration for 'rules.metadata.grain': expected boolean, got {type(v).__name__}",
+            f"Invalid configuration for 'rules.metadata.grain': expected boolean or mapping, got {type(v).__name__}",
             hint="Set 'grain: true' or 'grain: false' under 'rules.metadata'.",
             details={"rule": "metadata", "field": "grain", "value": v, "provided_type": type(v).__name__},
         )

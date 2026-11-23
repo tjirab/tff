@@ -12,7 +12,12 @@ from sqlmesh.core.linter.definition import AnnotatedRuleViolation
 from tff.core.adapter import normalize_project_roots
 from tff.core.config import FitnessFunctionsConfig, load_fitness_config
 from tff.core.model import ModelRepresentation
-from tff.core.registry import CheckRegistry, normalize_check_name, registry
+from tff.core.registry import (
+    CheckRegistry,
+    apply_severity_override,
+    normalize_check_name,
+    registry,
+)
 from tff.core.report import LintFinding, Severity, format_message, normalize_model_name
 from tff.core.rules import ALL_RULES as CORE_RULES
 from tff.core.utils.paths import model_path_relative
@@ -87,8 +92,14 @@ def collect_sqlmesh_findings(
             if is_sql_complexity:
                 from tff.core.rules.sql_complexity import split_complexity_message
 
+                severity_override = (
+                    c_def.get_configured_severity(config) if c_def and config else None
+                )
                 parsed_parts = split_complexity_message(
-                    message, base_severity=rule_severity, model_name=model_label
+                    message,
+                    base_severity=rule_severity,
+                    model_name=model_label,
+                    severity_override=severity_override,
                 )
             else:
                 base_sev: Severity = "warning" if rule_severity == "warning" else "error"
@@ -153,6 +164,10 @@ def _run_collector_safely(
                 message=f"Check '{name}' failed with {type(exc).__name__}: {exc}",
             )
         ]
+
+    c_def = registry.get(name)
+    if c_def is not None:
+        dag_res = apply_severity_override(dag_res, c_def.get_configured_severity(config))
 
     if norm_scoped is not None:
         return [
@@ -252,15 +267,15 @@ def get_executed_checks(
             ):
                 executed.append("nopositionalorderby")
             if config.rules.metadata.enabled:
-                if config.rules.metadata.owner:
+                if config.rules.metadata.is_field_enabled("owner"):
                     executed.append("nomissingowner")
-                if config.rules.metadata.description:
+                if config.rules.metadata.is_field_enabled("description"):
                     executed.append("nomissingdescription")
-                if config.rules.metadata.grain:
+                if config.rules.metadata.is_field_enabled("grain"):
                     executed.append("nomissinggrain")
-                if config.rules.metadata.not_null:
+                if config.rules.metadata.is_field_enabled("not_null"):
                     executed.append("nomissingnotnull")
-                if config.rules.metadata.unique_values:
+                if config.rules.metadata.is_field_enabled("unique_values"):
                     executed.append("nomissinguniquevalues")
                 if config.rules.metadata.table:
                     executed.append("nomissingtablemetadata")

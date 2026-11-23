@@ -14,6 +14,7 @@ def collect_dependency_graph_findings(
     models: dict[str, ModelRepresentation], config: FitnessFunctionsConfig
 ) -> list[LintFinding]:
     graph_config = config.checks.dependency_graph
+    severity_override = graph_config.severity
     reverse: dict[str, set[str]] = defaultdict(set)
     for model_name, model in models.items():
         if model.is_symbolic:
@@ -38,7 +39,7 @@ def collect_dependency_graph_findings(
             findings.append(
                 LintFinding(
                     check="dependency_graph",
-                    severity="error",
+                    severity=severity_override or "error",
                     model=str(model.name or model_name),
                     path=model_path_relative(model),
                     message=(
@@ -51,7 +52,7 @@ def collect_dependency_graph_findings(
             findings.append(
                 LintFinding(
                     check="dependency_graph",
-                    severity="warning",
+                    severity=severity_override or "warning",
                     model=str(model.name or model_name),
                     path=model_path_relative(model),
                     message=(
@@ -65,7 +66,7 @@ def collect_dependency_graph_findings(
             findings.append(
                 LintFinding(
                     check="dependency_graph",
-                    severity="warning",
+                    severity=severity_override or "warning",
                     model=str(model.name or model_name),
                     path=model_path_relative(model),
                     message=(

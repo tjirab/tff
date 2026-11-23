@@ -14,6 +14,7 @@ def collect_materialization_depth_findings(
     depth_config = config.checks.materialization_depth
     if not depth_config.enabled:
         return []
+    severity_override = depth_config.severity
 
     memo: dict[str, int] = {}
     visiting: set[str] = set()
@@ -54,7 +55,7 @@ def collect_materialization_depth_findings(
             findings.append(
                 LintFinding(
                     check="materialization_depth",
-                    severity="error",
+                    severity=severity_override or "error",
                     model=str(model_name),
                     path=model_path_relative(model),
                     message=(
@@ -67,7 +68,7 @@ def collect_materialization_depth_findings(
             findings.append(
                 LintFinding(
                     check="materialization_depth",
-                    severity="warning",
+                    severity=severity_override or "warning",
                     model=str(model_name),
                     path=model_path_relative(model),
                     message=(

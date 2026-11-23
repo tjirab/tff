@@ -17,7 +17,7 @@ class NoMissingOwner(Rule):
 
     def check_model(self, model: ModelRepresentation) -> RuleViolation | None:
         rule_config = self.config.rules.metadata
-        if not rule_config.owner:
+        if not rule_config.is_field_enabled("owner"):
             return None
 
         if model.is_external or model.is_symbolic:
@@ -38,7 +38,7 @@ class NoMissingDescription(Rule):
 
     def check_model(self, model: ModelRepresentation) -> RuleViolation | None:
         rule_config = self.config.rules.metadata
-        if not rule_config.description:
+        if not rule_config.is_field_enabled("description"):
             return None
 
         if model.is_external or model.is_symbolic:
@@ -61,7 +61,7 @@ class NoMissingGrain(Rule):
 
     def check_model(self, model: ModelRepresentation) -> RuleViolation | None:
         rule_config = self.config.rules.metadata
-        if not rule_config.grain:
+        if not rule_config.is_field_enabled("grain"):
             return None
 
         if model.is_external or model.is_symbolic:
@@ -84,7 +84,7 @@ class NoMissingNotNull(Rule):
 
     def check_model(self, model: ModelRepresentation) -> RuleViolation | None:
         rule_config = self.config.rules.metadata
-        if not rule_config.not_null:
+        if not rule_config.is_field_enabled("not_null"):
             return None
         if model.is_external or model.is_symbolic:
             return None
@@ -103,7 +103,7 @@ class NoMissingUniqueValues(Rule):
 
     def check_model(self, model: ModelRepresentation) -> RuleViolation | None:
         rule_config = self.config.rules.metadata
-        if not rule_config.unique_values:
+        if not rule_config.is_field_enabled("unique_values"):
             return None
         if model.is_external or model.is_symbolic:
             return None

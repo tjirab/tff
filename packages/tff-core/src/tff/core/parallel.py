@@ -178,6 +178,7 @@ def _extract_model_findings(
     violation: RuleViolation | None,
     severity: Severity,
     finding_check: str,
+    severity_override: Severity | None = None,
 ) -> list[LintFinding]:
     from tff.core.report import LintFinding
     from tff.core.utils.paths import model_path_relative
@@ -208,7 +209,10 @@ def _extract_model_findings(
             from tff.core.rules.sql_complexity import split_complexity_message
 
             for part, part_severity in split_complexity_message(
-                clean_msg, base_severity=severity, model_name=model.name
+                clean_msg,
+                base_severity=severity,
+                model_name=model.name,
+                severity_override=severity_override,
             ):
                 findings.append(
                     LintFinding(
@@ -278,6 +282,11 @@ def _check_models_batch(
             for m in model_batch
         ]
 
+    severity_override = (
+        getattr(getattr(getattr(config, "rules", None), "sql_complexity", None), "severity", None)
+        if config is not None
+        else None
+    )
     findings: list[LintFinding] = []
     for model in model_batch:
         try:
@@ -289,6 +298,7 @@ def _check_models_batch(
                     violation=violation,
                     severity=severity,
                     finding_check=finding_check,
+                    severity_override=severity_override,
                 )
             )
         except Exception as exc:
@@ -345,6 +355,11 @@ def run_parallel_model_rule(
                 for m in eligible_models
             ]
 
+        severity_override = (
+            getattr(getattr(getattr(config, "rules", None), "sql_complexity", None), "severity", None)
+            if config is not None
+            else None
+        )
         for model in eligible_models:
             try:
                 violation = rule.check_model(model)
@@ -355,6 +370,7 @@ def run_parallel_model_rule(
                         violation=violation,
                         severity=severity,
                         finding_check=finding_check,
+                        severity_override=severity_override,
                     )
                 )
             except Exception as exc:
