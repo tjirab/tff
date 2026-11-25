@@ -48,6 +48,7 @@ def run_all_checks(
     workers: int | None = None,
     scoped_models: set[str] | None = None,
     chunk_size: int | None = None,
+    manifest_path: str | Path | None = None,
 ) -> tuple[list[LintFinding], int, list[str]]:
     roots = normalize_project_roots(project_root) if project_root is not None else [Path.cwd()]
     primary_root = roots[0]
@@ -58,11 +59,16 @@ def run_all_checks(
 
     # Parse and load manifest.json if models not already provided
     if models is None:
+        load_kwargs: dict[str, object] = {
+            "dialect": dialect,
+            "max_workers": resolved_workers,
+            "config": config,
+        }
+        if manifest_path is not None:
+            load_kwargs["manifest_path"] = manifest_path
         models = load_dbt_models(
             roots if len(roots) > 1 else primary_root,
-            dialect=dialect,
-            max_workers=resolved_workers,
-            config=config,
+            **load_kwargs,  # type: ignore[arg-type]
         )
 
     findings, selected = registry.run_checks(

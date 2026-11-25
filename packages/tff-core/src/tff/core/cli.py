@@ -1128,6 +1128,18 @@ def _main_impl(argv: list[str] | None = None) -> int:
         help="Emit GitHub Actions workflow command annotations alongside console report",
     )
     lint_parser.add_argument(
+        "--annotations-level",
+        choices=["all", "errors-only"],
+        default="all",
+        help="Filter emitted GitHub Actions annotations by severity (default: all)",
+    )
+    lint_parser.add_argument(
+        "--max-annotations-per-file",
+        type=positive_int,
+        default=None,
+        help="Maximum number of GitHub Actions annotations to emit per file",
+    )
+    lint_parser.add_argument(
         "--junit-xml",
         type=Path,
         default=None,
@@ -1552,6 +1564,14 @@ def _main_impl(argv: list[str] | None = None) -> int:
         help="Only gate and report violations for models/files modified in this pull request",
     )
     action_parser.add_argument(
+        "--delta-only",
+        "--delta",
+        action="store_true",
+        default=False,
+        dest="delta_only",
+        help="Delta mode: only gate, annotate, and report violations newly introduced vs base branch/manifest",
+    )
+    action_parser.add_argument(
         "--annotations",
         action="store_true",
         default=True,
@@ -1562,6 +1582,30 @@ def _main_impl(argv: list[str] | None = None) -> int:
         action="store_false",
         dest="annotations",
         help="Disable emitting GitHub Actions workflow command annotations",
+    )
+    action_parser.add_argument(
+        "--annotations-level",
+        choices=["all", "errors-only"],
+        default="all",
+        help="Filter emitted GitHub Actions annotations by severity (default: all)",
+    )
+    action_parser.add_argument(
+        "--max-annotations-per-file",
+        type=positive_int,
+        default=None,
+        help="Maximum number of GitHub Actions annotations to emit per file",
+    )
+    action_parser.add_argument(
+        "--compact-ledger",
+        action="store_true",
+        default=True,
+        help="Group PR comment ledger rows by model and rule (default: true)",
+    )
+    action_parser.add_argument(
+        "--no-compact-ledger",
+        action="store_false",
+        dest="compact_ledger",
+        help="Disable grouping PR comment ledger rows by model and rule",
     )
     action_parser.add_argument(
         "--pr-number",
@@ -2533,11 +2577,21 @@ def _main_impl(argv: list[str] | None = None) -> int:
             # Determine whether and where to emit GitHub Actions workflow command annotations
             is_github_actions = os.environ.get("GITHUB_ACTIONS") == "true"
             github_annotations_requested = getattr(args, "github_annotations", False)
+            annotations_errors_only = (
+                getattr(args, "annotations_level", "all") == "errors-only"
+            )
+            max_annotations_per_file = getattr(args, "max_annotations_per_file", None)
 
             if output_format == "github":
                 # Pure annotations mode directly to stdout (no tables or banners)
                 if findings:
-                    emit_github_annotations(findings, project_root=project_root, stream=sys.stdout)
+                    emit_github_annotations(
+                        findings,
+                        project_root=project_root,
+                        stream=sys.stdout,
+                        max_annotations_per_file=max_annotations_per_file,
+                        errors_only=annotations_errors_only,
+                    )
                 passed = json_data["passed"]
                 return 0 if passed else 1
 
@@ -2545,10 +2599,22 @@ def _main_impl(argv: list[str] | None = None) -> int:
             # For structured formats (sarif/json): if explicitly requested, route to stderr to keep stdout JSON clean
             if output_format == "text":
                 if (github_annotations_requested or is_github_actions) and findings:
-                    emit_github_annotations(findings, project_root=project_root, stream=sys.stdout)
+                    emit_github_annotations(
+                        findings,
+                        project_root=project_root,
+                        stream=sys.stdout,
+                        max_annotations_per_file=max_annotations_per_file,
+                        errors_only=annotations_errors_only,
+                    )
             elif output_format in ("sarif", "json"):
                 if github_annotations_requested and findings:
-                    emit_github_annotations(findings, project_root=project_root, stream=sys.stderr)
+                    emit_github_annotations(
+                        findings,
+                        project_root=project_root,
+                        stream=sys.stderr,
+                        max_annotations_per_file=max_annotations_per_file,
+                        errors_only=annotations_errors_only,
+                    )
 
             if output_format == "sarif":
                 sarif_data = generate_sarif_report(

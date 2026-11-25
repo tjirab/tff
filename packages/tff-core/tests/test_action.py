@@ -85,7 +85,10 @@ def test_action_yml_exists_and_matches_composite_manifest() -> None:
     assert "python-version" in inputs
     assert "version" in inputs
     assert "annotations" in inputs
+    assert "max-annotations-per-file" in inputs
     assert "diff-against-base" in inputs
+    assert "delta-only" in inputs
+    assert "compact-ledger" in inputs
 
     # Verify outputs
     outputs = root_content["outputs"]
@@ -2251,3 +2254,206 @@ def test_execute_action_invokes_get_modified_files_once_and_sanitizes_git_env(
         assert called_env is not None
         for var in leaked_env:
             assert var not in called_env
+
+
+@pytest.mark.parametrize(
+    ("annotations_arg", "annotations_level", "expected"),
+    [
+        (True, None, (True, False)),
+        (False, None, (False, False)),
+        ("true", None, (True, False)),
+        ("false", None, (False, False)),
+        ("errors-only", None, (True, True)),
+        (True, "errors-only", (True, True)),
+        ("true", "errors-only", (True, True)),
+        ("false", "errors-only", (False, False)),
+    ],
+)
+def test_resolve_annotations_settings(
+    annotations_arg: object, annotations_level: str | None, expected: tuple[bool, bool]
+) -> None:
+    from tff.core.action import resolve_annotations_settings
+
+    assert resolve_annotations_settings(annotations_arg, annotations_level) == expected
+
+
+def test_compact_ledger_groups_by_model_and_rule() -> None:
+    from tff.core.action import group_findings_by_model_and_rule
+
+    long_msg = "x" * 200
+    findings = [
+        _make_finding(check="sqlcomplexity", severity="warning", message=long_msg, model="stg_shipment_costs", path="models/stg_shipment_costs.sql"),
+        _make_finding(check="sqlcomplexity", severity="error", message="FAIL: line_count=500", model="stg_shipment_costs", path="models/stg_shipment_costs.sql"),
+        _make_finding(check="sqlcomplexity", severity="warning", message="WARN: cte_count=10", model="stg_shipment_costs", path="models/stg_shipment_costs.sql"),
+        _make_finding(check="filenameequalsmodelname", severity="warning", message="Mismatch 1", model="stg_shipment_costs"),
+        _make_finding(check="filenameequalsmodelname", severity="warning", message="Mismatch 2", model="stg_shipment_costs"),
+    ]
+    groups = group_findings_by_model_and_rule(findings)
+    assert len(groups) == 2
+    assert groups[0]["severity"] == "error"
+    assert groups[0]["count"] == 3
+    assert groups[1]["autofixable"] is True
+
+    data = {
+        "overall_score": 82.0,
+        "findings": [
+            {"check": f.check, "severity": f.severity, "message": f.message, "model": f.model, "path": f.path}
+            for f in findings
+        ],
+        "errors_count": 1,
+        "warnings_count": 4,
+        "category_scores": {},
+    }
+    md_compact = generate_pr_comment_markdown(data, base_data={"overall_score": 80.0, "findings": []}, compact_ledger=True)
+    assert "**(3×)**" in md_compact
+    assert "(+1 more)" in md_compact
+    assert "(2 model/rule groups)" in md_compact
+    assert "..." in md_compact
+
+    md_flat = generate_pr_comment_markdown(data, base_data={"overall_score": 80.0, "findings": []}, compact_ledger=False)
+    assert "**(3×)**" not in md_flat
+
+
+def test_filter_delta_findings_and_pr_comment_modes() -> None:
+    from tff.core.action import filter_delta_findings
+
+    base_finding = {"check": "sqlcomplexity", "severity": "error", "message": "FAIL: line_count=450", "model": "stg_ship"}
+    new_finding = {"check": "banselectstar", "severity": "error", "message": "SELECT * banned", "model": "stg_ship"}
+    curr = {
+        "overall_score": 85.0,
+        "findings": [base_finding, new_finding],
+        "raw_findings": [
+            _make_finding(check="sqlcomplexity", severity="error", message="FAIL: line_count=450", model="stg_ship"),
+            _make_finding(check="banselectstar", severity="error", message="SELECT * banned", model="stg_ship"),
+        ],
+        "errors_count": 2,
+        "warnings_count": 0,
+        "category_scores": {},
+    }
+    base = {"overall_score": 88.0, "findings": [base_finding]}
+    updated, suppressed = filter_delta_findings(curr, base)
+    assert suppressed == 1
+    assert len(updated["findings"]) == 1
+    assert updated["findings"][0]["check"] == "banselectstar"
+    assert updated["errors_count"] == 1
+
+    # Full audit delta mode banners
+    md_only_delta = generate_pr_comment_markdown(updated, base_data=base, delta_only=True, pre_existing_debt_count=1, resolved_violations_count=0)
+    assert "Delta mode vs `main` (newly introduced violations only)" in md_only_delta
+    assert "1 pre-existing violation(s) matching baseline were excluded due to `delta-only: true`" in md_only_delta
+
+    # Delta + only_changed pass card banner
+    clean_delta = {"overall_score": 90.0, "findings": [], "errors_count": 0, "warnings_count": 0, "category_scores": {}}
+    md_pass = generate_pr_comment_markdown(clean_delta, base_data=base, only_changed=True, delta_only=True, pre_existing_debt_count=4)
+    assert "4 pre-existing violation(s) matching `main` baseline excluded in delta mode." in md_pass
+
+    md_both = generate_pr_comment_markdown(updated, base_data=base, only_changed=True, modified_files_count=1, delta_only=True)
+    assert "Delta mode vs `main` on `1` modified file(s)" in md_both
+
+
+def test_execute_action_delta_mode_errors_only_and_manifest_fallback(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    base_manifest = tmp_path / "base_manifest.json"
+    base_manifest.write_text("{}", encoding="utf-8")
+
+    pre_err = _make_finding(check="sqlcomplexity", severity="error", message="pre-existing", model="stg_orders", path="models/staging/stg_orders.sql")
+    new_warn = _make_finding(check="nomissingowner", severity="warning", message="missing owner", model="stg_orders", path="models/staging/stg_orders.sql")
+    new_err = _make_finding(check="banselectstar", severity="error", message="SELECT *", model="stg_orders", path="models/staging/stg_orders.sql")
+
+    def _to_dict(f: object) -> dict[str, object]:
+        return {"check": f.check, "severity": f.severity, "message": f.message, "model": f.model, "path": f.path}  # type: ignore[attr-defined]
+
+    curr_eval = {
+        "overall_score": 88.0,
+        "findings": [_to_dict(pre_err), _to_dict(new_warn), _to_dict(new_err)],
+        "raw_findings": [pre_err, new_warn, new_err],
+        "errors_count": 2,
+        "warnings_count": 1,
+        "category_scores": {},
+        "scores": {},
+        "config": MagicMock(),
+        "provider": "dbt",
+    }
+    base_eval = {
+        "overall_score": 90.0,
+        "findings": [_to_dict(pre_err)],
+        "raw_findings": [pre_err],
+        "errors_count": 1,
+        "warnings_count": 0,
+    }
+
+    # 1. delta_only + only_changed + base_manifest without base_ref + errors-only + max_annotations_per_file
+    args = argparse.Namespace(
+        project=tmp_path,
+        provider="dbt",
+        config="fitness_functions.yaml",
+        checks=None,
+        fail_under=0.0,
+        fail_level="error",
+        only_changed=True,
+        delta_only=True,
+        comment_pr="false",
+        github_token=None,
+        base_ref=None,
+        diff_against_base=True,
+        base_manifest=base_manifest,
+        annotations="errors-only",
+        max_annotations_per_file=1,
+        compact_ledger=True,
+        json=True,
+    )
+    with (
+        patch.dict(os.environ, {}, clear=True),
+        patch("tff.core.action.get_modified_files", return_value={"models/staging/stg_orders.sql"}),
+        patch("tff.core.action.evaluate_project", side_effect=[curr_eval, base_eval]),
+    ):
+        code = execute_action(args)
+        assert code == 1
+        out = capsys.readouterr().out
+        assert "::error" in out and "banselectstar" in out or "No SELECT *" in out
+        assert "::warning" not in out
+
+    # 2. delta_only without only_changed when base evaluation fails -> prints notice
+    args_no_base = argparse.Namespace(
+        project=tmp_path,
+        provider="dbt",
+        config="fitness_functions.yaml",
+        checks=None,
+        fail_under=0.0,
+        fail_level="error",
+        only_changed=False,
+        delta_only=True,
+        comment_pr="false",
+        github_token=None,
+        base_ref=None,
+        diff_against_base=True,
+        base_manifest=base_manifest,
+        annotations=False,
+        json=True,
+    )
+    with (
+        patch.dict(os.environ, {}, clear=True),
+        patch("tff.core.action.get_modified_files", return_value=set()),
+        patch("tff.core.action.evaluate_project", side_effect=[dict(curr_eval), RuntimeError("bad manifest")]),
+    ):
+        code2 = execute_action(args_no_base)
+        assert code2 == 1
+        assert "delta-only mode is enabled, but baseline data was unavailable" in capsys.readouterr().err
+
+    # 3. delta_only=True with only_changed=False + base_data
+    args_delta_full = argparse.Namespace(**{**vars(args), "only_changed": False, "annotations": False})
+    with (
+        patch.dict(os.environ, {}, clear=True),
+        patch("tff.core.action.get_modified_files", return_value=set()),
+        patch("tff.core.action.evaluate_project", side_effect=[dict(curr_eval), base_eval]),
+    ):
+        assert execute_action(args_delta_full) == 1
+
+    # 4. fetch_base_scores falls back to direct manifest evaluation (success and failure)
+    with patch("tff.core.action.evaluate_project", return_value=base_eval) as mock_fb:
+        res = fetch_base_scores(tmp_path, "main", manifest=base_manifest)
+        assert res == base_eval
+        assert mock_fb.call_args.kwargs["manifest"] == base_manifest.resolve()
+    with patch("tff.core.action.evaluate_project", side_effect=RuntimeError("boom")):
+        assert fetch_base_scores(tmp_path, "main", manifest=base_manifest) is None
