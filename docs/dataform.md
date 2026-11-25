@@ -174,7 +174,7 @@ Enforce tff fitness functions automatically on git commit using [pre-commit](htt
 # .pre-commit-config.yaml
 repos:
   - repo: https://github.com/tjirab/tff
-    rev: v0.11.0
+    rev: v1.1.0
     hooks:
       - id: tff-lint
 ```
@@ -183,7 +183,7 @@ The hooks default to bare `tff-core`, which supports Dataform projects out of th
 
 ```yaml
   - repo: https://github.com/tjirab/tff
-    rev: v0.11.0
+    rev: v1.1.0
     hooks:
       - id: tff-lint
         additional_dependencies: ["tff-core[dataform]"]
