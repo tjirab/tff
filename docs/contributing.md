@@ -339,9 +339,10 @@ Before submitting a new rule or check:
 
 ## Releases & PR Titles
 
-Releases are managed by Google's `release-please` action. 
+Releases are managed by Google's `release-please` action using a single unified SemVer (`vX.Y.Z`) for `tff-core` and the official GitHub Action. On every release, CI publishes `tff-core` to PyPI and automatically updates the floating major GitHub Action tag (e.g., `v1` -> `v1.1.0`).
 
-Your PR titles **must** use the [Conventional Commits](https://www.conventionalcommits.org/) format so that minor/patch versions are calculated correctly:
-* `feat: ...` (bumps minor version, e.g., `0.2.0` $\rightarrow$ `0.3.0`)
-* `fix: ...` (bumps patch version, e.g., `0.2.0` $\rightarrow$ `0.2.1`)
+Your PR titles **must** use the [Conventional Commits](https://www.conventionalcommits.org/) format so that major/minor/patch versions are calculated correctly:
+* `feat!: ...` or `BREAKING CHANGE:` footer (bumps major version, e.g., `1.1.0` $\rightarrow$ `2.0.0`, and advances floating `v2`)
+* `feat: ...` (bumps minor version, e.g., `1.1.0` $\rightarrow$ `1.2.0`)
+* `fix: ...` (bumps patch version, e.g., `1.1.0` $\rightarrow$ `1.1.1`)
 * `chore: ...`, `docs: ...`, `test: ...` (non-bumping metadata changes)

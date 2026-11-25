@@ -126,7 +126,7 @@ Enforce tff fitness functions automatically on git commit using [pre-commit](htt
 # .pre-commit-config.yaml
 repos:
   - repo: https://github.com/tjirab/tff
-    rev: v0.11.0
+    rev: v1.1.0
     hooks:
       - id: tff-lint
 
@@ -140,7 +140,7 @@ Both `tff-lint` and `tff-lint-fix` default to bare `tff-core`, which supports db
 # .pre-commit-config.yaml
 repos:
   - repo: https://github.com/tjirab/tff
-    rev: v0.11.0
+    rev: v1.1.0
     hooks:
       - id: tff-lint
         additional_dependencies: ["tff-core[dbt]"]

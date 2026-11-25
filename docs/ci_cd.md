@@ -8,6 +8,9 @@ This guide covers integrating **Transformation Fitness Functions (tff)** into au
 
 The official tff GitHub Action allows teams to enforce architectural fitness functions and project health scores directly on pull requests with zero manual virtualenv configuration.
 
+> [!NOTE]
+> **Versioning & Pinning**: `tjirab/tff@v1` is a **floating major tag** kept in sync with the latest `v1.x.y` release and automatically installs the matching bundled `tff-core` version. For immutable pinning, reference a specific release tag (e.g., `tjirab/tff@v1.1.0`) or commit SHA, or pass `version` to install a specific PyPI release of `tff-core`. Note that the legacy `v1.0.0` tag dates from the `0.13` era and does not support newer inputs such as `annotations: "errors-only"`, `delta-only`, or `base-manifest`—use `@v1` (or `@v1.1.0`+).
+
 ### Quick Start Workflow
 
 Create `.github/workflows/tff.yml` in your repository:
@@ -49,7 +52,7 @@ jobs:
 
 | Input | Description | Default | Required |
 | :--- | :--- | :--- | :--- |
-| `project` | Path to project root directory | `.` | No |
+| `project` | Path to project root directory (or newline-separated paths for multi-project runs) | `.` | No |
 | `provider` | Pipeline engine (`auto`, `dbt`, `sqlmesh`, `dataform`) | `auto` | No |
 | `fail-under` | Minimum overall health score required to pass (`0.0` - `100.0`) | `0.0` | No |
 | `fail-level` | Severity level that triggers step failure (`error`, `warning`) | `error` | No |
@@ -60,13 +63,14 @@ jobs:
 | `config` | Path to `fitness_functions.yaml` (relative to project root) | `fitness_functions.yaml` | No |
 | `checks` | Comma-separated list of specific checks to run | (all enabled) | No |
 | `python-version` | Python version to set up in the runner | `3.12` | No |
-| `version` | Specific version of `tff-core` to install | (latest release) | No |
+| `version` | Specific PyPI version of `tff-core` to install (or `local`/git URL) | (bundled with action release) | No |
 | `annotations` | Emit GitHub Actions workflow annotations (`true`, `false`, or `errors-only`) | `true` | No |
 | `max-annotations-per-file` | Maximum number of GitHub Actions annotations to emit per file | (unlimited) | No |
 | `diff-against-base` | Compute health score diff and violations diff vs target branch | `true` | No |
 | `base-manifest` | Path to precompiled baseline manifest for base branch comparison in dbt Slim CI | (none) | No |
 | `delta-only` | Delta mode: only gate, annotate, and report violations newly introduced vs base branch/manifest | `false` | No |
 | `compact-ledger` | Group PR comment ledger rows by model and rule (`(N×)` summary rows) | `true` | No |
+| `cache` | Enable caching of `.tff_cache` (AST cache) across GitHub Actions workflows | `true` | No |
 
 #### Outputs
 
@@ -274,7 +278,7 @@ Add to your `.pre-commit-config.yaml`:
 ```yaml
 repos:
   - repo: https://github.com/tjirab/tff
-    rev: v0.12.1
+    rev: v1.1.0
     hooks:
       # Architectural and code formatting linter
       - id: tff-lint
@@ -291,7 +295,7 @@ For **SQLMesh** projects, declare `additional_dependencies: ["tff-core[sqlmesh]"
 
 ```yaml
   - repo: https://github.com/tjirab/tff
-    rev: v0.12.1
+    rev: v1.1.0
     hooks:
       - id: tff-lint
         additional_dependencies: ["tff-core[sqlmesh]"]

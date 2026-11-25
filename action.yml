@@ -47,7 +47,7 @@ inputs:
     required: false
     default: "3.12"
   version:
-    description: "Version of tff-core to install (default: latest release)"
+    description: "Version of tff-core to install from PyPI (default: bundled version matching this action release; or 'local'/git URL)"
     required: false
     default: ""
   annotations:
