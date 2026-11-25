@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.1.0](https://github.com/tjirab/tff/compare/v0.31.0...v1.1.0) (2026-11-25)
+
+
+### Miscellaneous Chores
+
+* **release:** cut 1.1.0 ([03c3ec7](https://github.com/tjirab/tff/commit/03c3ec7c1cd1adb477930756a2bf4e8d3b4eab3e))
+
 ## [0.31.0](https://github.com/tjirab/tff/compare/tff-core-v0.30.0...tff-core-v0.31.0) (2026-11-25)
 
 
