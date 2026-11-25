@@ -2457,3 +2457,96 @@ def test_execute_action_delta_mode_errors_only_and_manifest_fallback(
         assert mock_fb.call_args.kwargs["manifest"] == base_manifest.resolve()
     with patch("tff.core.action.evaluate_project", side_effect=RuntimeError("boom")):
         assert fetch_base_scores(tmp_path, "main", manifest=base_manifest) is None
+
+
+@pytest.mark.parametrize(
+    ("annotations_input", "expected_args"),
+    [
+        ("FALSE", ["--no-annotations"]),
+        ("  0  ", ["--no-annotations"]),
+        ("No", ["--no-annotations"]),
+        ("OFF", ["--no-annotations"]),
+        (" None ", ["--no-annotations"]),
+        ("Errors-Only", ["--annotations-level", "errors-only"]),
+        ("  ERRORS_ONLY ", ["--annotations-level", "errors-only"]),
+        ("Error", ["--annotations-level", "errors-only"]),
+        ("true", []),
+    ],
+)
+def test_action_yml_normalizes_annotations_input(
+    tmp_path: Path, annotations_input: str, expected_args: list[str]
+) -> None:
+    import subprocess
+
+    manifest = yaml.safe_load((_REPO_ROOT / "action.yml").read_text(encoding="utf-8"))
+    run_step = next(s for s in manifest["runs"]["steps"] if s.get("id") == "run-tff")
+    stub = tmp_path / "tff"
+    stub.write_text("#!/usr/bin/env bash\nprintf '%s\\n' \"$@\"\n", encoding="utf-8")
+    stub.chmod(0o755)
+    env = {
+        "PATH": f"{tmp_path}:{os.environ.get('PATH', '')}",
+        "INPUT_PROJECT": ".",
+        "INPUT_PROVIDER": "auto",
+        "INPUT_FAIL_UNDER": "0.0",
+        "INPUT_FAIL_LEVEL": "error",
+        "INPUT_COMMENT_PR": "false",
+        "INPUT_CONFIG": "fitness_functions.yaml",
+        "INPUT_ANNOTATIONS": annotations_input,
+    }
+    proc = subprocess.run(
+        ["bash", "-e", "-c", run_step["run"]],
+        env=env,
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    argv = proc.stdout.splitlines()
+    for token in expected_args:
+        assert token in argv
+    if not expected_args:
+        assert "--no-annotations" not in argv
+        assert "--annotations-level" not in argv
+
+
+def test_filter_delta_findings_multiset_and_lint_finding_instances() -> None:
+    from tff.core.action import filter_delta_findings
+
+    dup_err = _make_finding(check="banselectstar", severity="error", message="SELECT * banned", model="stg_ship")
+    new_warn = _make_finding(check="nomissingowner", severity="warning", message="Missing owner", model="stg_ship")
+    curr = {
+        "overall_score": 85.0,
+        "findings": [dup_err, dup_err, new_warn],
+        "raw_findings": [dup_err, dup_err, new_warn],
+        "errors_count": 2,
+        "warnings_count": 1,
+    }
+    base = {"overall_score": 90.0, "findings": [dup_err]}
+    updated, suppressed = filter_delta_findings(curr, base)
+    assert suppressed == 1
+    assert len(updated["findings"]) == 2
+    assert len(updated["raw_findings"]) == 2
+    assert updated["errors_count"] == 1
+    assert updated["warnings_count"] == 1
+
+
+def test_render_markdown_findings_table_compact_truncation_suffix() -> None:
+    from tff.core.action import _render_markdown_findings_table
+
+    findings = [
+        _make_finding(check="c1", severity="warning", message="m1", model="mod_a"),
+        _make_finding(check="c2", severity="warning", message="m2", model="mod_b"),
+        _make_finding(check="c3", severity="warning", message="m3a", model="mod_c"),
+        _make_finding(check="c3", severity="warning", message="m3b", model="mod_c"),
+        _make_finding(check="c3", severity="warning", message="m3c", model="mod_c"),
+    ]
+    compact_lines, compact_rows = _render_markdown_findings_table(
+        findings, max_rows=2, compact_ledger=True
+    )
+    assert compact_rows == 3
+    assert "*... and 3 more violations truncated (1 grouped rows).*" in "\n".join(compact_lines)
+
+    flat_lines, flat_rows = _render_markdown_findings_table(
+        findings, max_rows=2, compact_ledger=False
+    )
+    assert flat_rows == 5
+    assert "*... and 3 more violations truncated.*" in "\n".join(flat_lines)

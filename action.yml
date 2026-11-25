@@ -244,11 +244,15 @@ runs:
         if [ -n "${INPUT_COMMENT_TAG}" ]; then
           ARGS+=("--comment-tag" "${INPUT_COMMENT_TAG}")
         fi
-        if [ "${INPUT_ANNOTATIONS}" = "false" ] || [ "${INPUT_ANNOTATIONS}" = "none" ]; then
-          ARGS+=("--no-annotations")
-        elif [ "${INPUT_ANNOTATIONS}" = "errors-only" ]; then
-          ARGS+=("--annotations-level" "errors-only")
-        fi
+        ANNOTATIONS_NORM="$(printf '%s' "${INPUT_ANNOTATIONS}" | tr '[:upper:]' '[:lower:]' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')"
+        case "${ANNOTATIONS_NORM}" in
+          false|0|no|off|none)
+            ARGS+=("--no-annotations")
+            ;;
+          errors-only|errors_only|error)
+            ARGS+=("--annotations-level" "errors-only")
+            ;;
+        esac
         if [ -n "${INPUT_MAX_ANNOTATIONS_PER_FILE}" ]; then
           ARGS+=("--max-annotations-per-file" "${INPUT_MAX_ANNOTATIONS_PER_FILE}")
         fi
