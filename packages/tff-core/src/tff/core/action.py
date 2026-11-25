@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import argparse
-from collections import defaultdict
+from collections import Counter, defaultdict
 import json
 import logging
 import os
@@ -313,6 +313,8 @@ def _render_markdown_findings_table(
         row_count = len(groups)
         for grp in groups[:max_rows]:
             lines.append(f"{line_prefix}{_format_grouped_finding_row(grp)}")
+        truncated_rows = max(0, row_count - max_rows)
+        truncated_violations = sum(grp["count"] for grp in groups[max_rows:])
     else:
         items = list(findings)
         if sort_by_target:
@@ -326,13 +328,36 @@ def _render_markdown_findings_table(
         row_count = len(items)
         for item in items[:max_rows]:
             lines.append(f"{line_prefix}{_format_finding_row(item)}")
+        truncated_rows = max(0, row_count - max_rows)
+        truncated_violations = truncated_rows
 
     if row_count > max_rows:
         sep = f"{line_prefix}\n{line_prefix}" if line_prefix else "\n"
+        group_suffix = (
+            f" ({truncated_rows} grouped rows)"
+            if compact_ledger and truncated_violations != truncated_rows
+            else ""
+        )
         lines.append(
-            f"{sep}*... and {row_count - max_rows} more {truncation_label} truncated.*"
+            f"{sep}*... and {truncated_violations} more {truncation_label} truncated{group_suffix}.*"
         )
     return lines, row_count
+
+
+def _subtract_base_findings(
+    findings: Sequence[dict[str, Any] | LintFinding],
+    base_counts: Counter[tuple[str, str, str]],
+) -> list[Any]:
+    """Filter out findings matched by base_counts using multiset subtraction."""
+    remaining = Counter(base_counts)
+    kept: list[Any] = []
+    for f in findings:
+        fp = get_finding_fingerprint(f)
+        if remaining[fp] > 0:
+            remaining[fp] -= 1
+        else:
+            kept.append(f)
+    return kept
 
 
 def filter_delta_findings(
@@ -340,27 +365,30 @@ def filter_delta_findings(
     base_data: dict[str, Any],
 ) -> tuple[dict[str, Any], int]:
     """Filter current_data to only violations newly introduced relative to base_data."""
-    base_fps = {get_finding_fingerprint(f) for f in base_data.get("findings", [])}
+    base_counts = Counter(
+        get_finding_fingerprint(f) for f in base_data.get("findings", [])
+    )
     curr_findings = list(current_data.get("findings", []))
     curr_raw = list(current_data.get("raw_findings", []))
 
-    delta_findings = [
-        f for f in curr_findings if get_finding_fingerprint(f) not in base_fps
-    ]
-    delta_raw = [
-        f for f in curr_raw if get_finding_fingerprint(f) not in base_fps
-    ]
+    delta_findings = _subtract_base_findings(curr_findings, base_counts)
+    delta_raw = _subtract_base_findings(curr_raw, base_counts)
     suppressed_count = len(curr_findings) - len(delta_findings)
+
+    errors_count = 0
+    warnings_count = 0
+    for f in delta_findings:
+        sev = _extract_finding_fields(f)[0].lower()
+        if sev == "error":
+            errors_count += 1
+        elif sev == "warning":
+            warnings_count += 1
 
     updated = dict(current_data)
     updated["findings"] = delta_findings
     updated["raw_findings"] = delta_raw
-    updated["errors_count"] = sum(
-        1 for f in delta_findings if f.get("severity") == "error"
-    )
-    updated["warnings_count"] = sum(
-        1 for f in delta_findings if f.get("severity") == "warning"
-    )
+    updated["errors_count"] = errors_count
+    updated["warnings_count"] = warnings_count
     return updated, suppressed_count
 
 
