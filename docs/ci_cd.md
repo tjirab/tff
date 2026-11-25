@@ -61,9 +61,12 @@ jobs:
 | `checks` | Comma-separated list of specific checks to run | (all enabled) | No |
 | `python-version` | Python version to set up in the runner | `3.12` | No |
 | `version` | Specific version of `tff-core` to install | (latest release) | No |
-| `annotations` | Emit GitHub Actions workflow annotations (`::error` / `::warning`) | `true` | No |
+| `annotations` | Emit GitHub Actions workflow annotations (`true`, `false`, or `errors-only`) | `true` | No |
+| `max-annotations-per-file` | Maximum number of GitHub Actions annotations to emit per file | (unlimited) | No |
 | `diff-against-base` | Compute health score diff and violations diff vs target branch | `true` | No |
 | `base-manifest` | Path to precompiled baseline manifest for base branch comparison in dbt Slim CI | (none) | No |
+| `delta-only` | Delta mode: only gate, annotate, and report violations newly introduced vs base branch/manifest | `false` | No |
+| `compact-ledger` | Group PR comment ledger rows by model and rule (`(N×)` summary rows) | `true` | No |
 
 #### Outputs
 
@@ -206,10 +209,16 @@ When `comment-pr: "true"` is enabled:
 * **Idempotent Updates**: Automatically edits the existing comment on new commits to avoid comment clutter.
 
 #### 2. In-File Inline Annotations ("Files changed" Tab)
-When `annotations: "true"` (default):
-* tff emits native GitHub workflow commands (`::error` and `::warning`).
+When `annotations: "true"` (default) or `annotations: "errors-only"`:
+* tff emits native GitHub workflow commands (`::error` and `::warning`), deduplicated to at most one annotation per rule per file/model.
+* Set `annotations: "errors-only"` to restrict inline annotations to `error`-severity violations while keeping warnings in the PR summary comment and Job Summary.
+* Set `max-annotations-per-file` (e.g. `"3"`) to cap total inline annotations emitted on any single file.
 * GitHub renders findings directly inline on the modified lines of code in the **Files changed** tab.
-* Developers can jump directly to violations in the diff without leaving their code review flow.
+
+#### 3. Delta Mode (`delta-only: "true"`) & Compact PR Ledger
+For brownfield repositories with pre-existing debt:
+* **`delta-only: "true"`**: Compares current findings against the base branch or `base-manifest` and gates, annotates, and reports **only violations newly introduced in the PR** (complementing `only-changed: "true"` so touching a legacy model does not surface its entire pre-existing debt).
+* **`compact-ledger: "true"`** (default): Groups PR comment ledger rows by `(model, rule)` with an occurrence badge (e.g. `**(15×)**`) so large models stay concise.
 
 #### 3. GitHub Actions Job Summary
 The complete Markdown health report is automatically published to the GitHub Actions **Job Summary** page on every workflow run.

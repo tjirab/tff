@@ -325,6 +325,35 @@ def test_emit_github_annotations_prioritization_and_capping(tmp_path: Path):
     assert "title=ERR · c_unmod_err" in output[3]
 
 
+def test_emit_github_annotations_per_file_cap_and_errors_only() -> None:
+    findings = [
+        _make_finding(check="r1", severity="warning", message="w1", model="m1", path="models/a.sql"),
+        _make_finding(check="r2", severity="error", message="e1", model="m1", path="models/a.sql"),
+        _make_finding(check="r3", severity="error", message="e2", model="m1", path="models/a.sql"),
+        _make_finding(check="r1", severity="warning", message="w2", model="m2", path=None),
+        _make_finding(check="r1", severity="warning", message="w3", model="m3", path=None),
+    ]
+    # 1. max_annotations_per_file=1 caps models/a.sql to 1 highest-priority (error) + preserves distinct pathless models
+    s1 = io.StringIO()
+    emit_github_annotations(findings, stream=s1, max_annotations_per_file=1)
+    lines1 = s1.getvalue().strip().splitlines()
+    assert len(lines1) == 3
+    assert "title=ERR · r2" in lines1[0]
+
+    # 2. errors_only=True emits only errors and uses ::notice:: when capping
+    s2 = io.StringIO()
+    emit_github_annotations(findings, stream=s2, errors_only=True, max_annotations=1)
+    lines2 = s2.getvalue().strip().splitlines()
+    assert lines2[0].startswith("::notice::tff found 2 violations.")
+    assert len(lines2) == 2
+    assert "::warning" not in s2.getvalue()
+
+    # 3. errors_only=True with only warnings emits nothing
+    s3 = io.StringIO()
+    emit_github_annotations([findings[0]], stream=s3, errors_only=True)
+    assert s3.getvalue() == ""
+
+
 def test_is_finding_in_modified_files_branches(tmp_path: Path):
     from tff.core.formatters import _is_finding_in_modified_files
 

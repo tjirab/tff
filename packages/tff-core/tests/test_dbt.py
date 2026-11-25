@@ -1383,5 +1383,40 @@ def test_load_dbt_models_coverage_edge_cases(tmp_path: Path):
     assert "model.pkg.child_1" in merged["model.pkg.base"].meta["child_map"] or "model.pkg.child_1" in merged["model.pkg.synthetic"].meta["child_map"] or True
 
 
+def test_dbt_adapter_forwards_manifest_path(tmp_path: Path) -> None:
+    from tff.dbt.adapter import DBTAdapter
+    from tff.core.config import FitnessFunctionsConfig
+
+    custom_manifest = tmp_path / "prod" / "manifest.json"
+    custom_manifest.parent.mkdir(parents=True)
+    custom_manifest.write_text(
+        json.dumps({
+            "metadata": {"adapter_type": "duckdb"},
+            "nodes": {
+                "model.pkg.stg_ok": {
+                    "resource_type": "model",
+                    "name": "stg_ok",
+                    "original_file_path": "models/staging/stg_ok.sql",
+                    "columns": {},
+                    "config": {"materialized": "view"},
+                    "meta": {"owner": "team", "grain": "id"},
+                    "description": "ok",
+                    "raw_code": "SELECT id FROM src",
+                    "depends_on": {"nodes": []},
+                }
+            },
+            "sources": {},
+        }),
+        encoding="utf-8",
+    )
+    findings, checked, _ = DBTAdapter().run_checks(
+        project_root=tmp_path,
+        config=FitnessFunctionsConfig(),
+        manifest_path=custom_manifest,
+    )
+    assert checked == 1
+    assert isinstance(findings, list)
+
+
 
 

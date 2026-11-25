@@ -64,6 +64,8 @@ class DBTAdapter(PipelineAdapter):
             "dialect": dialect,
             "models": models,
         }
+        if manifest_path is not None:
+            kwargs["manifest_path"] = manifest_path
         if scoped_models is not None:
             kwargs["scoped_models"] = scoped_models
         if chunk_size is not None:

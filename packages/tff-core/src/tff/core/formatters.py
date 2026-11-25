@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections import defaultdict
 from datetime import datetime
 from pathlib import Path
 import sys
@@ -76,9 +77,17 @@ def emit_github_annotations(
     stream: Any = None,
     modified_files: set[str] | None = None,
     max_annotations: int = 50,
+    max_annotations_per_file: int | None = None,
+    errors_only: bool = False,
 ) -> None:
-    """Emit GitHub Actions annotations with priority sorting and capping."""
+    """Emit GitHub Actions annotations with severity filtering, per-file/rule deduplication, and capping."""
     target_stream = stream if stream is not None else sys.stdout
+
+    filtered = (
+        [f for f in findings if f.severity == "error"] if errors_only else findings
+    )
+    if not filtered:
+        return
 
     mod_files = modified_files or set()
 
@@ -88,25 +97,35 @@ def emit_github_annotations(
         sev_order = 0 if f.severity == "error" else 1
         return (in_modified, sev_order)
 
-    sorted_findings = sorted(findings, key=_priority_key)
+    sorted_findings = sorted(filtered, key=_priority_key)
 
-    # Deduplicate inline annotations per (file, check) so multiple violations
-    # of the same rule in a file only produce a single in-file comment / annotation.
+    # Deduplicate inline annotations per (file_or_model, check) so multiple violations
+    # of the same rule in a file/model only produce a single annotation.
     unique_findings: list[LintFinding] = []
     seen: set[tuple[str | None, str]] = set()
+    per_file_counts: dict[str, int] = defaultdict(int)
     for f in sorted_findings:
         file_key = (
             _get_relative_path(f.path, project_root) if f.path else None
         )
-        dedup_key = (file_key, f.check)
-        if dedup_key not in seen:
-            seen.add(dedup_key)
-            unique_findings.append(f)
+        target_key = file_key if file_key is not None else (f.model or None)
+        dedup_key = (target_key, f.check)
+        if dedup_key in seen:
+            continue
+        seen.add(dedup_key)
+
+        if max_annotations_per_file is not None and target_key is not None:
+            if per_file_counts[target_key] >= max_annotations_per_file:
+                continue
+            per_file_counts[target_key] += 1
+
+        unique_findings.append(f)
 
     total_count = len(sorted_findings)
     if len(unique_findings) > max_annotations:
+        notice_cmd = "notice" if errors_only else "warning"
         notice = (
-            f"::warning::tff found {total_count} violations. "
+            f"::{notice_cmd}::tff found {total_count} violations. "
             f"Displaying the {max_annotations} highest-priority annotations; "
             f"see Job Summary or PR comment for the complete list."
         )

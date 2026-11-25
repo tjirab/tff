@@ -51,9 +51,13 @@ inputs:
     required: false
     default: ""
   annotations:
-    description: "Emit GitHub Actions workflow command annotations (::error / ::warning)"
+    description: "Emit GitHub Actions workflow command annotations ('true', 'false', or 'errors-only')"
     required: false
     default: "true"
+  max-annotations-per-file:
+    description: "Maximum number of GitHub Actions annotations to emit per file"
+    required: false
+    default: ""
   diff-against-base:
     description: "Compute and display health score difference against base branch in PR comments"
     required: false
@@ -66,6 +70,14 @@ inputs:
     description: "Only gate and report violations for models/files modified in this pull request"
     required: false
     default: "false"
+  delta-only:
+    description: "Delta mode: only gate, annotate, and report violations newly introduced vs base branch/manifest"
+    required: false
+    default: "false"
+  compact-ledger:
+    description: "Group PR comment ledger rows by model and rule for shorter comments"
+    required: false
+    default: "true"
   cache:
     description: "Enable caching of .tff_cache (AST cache) across GitHub Actions workflows"
     required: false
@@ -208,9 +220,12 @@ runs:
         INPUT_CONFIG: ${{ inputs.config }}
         INPUT_CHECKS: ${{ inputs.checks }}
         INPUT_ANNOTATIONS: ${{ inputs.annotations }}
+        INPUT_MAX_ANNOTATIONS_PER_FILE: ${{ inputs.max-annotations-per-file }}
         INPUT_DIFF_AGAINST_BASE: ${{ inputs.diff-against-base }}
         INPUT_BASE_MANIFEST: ${{ inputs.base-manifest }}
         INPUT_ONLY_CHANGED: ${{ inputs.only-changed }}
+        INPUT_DELTA_ONLY: ${{ inputs.delta-only }}
+        INPUT_COMPACT_LEDGER: ${{ inputs.compact-ledger }}
       run: |
         ARGS=()
         while IFS= read -r p; do
@@ -229,8 +244,13 @@ runs:
         if [ -n "${INPUT_COMMENT_TAG}" ]; then
           ARGS+=("--comment-tag" "${INPUT_COMMENT_TAG}")
         fi
-        if [ "${INPUT_ANNOTATIONS}" = "false" ]; then
+        if [ "${INPUT_ANNOTATIONS}" = "false" ] || [ "${INPUT_ANNOTATIONS}" = "none" ]; then
           ARGS+=("--no-annotations")
+        elif [ "${INPUT_ANNOTATIONS}" = "errors-only" ]; then
+          ARGS+=("--annotations-level" "errors-only")
+        fi
+        if [ -n "${INPUT_MAX_ANNOTATIONS_PER_FILE}" ]; then
+          ARGS+=("--max-annotations-per-file" "${INPUT_MAX_ANNOTATIONS_PER_FILE}")
         fi
         if [ "${INPUT_DIFF_AGAINST_BASE}" = "false" ]; then
           ARGS+=("--no-diff-against-base")
@@ -240,6 +260,12 @@ runs:
         fi
         if [ "${INPUT_ONLY_CHANGED}" = "true" ]; then
           ARGS+=("--only-changed")
+        fi
+        if [ "${INPUT_DELTA_ONLY}" = "true" ]; then
+          ARGS+=("--delta-only")
+        fi
+        if [ "${INPUT_COMPACT_LEDGER}" = "false" ]; then
+          ARGS+=("--no-compact-ledger")
         fi
         if [ -n "${GITHUB_BASE_REF}" ]; then
           ARGS+=("--base-ref" "${GITHUB_BASE_REF}")

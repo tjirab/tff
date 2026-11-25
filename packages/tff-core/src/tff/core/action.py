@@ -178,6 +178,192 @@ def parse_bool(val: Any) -> bool:
     return bool(val)
 
 
+def resolve_annotations_settings(
+    annotations_arg: Any,
+    annotations_level: str | None = None,
+) -> tuple[bool, bool]:
+    """Resolve (emit_annotations, errors_only) from CLI/action annotation settings."""
+    level_norm = (
+        annotations_level.strip().lower()
+        if isinstance(annotations_level, str)
+        else ""
+    )
+    if isinstance(annotations_arg, str):
+        arg_norm = annotations_arg.strip().lower()
+        if arg_norm in ("false", "0", "no", "off", "none"):
+            return False, False
+        if arg_norm in ("errors-only", "errors_only", "error"):
+            return True, True
+        if level_norm in ("errors-only", "errors_only", "error"):
+            return True, True
+        return parse_bool(annotations_arg), False
+
+    if not annotations_arg:
+        return False, False
+    if level_norm in ("errors-only", "errors_only", "error"):
+        return True, True
+    return True, False
+
+
+def _extract_finding_fields(
+    f: dict[str, Any] | LintFinding,
+) -> tuple[str, str, str, str]:
+    """Return (severity, check, target, message) for a LintFinding or dict."""
+    if isinstance(f, LintFinding):
+        sev_raw = str(f.severity or "warning")
+        chk_raw = str(f.check or "")
+        target = str(f.model or (str(f.path) if f.path else "-"))
+        msg_raw = str(f.message or "")
+    else:
+        sev_raw = str(f.get("severity") or "warning")
+        chk_raw = str(f.get("check", "") or "")
+        target = str(f.get("model") or f.get("path") or "-")
+        msg_raw = str(f.get("message", "") or "")
+    return sev_raw, chk_raw, target, msg_raw
+
+
+def _sanitize_markdown_cell(text: str) -> str:
+    """Normalize a string for single-line Markdown table cell rendering."""
+    return (
+        text.replace("\r\n", " ")
+        .replace("\r", " ")
+        .replace("\n", " ")
+        .replace("|", "\\|")
+    )
+
+
+def group_findings_by_model_and_rule(
+    findings: Sequence[dict[str, Any] | LintFinding],
+) -> list[dict[str, Any]]:
+    """Group findings by (model/target, rule) to keep PR ledgers compact."""
+    groups: dict[tuple[str, str], dict[str, Any]] = {}
+    for f in findings:
+        sev_raw, chk_raw, target, msg_raw = _extract_finding_fields(f)
+        key = (target, chk_raw)
+        clean_msg = _sanitize_markdown_cell(msg_raw)
+        if key not in groups:
+            groups[key] = {
+                "target": target,
+                "check": chk_raw,
+                "severity": sev_raw,
+                "count": 0,
+                "autofixable": False,
+                "messages": [],
+                "findings": [],
+            }
+        grp = groups[key]
+        grp["count"] += 1
+        if sev_raw == "error":
+            grp["severity"] = "error"
+        if is_autofixable(f):
+            grp["autofixable"] = True
+        if clean_msg and clean_msg not in grp["messages"]:
+            grp["messages"].append(clean_msg)
+        grp["findings"].append(f)
+    return list(groups.values())
+
+
+def _format_grouped_finding_row(group: dict[str, Any]) -> str:
+    """Format a grouped (model, rule) entry as a single Markdown table row."""
+    if group["count"] == 1:
+        return _format_finding_row(group["findings"][0])
+
+    sev_raw = group["severity"]
+    sev = "`ERR`" if sev_raw == "error" else "`WRN`"
+    sig = "!" if sev_raw == "error" else "*"
+    chk = _format_check_cell(group["check"])
+    coup = f"`{_get_coupling_tag(group['check'])}`"
+    shown = group["messages"][:2]
+    preview = "; ".join(shown)
+    if len(preview) > 180:
+        preview = preview[:177] + "..."
+    omitted = group["count"] - len(shown)
+    more_suffix = f" (+{omitted} more)" if omitted > 0 else ""
+    autofix_badge = " `[Autofixable]`" if group["autofixable"] else ""
+    return (
+        f"| {sev} | `{group['target']}` | {chk} | {coup} | "
+        f"{sig} **({group['count']}×)** {preview}{more_suffix}{autofix_badge} |"
+    )
+
+
+def _render_markdown_findings_table(
+    findings: Sequence[dict[str, Any] | LintFinding],
+    *,
+    max_rows: int = 50,
+    compact_ledger: bool = True,
+    line_prefix: str = "",
+    truncation_label: str = "violations",
+    sort_by_target: bool = False,
+) -> tuple[list[str], int]:
+    """Render Markdown table lines for findings, optionally grouped by model and rule."""
+    lines = [
+        f"{line_prefix}| STATUS | LOCATION | RULE | COUPLING | DETAILS |",
+        f"{line_prefix}| :---: | :--- | :--- | :--- | :--- |",
+    ]
+    if compact_ledger:
+        groups = group_findings_by_model_and_rule(findings)
+        if sort_by_target:
+            groups.sort(
+                key=lambda g: (
+                    g["target"].lower(),
+                    0 if g["severity"] == "error" else 1,
+                    g["check"].lower(),
+                )
+            )
+        row_count = len(groups)
+        for grp in groups[:max_rows]:
+            lines.append(f"{line_prefix}{_format_grouped_finding_row(grp)}")
+    else:
+        items = list(findings)
+        if sort_by_target:
+            items.sort(
+                key=lambda item: (
+                    _extract_finding_fields(item)[2].lower(),
+                    0 if _extract_finding_fields(item)[0] == "error" else 1,
+                    _extract_finding_fields(item)[1].lower(),
+                )
+            )
+        row_count = len(items)
+        for item in items[:max_rows]:
+            lines.append(f"{line_prefix}{_format_finding_row(item)}")
+
+    if row_count > max_rows:
+        sep = f"{line_prefix}\n{line_prefix}" if line_prefix else "\n"
+        lines.append(
+            f"{sep}*... and {row_count - max_rows} more {truncation_label} truncated.*"
+        )
+    return lines, row_count
+
+
+def filter_delta_findings(
+    current_data: dict[str, Any],
+    base_data: dict[str, Any],
+) -> tuple[dict[str, Any], int]:
+    """Filter current_data to only violations newly introduced relative to base_data."""
+    base_fps = {get_finding_fingerprint(f) for f in base_data.get("findings", [])}
+    curr_findings = list(current_data.get("findings", []))
+    curr_raw = list(current_data.get("raw_findings", []))
+
+    delta_findings = [
+        f for f in curr_findings if get_finding_fingerprint(f) not in base_fps
+    ]
+    delta_raw = [
+        f for f in curr_raw if get_finding_fingerprint(f) not in base_fps
+    ]
+    suppressed_count = len(curr_findings) - len(delta_findings)
+
+    updated = dict(current_data)
+    updated["findings"] = delta_findings
+    updated["raw_findings"] = delta_raw
+    updated["errors_count"] = sum(
+        1 for f in delta_findings if f.get("severity") == "error"
+    )
+    updated["warnings_count"] = sum(
+        1 for f in delta_findings if f.get("severity") == "warning"
+    )
+    return updated, suppressed_count
+
+
 def get_finding_fingerprint(
     finding: dict[str, Any] | LintFinding,
 ) -> tuple[str, str, str]:
@@ -392,6 +578,26 @@ def fetch_base_scores(
     roots = normalize_project_roots(project_dir)
     primary_root = roots[0]
     clean_env = _git_clean_env()
+    resolved_manifest = Path(manifest).resolve() if manifest is not None else None
+
+    def _evaluate_manifest_fallback() -> dict[str, Any] | None:
+        if resolved_manifest is None or not resolved_manifest.is_file():
+            return None
+        target_root: Path | list[Path] = roots if len(roots) > 1 else primary_root
+        try:
+            return evaluate_project(
+                project_root=target_root,
+                provider=provider,
+                config_path=config_path,
+                checks=checks,
+                dialect=dialect,
+                manifest=resolved_manifest,
+                workers=workers,
+            )
+        except Exception as exc:
+            logger.debug("Manifest fallback evaluation failed: %s", exc)
+            return None
+
     try:
         res = subprocess.run(
             ["git", "rev-parse", "--show-toplevel"],
@@ -404,7 +610,7 @@ def fetch_base_scores(
         repo_root = Path(res.stdout.strip()).resolve()
     except Exception as e:
         logger.debug("Failed to find git repo root: %s", e)
-        return None
+        return _evaluate_manifest_fallback()
 
     temp_dir = tempfile.mkdtemp(prefix="tff-base-")
     try:
@@ -443,7 +649,7 @@ def fetch_base_scores(
             )
             if res.returncode != 0:
                 logger.debug("git worktree add failed: %s", res.stderr)
-                return None
+                return _evaluate_manifest_fallback()
 
         base_project_dirs: list[Path] = []
         for r in roots:
@@ -460,13 +666,12 @@ def fetch_base_scores(
                 "Base project path(s) do not exist in base ref: %s",
                 roots,
             )
-            return None
+            return _evaluate_manifest_fallback()
 
         target_base_root: Path | list[Path] = (
             base_project_dirs if len(roots) > 1 else base_project_dirs[0]
         )
 
-        resolved_manifest = manifest.resolve() if manifest is not None else None
         return evaluate_project(
             project_root=target_base_root,
             provider=provider,
@@ -503,6 +708,10 @@ def generate_pr_comment_markdown(
     modified_files: set[str] | None = None,
     comment_tag: str | None = None,
     comment_marker: str | None = None,
+    delta_only: bool = False,
+    pre_existing_debt_count: int = 0,
+    compact_ledger: bool = True,
+    resolved_violations_count: int | None = None,
 ) -> str:
     """Generate the GitHub PR markdown comment summarizing health score and violations."""
     marker = comment_marker or get_comment_marker(comment_tag)
@@ -597,21 +806,30 @@ def generate_pr_comment_markdown(
             marker,
             card_line,
         ]
+        if pre_existing_debt_count > 0:
+            lines.append("")
+            lines.append(
+                f"*{pre_existing_debt_count} pre-existing violation(s) matching `{base_ref}` baseline excluded in delta mode.*"
+            )
 
         if untouched_pre_existing:
+            table_lines, row_count = _render_markdown_findings_table(
+                untouched_pre_existing,
+                max_rows=50,
+                compact_ledger=compact_ledger,
+                truncation_label="pre-existing violations",
+            )
+            group_note = (
+                f" ({row_count} grouped)"
+                if compact_ledger and row_count < len(untouched_pre_existing)
+                else ""
+            )
             lines.append("")
             lines.append("<details>")
             lines.append(
-                f"<summary>View {len(untouched_pre_existing)} pre-existing violations across untouched models</summary>\n"
+                f"<summary>View {len(untouched_pre_existing)} pre-existing violations across untouched models{group_note}</summary>\n"
             )
-            lines.append("| STATUS | LOCATION | RULE | COUPLING | DETAILS |")
-            lines.append("| :---: | :--- | :--- | :--- | :--- |")
-            for f in untouched_pre_existing[:50]:
-                lines.append(_format_finding_row(f))
-            if len(untouched_pre_existing) > 50:
-                lines.append(
-                    f"\n*... and {len(untouched_pre_existing) - 50} more pre-existing violations truncated.*"
-                )
+            lines.extend(table_lines)
             lines.append("\n</details>")
 
             if any(is_autofixable(f) for f in untouched_pre_existing):
@@ -629,27 +847,48 @@ def generate_pr_comment_markdown(
         f"**{score:.1f}%** ({delta_str})" if delta_str else f"**{score:.1f}%**"
     )
 
+    resolved_count = (
+        resolved_violations_count
+        if resolved_violations_count is not None
+        else len(resolved_violations)
+    )
     diff_summary_lines: list[str] = []
     if base_data is not None and delta_str is not None:
         diff_summary_lines.append(f"### Changes vs `{base_ref}`")
         diff_summary_lines.append(f"- **Score Delta**: `{delta_str}`")
         diff_summary_lines.append(
-            f"- **Resolved Violations**: {len(resolved_violations)}"
+            f"- **Resolved Violations**: {resolved_count}"
         )
         diff_summary_lines.append(f"- **New Violations**: {len(new_violations)}")
 
-    if only_changed:
+    if delta_only and only_changed:
+        threshold_line = (
+            f"> **Mode**: Delta mode vs `{base_ref}` on `{modified_files_count}` modified file(s) · "
+            f"Minimum score: `{fail_under:.1f}%` · Severity threshold: `{fail_level}`\n"
+        )
+    elif delta_only:
+        threshold_line = (
+            f"> **Mode**: Delta mode vs `{base_ref}` (newly introduced violations only) · "
+            f"Minimum score: `{fail_under:.1f}%` · Severity threshold: `{fail_level}`\n"
+        )
+    elif only_changed:
         threshold_line = (
             f"> **Mode**: Gating `{modified_files_count}` modified file(s) in PR · "
             f"Minimum score: `{fail_under:.1f}%` · Severity threshold: `{fail_level}`\n"
         )
-        if ignored_violations_count > 0:
-            threshold_line += (
-                f"> *{ignored_violations_count} pre-existing violation(s) "
-                f"in unmodified files were excluded due to `only-changed: true`.*\n"
-            )
     else:
         threshold_line = f"> **Threshold**: Minimum score: `{fail_under:.1f}%` · Severity threshold: `{fail_level}`\n"
+
+    if only_changed and ignored_violations_count > 0:
+        threshold_line += (
+            f"> *{ignored_violations_count} pre-existing violation(s) "
+            f"in unmodified files were excluded due to `only-changed: true`.*\n"
+        )
+    if delta_only and pre_existing_debt_count > 0:
+        threshold_line += (
+            f"> *{pre_existing_debt_count} pre-existing violation(s) "
+            f"matching baseline were excluded due to `delta-only: true`.*\n"
+        )
 
     lines = [
         marker,
@@ -662,22 +901,15 @@ def generate_pr_comment_markdown(
     if new_violations:
         lines.append("> [!CAUTION]")
         lines.append("> ### New Violations Introduced in This PR\n>")
-        lines.append("> | STATUS | LOCATION | RULE | COUPLING | DETAILS |")
-        lines.append("> | :---: | :--- | :--- | :--- | :--- |")
-        sorted_new_violations = sorted(
+        new_table_lines, _ = _render_markdown_findings_table(
             new_violations,
-            key=lambda nv: (
-                str(nv.get("model") or nv.get("path") or "").lower(),
-                0 if nv.get("severity") == "error" else 1,
-                str(nv.get("check") or "").lower(),
-            ),
+            max_rows=25,
+            compact_ledger=compact_ledger,
+            line_prefix="> ",
+            truncation_label="new violations",
+            sort_by_target=True,
         )
-        for nv in sorted_new_violations[:25]:
-            lines.append(f"> {_format_finding_row(nv)}")
-        if len(sorted_new_violations) > 25:
-            lines.append(
-                f"> \n> *... and {len(sorted_new_violations) - 25} more new violations.*"
-            )
+        lines.extend(new_table_lines)
         lines.append("")
 
         if any(is_autofixable(nv) for nv in new_violations):
@@ -724,36 +956,44 @@ def generate_pr_comment_markdown(
             "All architectural fitness functions and linter checks passed without any violations!\n"
         )
     elif detail_findings:
-        open_tag = " open" if len(detail_findings) <= 15 else ""
+        detail_table_lines, detail_row_count = _render_markdown_findings_table(
+            detail_findings,
+            max_rows=50,
+            compact_ledger=compact_ledger,
+            truncation_label="violations",
+        )
+        open_tag = " open" if detail_row_count <= 15 else ""
+        group_note = (
+            f" ({detail_row_count} model/rule groups)"
+            if compact_ledger and detail_row_count < len(detail_findings)
+            else ""
+        )
         lines.append(f"### Violations Detail ({len(detail_findings)})")
         lines.append(f"<details{open_tag}>")
         lines.append(
-            f"<summary><b>Click to expand {len(detail_findings)} violation(s)</b></summary>\n"
+            f"<summary><b>Click to expand {len(detail_findings)} violation(s){group_note}</b></summary>\n"
         )
-        lines.append("| STATUS | LOCATION | RULE | COUPLING | DETAILS |")
-        lines.append("| :---: | :--- | :--- | :--- | :--- |")
-        for f in detail_findings[:50]:
-            lines.append(_format_finding_row(f))
-        if len(detail_findings) > 50:
-            lines.append(
-                f"\n*... and {len(detail_findings) - 50} more violations truncated.*"
-            )
+        lines.extend(detail_table_lines)
         lines.append("\n</details>\n")
 
     # 2. Collapsible Baseline Debt: pre-existing violations on untouched models
     if untouched_pre_existing:
+        untouched_table_lines, untouched_row_count = _render_markdown_findings_table(
+            untouched_pre_existing,
+            max_rows=50,
+            compact_ledger=compact_ledger,
+            truncation_label="pre-existing violations",
+        )
+        group_note = (
+            f" ({untouched_row_count} grouped)"
+            if compact_ledger and untouched_row_count < len(untouched_pre_existing)
+            else ""
+        )
         lines.append("<details>")
         lines.append(
-            f"<summary>View {len(untouched_pre_existing)} pre-existing violations across untouched models</summary>\n"
+            f"<summary>View {len(untouched_pre_existing)} pre-existing violations across untouched models{group_note}</summary>\n"
         )
-        lines.append("| STATUS | LOCATION | RULE | COUPLING | DETAILS |")
-        lines.append("| :---: | :--- | :--- | :--- | :--- |")
-        for f in untouched_pre_existing[:50]:
-            lines.append(_format_finding_row(f))
-        if len(untouched_pre_existing) > 50:
-            lines.append(
-                f"\n*... and {len(untouched_pre_existing) - 50} more pre-existing violations truncated.*"
-            )
+        lines.extend(untouched_table_lines)
         lines.append("\n</details>\n")
 
     if has_autofix and not (
@@ -1051,22 +1291,15 @@ def execute_action(args: argparse.Namespace) -> int:
             1 for f in filtered_findings if f.get("severity") == "warning"
         )
 
-    # 3. Emit GitHub Actions annotations
-    if getattr(args, "annotations", True):
-        raw_findings = current_data.get("raw_findings", [])
-        if raw_findings:
-            emit_github_annotations(
-                raw_findings,
-                project_root=target_project_root,
-                stream=sys.stdout,
-                modified_files=modified_files,
-            )
+    pre_delta_findings = list(current_data.get("findings", []))
 
-    # 4. Base branch diff calculation if requested
+    # 3. Base branch / baseline manifest evaluation (must run before delta filtering & annotations)
+    delta_only = parse_bool(getattr(args, "delta_only", False))
     base_data: dict[str, Any] | None = None
     base_ref = getattr(args, "base_ref", None) or os.environ.get("GITHUB_BASE_REF")
     base_manifest = getattr(args, "base_manifest", None)
-    if getattr(args, "diff_against_base", True) and base_ref:
+    should_diff_base = getattr(args, "diff_against_base", True) or delta_only
+    if should_diff_base and base_ref:
         base_data = fetch_base_scores(
             project_dir=target_project_root,
             base_ref=base_ref,
@@ -1077,13 +1310,77 @@ def execute_action(args: argparse.Namespace) -> int:
             manifest=base_manifest,
             workers=getattr(args, "workers", None),
         )
+    elif should_diff_base and base_manifest is not None:
+        base_manifest_path = Path(base_manifest).resolve()
+        if base_manifest_path.is_file():
+            try:
+                base_data = evaluate_project(
+                    project_root=target_project_root,
+                    provider=args.provider,
+                    config_path=args.config,
+                    checks=checks,
+                    dialect=getattr(args, "dialect", None),
+                    manifest=base_manifest_path,
+                    workers=getattr(args, "workers", None),
+                )
+            except Exception as e:
+                logger.debug("Failed to evaluate base manifest directly: %s", e)
 
-    # 5. Generate PR Comment Markdown
+    # 4. Compute resolved count before delta suppression and apply delta mode if requested
+    resolved_violations_count: int | None = None
+    if base_data is not None and (only_changed or delta_only):
+        base_findings = base_data.get("findings", [])
+        if only_changed:
+            base_in_scope = [
+                f
+                for f in base_findings
+                if is_finding_in_files(f, modified_files, target_project_root, repo_root)
+            ]
+            _, resolved_in_scope = compare_findings(pre_delta_findings, base_in_scope)
+            resolved_violations_count = len(resolved_in_scope)
+        else:
+            _, resolved_all = compare_findings(pre_delta_findings, base_findings)
+            resolved_violations_count = len(resolved_all)
+
+    pre_existing_debt_count = 0
+    if delta_only:
+        if base_data is not None:
+            current_data, pre_existing_debt_count = filter_delta_findings(
+                current_data, base_data
+            )
+        else:
+            print(
+                "Notice: delta-only mode is enabled, but baseline data was unavailable. Reporting all violations in scope.",
+                file=sys.stderr,
+            )
+
+    # 5. Emit GitHub Actions annotations
+    emit_annots, annots_errors_only = resolve_annotations_settings(
+        getattr(args, "annotations", True),
+        getattr(args, "annotations_level", None),
+    )
+    if emit_annots:
+        raw_findings = current_data.get("raw_findings", [])
+        if raw_findings:
+            emit_github_annotations(
+                raw_findings,
+                project_root=target_project_root,
+                stream=sys.stdout,
+                modified_files=modified_files,
+                max_annotations=getattr(args, "max_annotations", 50),
+                max_annotations_per_file=getattr(
+                    args, "max_annotations_per_file", None
+                ),
+                errors_only=annots_errors_only,
+            )
+
+    # 6. Generate PR Comment Markdown
     resolved_tag = resolve_comment_tag(
         getattr(args, "comment_tag", None) or os.environ.get("INPUT_COMMENT_TAG"),
         target_project_root,
     )
     resolved_marker = get_comment_marker(resolved_tag)
+    compact_ledger = parse_bool(getattr(args, "compact_ledger", True))
 
     md_report = generate_pr_comment_markdown(
         current_data=current_data,
@@ -1097,6 +1394,10 @@ def execute_action(args: argparse.Namespace) -> int:
         modified_files=modified_files,
         comment_tag=resolved_tag,
         comment_marker=resolved_marker,
+        delta_only=delta_only,
+        pre_existing_debt_count=pre_existing_debt_count,
+        compact_ledger=compact_ledger,
+        resolved_violations_count=resolved_violations_count,
     )
 
     # 5. Output to terminal / console

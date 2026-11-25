@@ -2918,6 +2918,42 @@ def test_info_all_adapters_sqlmesh_variations(
         assert payload["adapters"]["sqlmesh"] == expected_json_adapter
 
 
+@pytest.mark.parametrize("fmt", ["github", "text", "json"])
+def test_cli_lint_annotations_level_and_per_file_cap(tmp_path: Path, capsys, fmt: str) -> None:
+    findings = [
+        _make_finding(check="r1", severity="warning", message="w", path="models/a.sql"),
+        _make_finding(check="r2", severity="error", message="e1", path="models/a.sql"),
+        _make_finding(check="r3", severity="error", message="e2", path="models/a.sql"),
+    ]
+    mock_adapter = MagicMock()
+    mock_adapter.provider_name = "dbt"
+    mock_adapter.run_checks.return_value = (findings, 1, ["rules"])
+    (tmp_path / "fitness_functions.yaml").write_text("version: 1\n")
+
+    extra = ["--format", fmt] if fmt == "github" else (["--format", fmt, "--github-annotations"] if fmt == "json" else ["--github-annotations"])
+    with patch("tff.core.cli._get_adapter", return_value=mock_adapter):
+        code = main(["lint", "-p", str(tmp_path), "--provider", "dbt", "--annotations-level", "errors-only", "--max-annotations-per-file", "1", "--no-log", *extra])
+    assert code == 1
+    captured = capsys.readouterr()
+    stream_text = captured.err if fmt == "json" else captured.out
+    assert stream_text.count("::error") == 1
+    assert "::warning" not in stream_text
+
+
+def test_cli_action_new_flags(tmp_path: Path) -> None:
+    with patch("tff.core.action.execute_action", return_value=0) as mock_action:
+        code = main([
+            "action", "-p", str(tmp_path), "--delta-only",
+            "--annotations-level", "errors-only", "--max-annotations-per-file", "2", "--no-compact-ledger",
+        ])
+        assert code == 0
+        ns = mock_action.call_args[0][0]
+        assert ns.delta_only is True
+        assert ns.annotations_level == "errors-only"
+        assert ns.max_annotations_per_file == 2
+        assert ns.compact_ledger is False
+
+
 
 
 
