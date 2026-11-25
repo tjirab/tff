@@ -220,7 +220,7 @@ For brownfield repositories with pre-existing debt:
 * **`delta-only: "true"`**: Compares current findings against the base branch or `base-manifest` and gates, annotates, and reports **only violations newly introduced in the PR** (complementing `only-changed: "true"` so touching a legacy model does not surface its entire pre-existing debt).
 * **`compact-ledger: "true"`** (default): Groups PR comment ledger rows by `(model, rule)` with an occurrence badge (e.g. `**(15×)**`) so large models stay concise.
 
-#### 3. GitHub Actions Job Summary
+#### 4. GitHub Actions Job Summary
 The complete Markdown health report is automatically published to the GitHub Actions **Job Summary** page on every workflow run.
 
 ---

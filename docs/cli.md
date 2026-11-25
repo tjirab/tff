@@ -65,6 +65,8 @@ tff check [options]
 | `--format` | `text`, `json`, `sarif`, `github` | `text` | Output format to stdout. |
 | `--json` | Flag | `false` | Shorthand for `--format json`. |
 | `--github-annotations` | Flag | (auto if CI) | Emit GitHub Actions workflow commands (`::error` / `::warning`) to stderr. |
+| `--annotations-level` | `all`, `errors-only` | `all` | Filter emitted GitHub Actions annotations by severity (`errors-only` suppresses warning annotations). |
+| `--max-annotations-per-file` | Positive Integer | (unlimited) | Maximum number of GitHub Actions annotations to emit per file. |
 | `--junit-xml PATH` | File Path | (none) | Write JUnit XML test report for CI results tabs (GitLab, Azure DevOps, Bitbucket). |
 | `--workers NUM` | Integer | (auto / CPU count) | Number of worker processes for parallel model loading, AST parsing, and CTE analysis (or set `TFF_WORKERS`). Task chunk size for rule evaluation can be tuned via `--chunk-size` or `TFF_CHUNK_SIZE`. |
 | `--chunk-size NUM` | Integer | (dynamic / `TFF_CHUNK_SIZE`) | Chunk size of models per thread worker during parallel rule execution. |
@@ -100,6 +102,9 @@ tff lint --format sarif > results.sarif
 
 # Export JUnit XML for GitLab CI or Azure DevOps
 tff lint --junit-xml reports/junit.xml
+
+# Emit error-only GitHub Actions annotations, capped at 3 per file
+tff lint --github-annotations --annotations-level errors-only --max-annotations-per-file 3
 ```
 
 ---
@@ -175,6 +180,7 @@ tff action [options]
 | `--fail-under SCORE` | Float (`0.0` - `100.0`) | `0.0` | Minimum overall health score required to pass. |
 | `--fail-level` | `error`, `warning` | `error` | Failure severity level triggering exit code `1`. |
 | `--only-changed` | Flag | `false` | Only gate and report violations for models/files modified in this PR. |
+| `--delta-only`, `--delta` | Flag | `false` | Delta mode: only gate, annotate, and report violations newly introduced vs base branch/manifest. |
 | `--comment-pr {true,false}` | String | `false` | Create or update idempotent PR summary comment on GitHub. |
 | `--github-token TOKEN` | String | `$GITHUB_TOKEN` | GitHub API token for PR comments. |
 | `--base-ref REF` | String | (auto-detected) | Base branch reference to compare health score against (e.g. `main`). |
@@ -182,6 +188,9 @@ tff action [options]
 | `--manifest PATH` | File Path | (none) | Path to precompiled manifest or Dataform `compilation_result.json`. |
 | `--diff-against-base` / `--no-diff-against-base` | Flag | `true` | Compute health score diff vs target branch in temporary worktree. |
 | `--annotations` / `--no-annotations` | Flag | `true` | Emit GitHub Actions workflow command annotations. |
+| `--annotations-level` | `all`, `errors-only` | `all` | Filter emitted GitHub Actions annotations by severity. |
+| `--max-annotations-per-file` | Positive Integer | (unlimited) | Maximum number of GitHub Actions annotations to emit per file. |
+| `--compact-ledger` / `--no-compact-ledger` | Flag | `true` | Group PR comment ledger rows by model and rule (`(N×)` summary rows) or render every row ungrouped. |
 | `--pr-number NUM` | Integer | (auto-detected) | Pull request number (auto-inferred from `$GITHUB_EVENT_PATH`). |
 | `--repo OWNER/REPO` | String | (auto-detected) | GitHub repository full name (auto-inferred from `$GITHUB_REPOSITORY`). |
 | `--workers NUM` | Integer | (auto / CPU count) | Number of worker processes for parallel model loading and AST parsing. |
@@ -200,6 +209,12 @@ tff action --base-ref main --only-changed --fail-under 85
 
 # Multi-project workspace execution
 tff action -p packages/proj1 -p packages/proj2 --base-ref main
+
+# Delta mode: gate only newly introduced violations vs main with error-only annotations (max 3 per file)
+tff action --base-ref main --delta-only --annotations-level errors-only --max-annotations-per-file 3
+
+# Post PR summary comment with ungrouped violation rows
+tff action --base-ref main --comment-pr true --no-compact-ledger
 ```
 
 ---
