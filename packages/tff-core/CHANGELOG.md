@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.31.0](https://github.com/tjirab/tff/compare/tff-core-v0.30.0...tff-core-v0.31.0) (2026-11-25)
+
+
+### Features
+
+* **action:** add annotation controls, delta mode, and compact PR ledger ([#477](https://github.com/tjirab/tff/issues/477)) ([a3d2708](https://github.com/tjirab/tff/commit/a3d2708ccaf6ce2c1170d300e8b2ccce921cb393))
+* **config:** make every check and rule configurable with error/warning severity ([#476](https://github.com/tjirab/tff/issues/476)) ([5017f94](https://github.com/tjirab/tff/commit/5017f94054905b497504eeb5fdd514aaf7b46be7))
+* **rules:** implement no_subqueries rule to disallow inline subqueries ([#475](https://github.com/tjirab/tff/issues/475)) ([46e4862](https://github.com/tjirab/tff/commit/46e4862c8b8ec66b728627e041c4d8a9e05793d5))
+* **rules:** support custom table and column metadata validation ([#473](https://github.com/tjirab/tff/issues/473)) ([0868d31](https://github.com/tjirab/tff/commit/0868d3109df5847851823554acad69970ac85cb8))
+
 ## [0.30.0](https://github.com/tjirab/tff/compare/tff-core-v0.29.0...tff-core-v0.30.0) (2026-11-09)
 
 
